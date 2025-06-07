@@ -26,8 +26,14 @@ Thumbs.db
 
 # Environment variables
 .env
-.env.local
 .env.*.local
+
+# Allow template .env files but ignore the active ones
+!.env.example
+!.env.local
+!.env.dev
+!.env.staging
+!.env.prod
 
 # Test coverage
 tarpaulin-report.html
@@ -36,3 +42,62 @@ coverage/
 
 # Logs
 *.log
+/target
+.shuttle*
+Secrets*.toml
+
+# Terraform
+**/.terraform/
+**/.terraform.lock.hcl
+**/terraform.tfstate
+**/terraform.tfstate.backup
+**/terraform.tfvars.backup
+**/*.tfplan
+**/*.tfplan.*
+**/crash.log
+**/override.tf
+**/override.tf.json
+**/*_override.tf
+**/*_override.tf.json
+**/.terraformrc
+**/terraform.rc
+
+# Docker
+.docker/
+
+# Node.js (frontend)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build artifacts
+*.profraw
+build_rs_cov.profraw
+
+# Performance profiling
+flamegraph.svg
+perf.data*
+callgraph.png
+
+# Benchmarking results
+infrastructure/benchmarking/results/
+**/benchmark-results/
+
+# Load testing
+vegeta/
+hey/
+
+# Database
+*.db
+*.sqlite*
+
+# SSL certificates
+*.pem
+*.crt
+*.key
+
+# Secrets
+secrets/
+*.secret
+/infrastructure/terraform/.terraform.tfstate.lock.info

@@ -1,0 +1,27 @@
+[package]
+name = "seeders"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "seed_database"
+path = "src/bin/seed_database.rs"
+
+[dependencies]
+async-trait = { workspace = true }
+chrono = { workspace = true }
+fake = "4.3.0"
+rand = "0.9.1"
+sea-orm = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = "0.3"
+uuid = { workspace = true }
+tokio = { workspace = true }
+anyhow = "1.0"
+
+events-models = { path = "../../domains/events/models" }
+user-models = { path = "../../domains/user/models" }
+sql-connection = { path = "../persistence/sql_connection" }
+database-traits = { path = "../persistence/database_traits" }

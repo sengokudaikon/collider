@@ -1,0 +1,23 @@
+[package]
+name = "user-commands"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# Domain dependencies
+user-models = { workspace = true }
+user-dao = { workspace = true }
+user-queries = { path = "../queries" }
+
+# Infrastructure
+database-traits = { workspace = true }
+sql-connection = { workspace = true }
+sea-orm = { workspace = true }
+
+# Core dependencies
+uuid = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }

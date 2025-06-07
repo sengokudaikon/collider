@@ -1,0 +1,38 @@
+FROM rust:1.87-alpine
+
+# Install dependencies for development
+RUN apk add --no-cache \
+    pkgconfig \
+    openssl-dev \
+    postgresql-dev \
+    postgresql-client \
+    musl-dev
+
+# Install cargo-watch for hot reloading
+RUN cargo install cargo-watch
+
+# Set working directory
+WORKDIR /app
+
+# Copy Cargo files
+COPY Cargo.toml Cargo.lock ./
+
+# Create a dummy main.rs to cache dependencies
+RUN mkdir src && echo "fn main() {}" > src/main.rs
+
+# Build dependencies (this layer will be cached)
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/app/target \
+    cargo build
+
+# Remove the dummy main.rs
+RUN rm src/main.rs
+
+# Copy source code
+COPY . .
+
+# Expose port
+EXPOSE 8080
+
+# Development command with hot reloading
+CMD ["cargo", "watch", "-x", "run"]

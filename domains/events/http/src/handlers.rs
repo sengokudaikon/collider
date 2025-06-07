@@ -1,0 +1,137 @@
+use axum::{
+    extract::{Path, Query, State},
+    http::StatusCode,
+    response::Json,
+    routing::{delete, get, post, put},
+    Router,
+};
+use events_commands::{
+    CreateEventCommand, CreateEventHandler, DeleteEventHandler,
+    UpdateEventCommand, UpdateEventHandler,
+};
+use events_queries::{
+    GetEventQuery, GetEventQueryHandler, ListEventsQuery,
+    ListEventsQueryHandler,
+};
+use serde::Deserialize;
+use sql_connection::SqlConnect;
+use tracing::instrument;
+use uuid::Uuid;
+
+use crate::EventResponse;
+
+#[derive(Clone)]
+pub struct EventServices {
+    pub create_event: CreateEventHandler,
+    pub update_event: UpdateEventHandler,
+    pub delete_event: DeleteEventHandler,
+
+    pub get_event: GetEventQueryHandler,
+    pub list_events: ListEventsQueryHandler,
+}
+
+impl EventServices {
+    pub fn new(db: SqlConnect) -> Self {
+        Self {
+            create_event: CreateEventHandler::new(db.clone()),
+            update_event: UpdateEventHandler::new(db.clone()),
+            delete_event: DeleteEventHandler::new(db.clone()),
+            get_event: GetEventQueryHandler::new(db.clone()),
+            list_events: ListEventsQueryHandler::new(db),
+        }
+    }
+}
+
+pub struct EventHandlers;
+
+impl EventHandlers {
+    pub fn routes() -> Router<EventServices> {
+        Router::new()
+            .route("/", get(list_events))
+            .route("/", post(create_event))
+            .route("/:id", get(get_event))
+            .route("/:id", put(update_event))
+            .route("/:id", delete(delete_event))
+    }
+}
+
+// Command handlers
+#[instrument(skip_all)]
+async fn create_event(
+    State(services): State<EventServices>,
+    Json(command): Json<CreateEventCommand>,
+) -> Result<(StatusCode, Json<events_commands::CreateEventResponse>), AppError>
+{
+    let result = services.create_event.execute(command).await?;
+    Ok((StatusCode::CREATED, Json(result.event)))
+}
+
+#[instrument(skip_all)]
+async fn update_event(
+    State(services): State<EventServices>, Path(id): Path<Uuid>,
+    Json(mut command): Json<UpdateEventCommand>,
+) -> Result<Json<events_commands::UpdateEventResponse>, AppError> {
+    command.event_id = id;
+    let result = services.update_event.execute(command).await?;
+    Ok(Json(result.event))
+}
+
+#[instrument(skip_all)]
+async fn delete_event(
+    State(services): State<EventServices>, Path(id): Path<Uuid>,
+) -> Result<StatusCode, AppError> {
+    let command = events_commands::DeleteEventCommand { event_id: id };
+    services.delete_event.execute(command).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// Query handlers
+#[instrument(skip_all)]
+async fn get_event(
+    State(services): State<EventServices>, Path(id): Path<Uuid>,
+) -> Result<Json<EventResponse>, AppError> {
+    let query = GetEventQuery { event_id: id };
+    let event = services.get_event.execute(query).await?;
+    Ok(Json(event))
+}
+
+#[instrument(skip_all)]
+async fn list_events(
+    State(services): State<EventServices>,
+    Query(params): Query<ListEventsParams>,
+) -> Result<Json<Vec<EventResponse>>, AppError> {
+    let query = ListEventsQuery {
+        user_id: params.user_id,
+        event_type_id: params.event_type_id,
+        limit: params.limit,
+        offset: params.offset,
+    };
+    let events = services.list_events.execute(query).await?;
+    Ok(Json(events))
+}
+
+#[derive(Debug, Deserialize)]
+struct ListEventsParams {
+    user_id: Option<Uuid>,
+    event_type_id: Option<i32>,
+    limit: Option<u64>,
+    offset: Option<u64>,
+}
+
+#[derive(Debug)]
+struct AppError(Box<dyn std::error::Error + Send + Sync>);
+
+impl<E> From<E> for AppError
+where
+    E: Into<Box<dyn std::error::Error + Send + Sync>>,
+{
+    fn from(err: E) -> Self { Self(err.into()) }
+}
+
+impl axum::response::IntoResponse for AppError {
+    fn into_response(self) -> axum::response::Response {
+        let status = StatusCode::INTERNAL_SERVER_ERROR;
+        let message = format!("Internal server error: {}", self.0);
+        (status, message).into_response()
+    }
+}

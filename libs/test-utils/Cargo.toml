@@ -1,0 +1,20 @@
+[package]
+name = "test-utils"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+testcontainers = { workspace = true }
+testcontainers-modules = { workspace = true }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+sqlx = { workspace = true }
+deadpool-redis = { workspace = true }
+sea-orm = { workspace = true }
+sql-connection = { workspace = true }
+serde = { workspace = true }
+uuid = { workspace = true }
+
+# Migration dependencies
+sea-orm-migration = { workspace = true }
+async-trait = { workspace = true }

@@ -1,22 +1,117 @@
-[package]
-name = "collider"
-version = "0.1.0"
-edition = "2024"
-authors = ["Your Name <your.email@example.com>"]
-description = "A Rust server with GitHub Actions CI/CD"
-license = "MIT"
+[workspace]
+resolver = "2"
+members = [
+    "server",
+    "domains/user/models",
+    "domains/user/dao",
+    "domains/user/commands",
+    "domains/user/queries",
+    "domains/user/http",
+    "domains/events/models",
+    "domains/events/dao",
+    "domains/events/commands",
+    "domains/events/queries",
+    "domains/events/http",
+    "domains/analytics",
+    # Shared infrastructure
+    "libs/persistence/database_traits",
+    "libs/persistence/sql_connection",
+    "libs/persistence/redis_connection",
+    # Shared libs
+    "libs/event-bus",
+    "libs/test-utils",
+    "libs/seeders",
+]
 
-[dependencies]
-tokio = { version = "1.40", features = ["full"] }
+
+[workspace.dependencies]
+# Database
+sea-orm = { version = "1.1.0", features = ["sqlx-postgres", "runtime-tokio-rustls", "macros", "uuid", "chrono"] }
+sea-orm-migration = { version = "1.1.10", features = ["dotenvy", "runtime-tokio-rustls", "sqlx-postgres", "with-uuid", "with-chrono"] }
+sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-rustls", "uuid", "chrono"] }
+deadpool-redis = { version = "0.21.1", features = ["serde", "connection-manager", "cache-aio", "json", ] }
+redis = "0.31.0"
+# Web framework
 axum = "0.8.4"
-tower = "0.5"
-tower-http = { version = "0.6", features = ["trace", "cors"] }
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+axum-core = "0.5.2"
+tower = "0.5.2"
+tower-http = { version = "0.6.6", features = ["trace", "compression-gzip", "cors"] }
+http = "1.1.0"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+futures = "0.3"
+flume = "0.11.1"
+
+# Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
-[dev-dependencies]
-reqwest = { version = "0.12", features = ["json"] }
-tower = { version = "0.5", features = ["util"] }
-hyper = { version = "1.5", features = ["full"] }
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Utils
+uuid = { version = "1.0", features = ["v7", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+anyhow = "1.0"
+thiserror = "2.0.12"
+async-trait = "0.1"
+url = "2.5"
+typed-builder = "0.21.0"
+pin-project = "1.0"
+num-traits = "0.2"
+smallvec = "1.13"
+serde_with = "3.11.0"
+
+# Environment
+dotenvy = "0.15"
+
+# Test dependencies
+testcontainers = "0.24"
+testcontainers-modules = { version = "0.12", features = ["postgres", "redis"] }
+
+# Performance testing
+goose = { version = "0.18.0", features = ["reqwest"] }
+criterion = { version = "0.6.0", features = ["html_reports"] }
+
+test-utils = { path = "libs/test-utils" }
+analytics = { path = "domains/analytics" }
+user-models = { path = "domains/user/models" }
+user-dao = { path = "domains/user/dao" }
+user-commands = { path = "domains/user/commands" }
+user-queries = { path = "domains/user/queries" }
+user-http = { path = "domains/user/http" }
+events-models = { path = "domains/events/models" }
+events-dao = { path = "domains/events/dao" }
+events-commands = { path = "domains/events/commands" }
+events-queries = { path = "domains/events/queries" }
+events-http = { path = "domains/events/http" }
+
+# Shared persistence
+database-traits = { path = "libs/persistence/database_traits" }
+sql-connection = { path = "libs/persistence/sql_connection" }
+redis-connection = { path = "libs/persistence/redis_connection" }
+
+# Shared libs
+event-bus = { path = "libs/event-bus" }
+seeders = { path = "libs/seeders" }
+
+[profile.release]
+lto = true
+strip = true
+incremental = true
+codegen-units = 16
+opt-level = 3
+
+[profile.dev]
+opt-level = 0
+debug = true
+
+[profile.dev.package."*"]
+opt-level = 1
+debug = 1
+
+[profile.bench]
+inherits = "release"
+debug = true

@@ -1,0 +1,336 @@
+# Collider Helm Chart - Unified Values
+# Single comprehensive values file for all environments
+
+global:
+  environment: development  # Override via Terraform: local/prod
+  imageRegistry: ""         # Override via Terraform
+  imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# PostgreSQL Configuration
+postgres:
+  enabled: true
+  image:
+    repository: postgres
+    tag: "16-alpine"
+    pullPolicy: IfNotPresent
+  
+  auth:
+    username: postgres
+    password: gcp-local-password  # Override via Terraform
+    database: events
+  
+  persistence:
+    enabled: true
+    size: 10Gi                   # Override via Terraform (5Gi local, 50Gi prod)
+    storageClass: ""             # Override via Terraform (local-path/standard-rwo)
+    accessModes:
+      - ReadWriteOnce
+  
+  resources:
+    limits:
+      cpu: "1"                   # Override via Terraform
+      memory: "2Gi"              # Override via Terraform
+    requests:
+      cpu: "0.5"
+      memory: "1Gi"
+  
+  config:
+    maxConnections: 100          # Override via Terraform (100 local, 200 prod)
+    sharedBuffers: "256MB"       # Override via Terraform (256MB local, 1GB prod)
+    walBuffers: "16MB"
+    checkpointSegments: 32
+    checkpointCompletionTarget: 0.7
+    effectiveCacheSize: "1GB"
+    randomPageCost: 1.1
+  
+  service:
+    type: ClusterIP
+    port: 5432
+    nodePort: 30432            # Used when nodePort enabled
+  
+  healthcheck:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 5
+
+# Dragonfly Configuration (Redis-compatible)
+dragonfly:
+  enabled: true
+  image:
+    repository: docker.dragonflydb.io/dragonflydb/dragonfly
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  
+  auth:
+    password: gcp-local-dragonfly-password  # Override via Terraform
+  
+  config:
+    maxMemory: "1gb"           # Override via Terraform (512mb local, 3gb prod)
+    cacheMode: true
+    port: 6379
+    threads: 2
+    logtostderr: true
+  
+  persistence:
+    enabled: true
+    size: 5Gi                  # Override via Terraform (2Gi local, 10Gi prod)
+    storageClass: ""           # Override via Terraform
+    accessModes:
+      - ReadWriteOnce
+  
+  resources:
+    limits:
+      cpu: "1"                 # Override via Terraform
+      memory: "2Gi"            # Override via Terraform
+    requests:
+      cpu: "0.5"
+      memory: "1Gi"
+  
+  service:
+    type: ClusterIP
+    port: 6379
+    nodePort: 30379
+  
+  healthcheck:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 5
+
+# Application Configuration
+app:
+  enabled: true
+  image:
+    repository: collider        # Override via Terraform (localhost:5000/collider or gcr.io/project/collider)
+    tag: "latest"
+    pullPolicy: IfNotPresent   # Override via Terraform (Always for local)
+  
+  replicaCount: 1
+  
+  config:
+    environment: development   # Override via Terraform
+    port: 8080
+    rustLog: debug            # Override via Terraform (debug local, info prod)
+    rustBacktrace: "1"
+    jwtSecret: local-development-jwt-secret-not-for-production  # Override via Terraform
+  
+  resources:
+    limits:
+      cpu: "1"                # Override via Terraform
+      memory: "1Gi"           # Override via Terraform
+    requests:
+      cpu: "0.5"
+      memory: "512Mi"
+  
+  service:
+    type: ClusterIP
+    port: 8080
+    nodePort: 30080
+  
+  healthcheck:
+    enabled: true
+    path: /health
+    initialDelaySeconds: 30
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 3
+  
+  autoscaling:
+    enabled: false            # Override via Terraform (false local, true prod)
+    minReplicas: 1
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+
+# Monitoring Configuration
+monitoring:
+  enabled: true
+  
+  prometheus:
+    enabled: true
+    image:
+      repository: prom/prometheus
+      tag: "latest"
+      pullPolicy: IfNotPresent
+    
+    persistence:
+      enabled: true
+      size: 5Gi               # Override via Terraform (2Gi local, 20Gi prod)
+      storageClass: ""        # Override via Terraform
+      accessModes:
+        - ReadWriteOnce
+    
+    config:
+      retentionTime: "30d"
+      scrapeInterval: "15s"
+      evaluationInterval: "15s"
+    
+    resources:
+      limits:
+        cpu: "1"             # Override via Terraform
+        memory: "1Gi"        # Override via Terraform
+      requests:
+        cpu: "0.5"
+        memory: "512Mi"
+    
+    service:
+      type: ClusterIP
+      port: 9090
+      nodePort: 30090
+  
+  grafana:
+    enabled: true
+    image:
+      repository: grafana/grafana
+      tag: "latest"
+      pullPolicy: IfNotPresent
+    
+    auth:
+      adminUser: admin
+      adminPassword: admin    # Override via Terraform
+    
+    persistence:
+      enabled: true
+      size: 2Gi              # Override via Terraform (1Gi local, 5Gi prod)
+      storageClass: ""       # Override via Terraform
+      accessModes:
+        - ReadWriteOnce
+    
+    config:
+      allowSignUp: false
+      anonymousEnabled: false
+      defaultTheme: dark
+    
+    resources:
+      limits:
+        cpu: "1"
+        memory: "1Gi"        # Override via Terraform
+      requests:
+        cpu: "0.5"
+        memory: "512Mi"
+    
+    service:
+      type: ClusterIP
+      port: 3000
+      nodePort: 30300
+  
+  jaeger:
+    enabled: true
+    image:
+      repository: jaegertracing/all-in-one
+      tag: "latest"
+      pullPolicy: IfNotPresent
+    
+    config:
+      collectorOtlpEnabled: true
+      spanStorageType: "memory"
+      maxTraces: 50000
+    
+    persistence:
+      enabled: true
+      size: 2Gi              # Override via Terraform (1Gi local, 5Gi prod)
+      storageClass: ""       # Override via Terraform
+      accessModes:
+        - ReadWriteOnce
+    
+    resources:
+      limits:
+        cpu: "1"
+        memory: "1Gi"        # Override via Terraform
+      requests:
+        cpu: "0.5"
+        memory: "512Mi"
+    
+    service:
+      type: ClusterIP
+      ports:
+        ui: 16686
+        collector: 14268
+        udp: 6831
+      nodePorts:
+        ui: 30686
+        collector: 30268
+        udp: 30831
+
+# Ingress Configuration
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+  hosts:
+    - host: localhost         # Override via Terraform (localhost or external IP)
+      paths:
+        - path: /
+          pathType: Prefix
+          service: app
+          port: 8080
+        - path: /prometheus
+          pathType: Prefix
+          service: prometheus
+          port: 9090
+        - path: /grafana
+          pathType: Prefix
+          service: grafana
+          port: 3000
+        - path: /jaeger
+          pathType: Prefix
+          service: jaeger
+          port: 16686
+  tls: []
+
+# NodePort Services (for direct access)
+nodePort:
+  enabled: true              # Override via Terraform (true local, false prod)
+  services:
+    - name: app
+      port: 8080
+      nodePort: 30080
+    - name: prometheus
+      port: 9090
+      nodePort: 30090
+    - name: grafana
+      port: 3000
+      nodePort: 30300
+    - name: jaeger
+      port: 16686
+      nodePort: 30686
+    - name: postgres
+      port: 5432
+      nodePort: 30432
+    - name: dragonfly
+      port: 6379
+      nodePort: 30379
+
+# Security Configuration
+security:
+  podSecurityPolicy:
+    enabled: false
+  networkPolicy:
+    enabled: false           # Override via Terraform (false local, true prod)
+  
+# Resource Quotas (optional)
+resourceQuota:
+  enabled: false             # Override via Terraform (false local, true prod)
+  hard:
+    requests.cpu: "4"
+    requests.memory: "8Gi"
+    limits.cpu: "8"
+    limits.memory: "16Gi"
+
+# Debug/Development Settings
+debug:
+  enabled: false             # Override via Terraform (true local, false prod)
+  verboseLogs: false
+  profilerEnabled: false

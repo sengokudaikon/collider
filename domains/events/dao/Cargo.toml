@@ -1,0 +1,24 @@
+[package]
+name = "events-dao"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+sea-orm.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+events-models = { path = "../models" }
+database-traits.workspace = true
+sql-connection = { workspace = true }
+
+[dev-dependencies]
+sea-orm-migration.workspace = true
+sql-connection = { workspace = true }
+test-utils = { workspace = true }
+tokio = { workspace = true }
+serde_json = { workspace = true }
+anyhow.workspace = true

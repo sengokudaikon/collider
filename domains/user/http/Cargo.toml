@@ -1,0 +1,31 @@
+[package]
+name = "user-http"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# Domain dependencies
+user-commands = { path = "../commands" }
+user-queries = { path = "../queries" }
+user-models = { workspace = true }
+
+# Web framework
+axum = { workspace = true }
+axum-core = { workspace = true }
+tower = { workspace = true }
+
+# Core dependencies
+uuid = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+# HTTP
+http = { workspace = true }
+
+# Event bus and additional dependencies
+event-bus = { workspace = true }
+user-dao = { workspace = true }
+sql-connection = { workspace = true }

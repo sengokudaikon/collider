@@ -1,0 +1,17 @@
+[package]
+name = "sql-connection"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde.workspace = true
+database-traits.workspace = true
+sea-orm.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+test-utils = { workspace = true }
+anyhow.workspace = true
+user-commands = { workspace = true }
+user-queries = { workspace = true }

@@ -1,0 +1,21 @@
+{{- if .Values.app.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "collider.fullname" . }}-app
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "collider.app.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.app.service.type }}
+  ports:
+  - port: {{ .Values.app.service.port }}
+    targetPort: http
+    protocol: TCP
+    name: http
+    {{- if and (eq .Values.app.service.type "NodePort") .Values.app.service.nodePort }}
+    nodePort: {{ .Values.app.service.nodePort }}
+    {{- end }}
+  selector:
+    {{- include "collider.app.selectorLabels" . | nindent 4 }}
+{{- end }}

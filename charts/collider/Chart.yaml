@@ -1,0 +1,22 @@
+apiVersion: v2
+name: collider
+description: A high-performance event processing platform with analytics capabilities
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+home: https://github.com/youruser/collider
+sources:
+  - https://github.com/youruser/collider
+keywords:
+  - events
+  - analytics
+  - rust
+  - postgresql
+  - dragonfly
+  - monitoring
+maintainers:
+  - name: Collider Team
+    email: team@collider.dev
+annotations:
+  category: Analytics
+dependencies: []

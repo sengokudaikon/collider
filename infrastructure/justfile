@@ -1,0 +1,281 @@
+#!/usr/bin/env just --justfile
+
+# Infrastructure commands for Collider K3S deployment
+
+# ==== Deployment ====
+
+# Deploy to local K3S environment (auto-creates K3D cluster)
+deploy-local:
+    ./terraform/scripts/deploy.sh -e local
+
+# Deploy to production K3S environment
+deploy-prod project_id:
+    ./terraform/scripts/deploy.sh -e prod -g {{project_id}}
+
+# Plan local deployment (show changes without applying)
+plan-local:
+    ./terraform/scripts/deploy.sh -e local -p
+
+# Plan production deployment
+plan-prod project_id:
+    ./terraform/scripts/deploy.sh -e prod -g {{project_id}} -p
+
+# Deploy with auto-approval (use with caution)
+deploy-local-auto:
+    ./terraform/scripts/deploy.sh -e local -a
+
+deploy-prod-auto project_id:
+    ./terraform/scripts/deploy.sh -e prod -g {{project_id}} -a
+
+# Destroy local environment
+destroy-local:
+    ./terraform/scripts/deploy.sh -e local -d
+
+# Destroy production environment
+destroy-prod project_id:
+    ./terraform/scripts/deploy.sh -e prod -g {{project_id}} -d
+
+# ==== Verification ====
+
+# Verify local deployment
+verify-local:
+    ./terraform/scripts/verify-deployment.sh -e local
+
+# Verify production deployment
+verify-prod:
+    ./terraform/scripts/verify-deployment.sh -e prod
+
+# ==== Cluster Management ====
+
+# Get cluster info
+cluster-info:
+    kubectl cluster-info
+    kubectl get nodes -o wide
+
+# Get all resources in collider namespace
+cluster-status:
+    kubectl get all -n collider -o wide
+
+# Show resource usage
+cluster-resources:
+    kubectl top nodes || echo "Metrics server not available"
+    kubectl top pods -n collider || echo "Pod metrics not available"
+
+# Get cluster endpoints
+cluster-endpoints:
+    @echo "=== Local Development ==="
+    @echo "Application: http://localhost:30080"
+    @echo "Prometheus:  http://localhost:30090"
+    @echo "Grafana:     http://localhost:30300"
+    @echo "Jaeger:      http://localhost:30686"
+    @echo ""
+    @echo "=== Production ==="
+    @echo "External IP: $(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="ExternalIP")].address}' 2>/dev/null || echo 'N/A')"
+
+# ==== Logging and Debugging ====
+
+# Show logs for all collider pods
+logs:
+    kubectl logs -n collider -l app=collider-app --tail=100 -f
+
+# Show logs for a specific component
+logs-app:
+    kubectl logs -n collider -l app=collider-app --tail=100 -f
+
+logs-postgres:
+    kubectl logs -n collider -l app=postgres --tail=100 -f
+
+logs-dragonfly:
+    kubectl logs -n collider -l app=dragonfly --tail=100 -f
+
+logs-prometheus:
+    kubectl logs -n collider -l app=prometheus --tail=100 -f
+
+logs-grafana:
+    kubectl logs -n collider -l app=grafana --tail=100 -f
+
+# Describe resources for debugging
+debug-pods:
+    kubectl describe pods -n collider
+
+debug-services:
+    kubectl describe services -n collider
+
+debug-ingress:
+    kubectl describe ingress -n collider || echo "No ingress found"
+
+# ==== Port Forwarding (for debugging) ====
+
+# Forward application port for local access
+forward-app:
+    kubectl port-forward -n collider svc/app 8080:8080
+
+# Forward database port for local access
+forward-db:
+    kubectl port-forward -n collider svc/postgres 5432:5432
+
+# Forward cache port for local access
+forward-cache:
+    kubectl port-forward -n collider svc/dragonfly 6379:6379
+
+# ==== Terraform Operations ====
+
+# Initialize Terraform
+tf-init:
+    cd terraform && terraform init
+
+# Validate Terraform configuration
+tf-validate:
+    cd terraform && terraform validate
+
+# Format Terraform files
+tf-fmt:
+    cd terraform && terraform fmt -recursive
+
+# Show Terraform outputs
+tf-output:
+    cd terraform && terraform output
+
+# Show Terraform state
+tf-state:
+    cd terraform && terraform state list
+
+# ==== Helm Operations ====
+
+# List Helm releases
+helm-list:
+    helm list -A
+
+# Show Helm release status
+helm-status:
+    helm status collider -n collider
+
+# Show Helm release values
+helm-values:
+    helm get values collider -n collider
+
+# Upgrade Helm release (after image rebuild)
+helm-upgrade:
+    helm upgrade collider ../../charts/collider -n collider
+
+# ==== Application Management ====
+
+# Restart application pods
+restart-app:
+    kubectl rollout restart deployment/app -n collider
+
+# Scale application
+scale-app replicas="1":
+    kubectl scale deployment/app --replicas={{replicas}} -n collider
+
+# Watch pod status
+watch-pods:
+    watch kubectl get pods -n collider
+
+# Get application health
+app-health:
+    @echo "=== Application Health ==="
+    @curl -s http://localhost:30080/health | jq . || echo "Health endpoint not available"
+
+# Run database migrations (if needed)
+run-migrations:
+    kubectl exec -n collider deployment/app -- /app/migrate || echo "No migration binary found"
+
+# ==== Monitoring ====
+
+# Open Grafana dashboard
+open-grafana:
+    @echo "Opening Grafana at http://localhost:30300"
+    @echo "Default credentials: admin / (check terraform output for password)"
+    open http://localhost:30300 || xdg-open http://localhost:30300 || echo "Please open http://localhost:30300 manually"
+
+# Open Prometheus
+open-prometheus:
+    @echo "Opening Prometheus at http://localhost:30090"
+    open http://localhost:30090 || xdg-open http://localhost:30090 || echo "Please open http://localhost:30090 manually"
+
+# Open Jaeger
+open-jaeger:
+    @echo "Opening Jaeger at http://localhost:30686"
+    open http://localhost:30686 || xdg-open http://localhost:30686 || echo "Please open http://localhost:30686 manually"
+
+# Open application
+open-app:
+    @echo "Opening Application at http://localhost:30080"
+    open http://localhost:30080 || xdg-open http://localhost:30080 || echo "Please open http://localhost:30080 manually"
+
+# ==== Development Helpers ====
+
+# Complete local development setup
+dev-setup:
+    @echo "Setting up complete local development environment..."
+    just deploy-local
+    just verify-local
+    @echo "✅ Local development environment ready!"
+    @echo "Access your services:"
+    just cluster-endpoints
+
+# Complete teardown
+dev-teardown:
+    just destroy-local
+    @echo "✅ Local development environment destroyed"
+
+# Quick status check
+status:
+    @echo "=== Cluster Status ==="
+    kubectl get nodes
+    @echo ""
+    @echo "=== Collider Services ==="
+    kubectl get pods,svc -n collider
+    @echo ""
+    @echo "=== Quick Health Check ==="
+    @curl -s http://localhost:30080/health > /dev/null && echo "✅ Application: Healthy" || echo "❌ Application: Unhealthy"
+    @curl -s http://localhost:30090/-/healthy > /dev/null && echo "✅ Prometheus: Healthy" || echo "❌ Prometheus: Unhealthy"
+    @curl -s http://localhost:30300/api/health > /dev/null && echo "✅ Grafana: Healthy" || echo "❌ Grafana: Unhealthy"
+
+# ==== Production Helpers ====
+
+# Production deployment with verification
+prod-deploy project_id:
+    just deploy-prod {{project_id}}
+    just verify-prod
+    @echo "✅ Production deployment complete!"
+
+# Get production access info
+prod-info:
+    @echo "=== Production Access Information ==="
+    @export EXTERNAL_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="ExternalIP")].address}' 2>/dev/null || echo 'PENDING'); \
+    echo "External IP: $EXTERNAL_IP"; \
+    echo "Application: http://$EXTERNAL_IP:30080"; \
+    echo "Prometheus:  http://$EXTERNAL_IP:30090"; \
+    echo "Grafana:     http://$EXTERNAL_IP:30300"; \
+    echo "Jaeger:      http://$EXTERNAL_IP:30686"
+
+# ==== Troubleshooting ====
+
+# Common troubleshooting commands
+troubleshoot:
+    @echo "=== Troubleshooting Collider Deployment ==="
+    @echo ""
+    @echo "1. Check cluster connectivity:"
+    kubectl cluster-info || echo "❌ Cluster not accessible"
+    @echo ""
+    @echo "2. Check namespace:"
+    kubectl get namespace collider || echo "❌ Namespace missing"
+    @echo ""
+    @echo "3. Check pods:"
+    kubectl get pods -n collider
+    @echo ""
+    @echo "4. Check failing pods:"
+    kubectl get pods -n collider | grep -v "Running\|Completed" || echo "✅ All pods running"
+    @echo ""
+    @echo "5. Check recent events:"
+    kubectl get events -n collider --sort-by='.lastTimestamp' | tail -10
+
+# Reset everything and start fresh
+reset:
+    just destroy-local
+    sleep 5
+    just deploy-local
+    just verify-local
+    @echo "✅ Environment reset complete!"

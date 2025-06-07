@@ -1,0 +1,28 @@
+[package]
+name = "load-testing"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "goose_load_test"
+path = "goose_load_test.rs"
+
+[[bin]]
+name = "criterion_bench"
+path = "criterion_bench.rs"
+
+[dependencies]
+goose = { version = "0.18", features = ["reqwest"] }
+criterion = { version = "0.6", features = ["html_reports"] }
+tokio = { version = "1", features = ["full"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+fastrand = "2.0"
+reqwest = { version = "0.11", features = ["json"] }
+
+[dev-dependencies]
+criterion = { version = "0.6", features = ["html_reports"] }
+
+[[bench]]
+name = "http_bench"
+harness = false

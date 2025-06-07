@@ -1,0 +1,22 @@
+[package]
+name = "analytics"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+sea-orm.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+tokio.workspace = true
+serde_json.workspace = true
+events-models .workspace = true
+events-dao .workspace = true
+redis-connection = { workspace = true }
+sql-connection = { workspace = true }
+
+[dev-dependencies]
+test-utils = { workspace = true }
