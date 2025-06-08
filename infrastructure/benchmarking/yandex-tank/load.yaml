@@ -4,6 +4,8 @@ phantom:
     - /health
     - /api/events
     - /api/events/count
+    - /api/analytics/stats
+    - /api/analytics/metrics/realtime
   headers:
     - "Content-Type: application/json"
     - "User-Agent: YandexTank/1.0"

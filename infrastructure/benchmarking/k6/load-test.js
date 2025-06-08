@@ -76,7 +76,7 @@ export let options = {
   },
 };
 
-const BASE_URL = __ENV.TARGET_URL || 'http://localhost:8080';
+const BASE_URL = __ENV.TARGET_URL || 'http://app:8080';
 
 // Test scenarios
 export default function () {
@@ -178,6 +178,73 @@ export default function () {
     check(analyticsResponse, {
       'user analytics status is 200 or 404': (r) => [200, 404].includes(r.status),
     });
+  });
+
+  group('DELETE Operations', function () {
+    // Bulk delete events (less frequently)
+    if (Math.random() < 0.05) { // 5% chance
+      const beforeDate = new Date(Date.now() - 60 * 60 * 1000).toISOString(); // 1 hour ago
+      const bulkDeleteResponse = http.del(`${BASE_URL}/api/events?before=${beforeDate}`);
+      
+      check(bulkDeleteResponse, {
+        'bulk delete status is 200': (r) => r.status === 200,
+        'bulk delete responds quickly': (r) => r.timings.duration < 2000,
+        'bulk delete has valid response': (r) => r.body && r.body.length > 0,
+      });
+    }
+    
+    // Single event delete (very rarely, may fail if event doesn't exist)
+    if (Math.random() < 0.02) { // 2% chance
+      const fakeEventId = '550e8400-e29b-41d4-a716-446655440000';
+      const deleteResponse = http.del(`${BASE_URL}/api/events/${fakeEventId}`);
+      
+      check(deleteResponse, {
+        'single delete status is 204 or 404': (r) => [204, 404].includes(r.status),
+        'single delete responds quickly': (r) => r.timings.duration < 500,
+      });
+    }
+  });
+
+  group('Analytics and Stats', function () {
+    // Get general stats
+    const statsResponse = http.get(`${BASE_URL}/api/analytics/stats`);
+    check(statsResponse, {
+      'stats status is 200': (r) => r.status === 200,
+      'stats response has data': (r) => r.body && r.body.length > 0,
+      'stats responds quickly': (r) => r.timings.duration < 1000,
+    });
+
+    // Get real-time metrics
+    if (Math.random() < 0.3) { // 30% chance
+      const realtimeResponse = http.get(`${BASE_URL}/api/analytics/metrics/realtime`);
+      check(realtimeResponse, {
+        'realtime metrics status is 200': (r) => r.status === 200,
+        'realtime metrics responds quickly': (r) => r.timings.duration < 800,
+      });
+    }
+
+    // Get time series data
+    if (Math.random() < 0.1) { // 10% chance
+      const fromDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(); // 24 hours ago
+      const toDate = new Date().toISOString();
+      const timeSeriesResponse = http.get(
+        `${BASE_URL}/api/analytics/metrics/timeseries?from=${fromDate}&to=${toDate}&bucket=hour`
+      );
+      
+      check(timeSeriesResponse, {
+        'time series status is 200': (r) => r.status === 200,
+        'time series responds in reasonable time': (r) => r.timings.duration < 2000,
+      });
+    }
+
+    // Get popular events
+    if (Math.random() < 0.05) { // 5% chance
+      const popularResponse = http.get(`${BASE_URL}/api/analytics/events/popular?period=daily&limit=10`);
+      check(popularResponse, {
+        'popular events status is 200': (r) => r.status === 200,
+        'popular events responds quickly': (r) => r.timings.duration < 1000,
+      });
+    }
   });
   
   // Think time - simulate real user behavior

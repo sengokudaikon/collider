@@ -20,6 +20,37 @@ impl TestPostgresContainer {
         .await
     }
 
+    pub async fn new_with_unique_db() -> Result<Self> {
+        let unique_db_name =
+            format!("test_db_{}", uuid::Uuid::now_v7().simple());
+        let base_connection =
+            "postgres://postgres:postgres@localhost:5433/postgres";
+        let unique_connection = format!(
+            "postgres://postgres:postgres@localhost:5433/{}",
+            unique_db_name
+        );
+
+        // Connect to default postgres database to create the unique test
+        // database
+        Self::wait_for_postgres_ready(base_connection).await?;
+        let admin_pool = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(1)
+            .connect(base_connection)
+            .await
+            .context("Failed to connect to postgres admin database")?;
+
+        // Create the unique test database
+        sqlx::query(&format!("CREATE DATABASE {}", unique_db_name))
+            .execute(&admin_pool)
+            .await
+            .context("Failed to create unique test database")?;
+
+        admin_pool.close().await;
+
+        // Now connect to the unique database and set it up
+        Self::new_with_connection_string(&unique_connection).await
+    }
+
     pub async fn new_with_connection_string(
         connection_string: &str,
     ) -> Result<Self> {

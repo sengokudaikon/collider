@@ -14,7 +14,7 @@ fn benchmark_http_requests(c: &mut Criterion) {
     group.bench_function("health_check", |b| {
         b.to_async(&rt).iter(|| async {
             let response = client
-                .get("http://localhost:8080/health")
+                .get("http://app:8080/health")
                 .send()
                 .await
                 .unwrap();
@@ -40,7 +40,7 @@ fn benchmark_http_requests(c: &mut Criterion) {
             let payload = event_payload.clone();
             async move {
                 let response = client
-                    .post("http://localhost:8080/api/events")
+                    .post("http://app:8080/api/events")
                     .json(&payload)
                     .send()
                     .await
@@ -71,7 +71,7 @@ fn benchmark_concurrent_requests(c: &mut Criterion) {
                     let futures: Vec<_> = (0..concurrency)
                         .map(|_| async move {
                             client
-                                .get("http://localhost:8080/health")
+                                .get("http://app:8080/health")
                                 .send()
                                 .await
                                 .unwrap()

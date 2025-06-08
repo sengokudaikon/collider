@@ -7,7 +7,7 @@ use test_utils::{postgres::TestPostgresContainer, *};
 async fn setup_test_db(
 ) -> anyhow::Result<(TestPostgresContainer, ListEventsQueryHandler, EventDao)>
 {
-    let container = TestPostgresContainer::new().await?;
+    let container = TestPostgresContainer::new_with_unique_db().await?;
 
     let sql_connect = create_sql_connect(&container);
     let handler = ListEventsQueryHandler::new(sql_connect.clone());
@@ -94,6 +94,7 @@ async fn test_list_events_by_user() {
 #[tokio::test]
 async fn test_list_events_by_event_type() {
     let (container, handler, dao) = setup_test_db().await.unwrap();
+    clean_test_data(&container).await.unwrap();
     let (login_type, purchase_type) =
         create_test_event_types(&container).await.unwrap();
     let (user_1, user_2) = create_test_users(&container).await.unwrap();

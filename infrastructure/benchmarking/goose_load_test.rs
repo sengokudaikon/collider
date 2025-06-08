@@ -12,7 +12,7 @@ async fn main() -> Result<(), GooseError> {
             scenario!("EventCreation")
                 .register_transaction(transaction!(create_event).set_weight(10)?),
         )
-        .set_default(GooseDefault::Host, "http://localhost:8080")?
+        .set_default(GooseDefault::Host, "http://app:8080")?
         .set_default(GooseDefault::Users, 1000)?
         .set_default(GooseDefault::HatchRate, "100/1s")?
         .set_default(GooseDefault::RunTime, 300)?

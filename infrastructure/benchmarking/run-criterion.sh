@@ -6,7 +6,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TARGET_URL=${1:-"http://localhost:8080"}
+TARGET_URL=${1:-"http://app:8080"}
 BENCHMARK_TYPE=${2:-"all"}
 RESULTS_DIR="criterion_results"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)

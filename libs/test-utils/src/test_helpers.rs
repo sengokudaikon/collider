@@ -43,6 +43,30 @@ pub async fn create_test_event_types(
     Ok((login_row.0, logout_row.0))
 }
 
+pub async fn create_unique_event_types(
+    container: &TestPostgresContainer, suffix: &str,
+) -> Result<(i32, i32)> {
+    let sqlx_pool = container.connection.get_postgres_connection_pool();
+    let login_name = format!("login_event_{}", suffix);
+    let purchase_name = format!("purchase_event_{}", suffix);
+
+    let login_row = sqlx::query_as::<_, (i32,)>(
+        "INSERT INTO event_types (name) VALUES ($1) RETURNING id",
+    )
+    .bind(&login_name)
+    .fetch_one(sqlx_pool)
+    .await?;
+
+    let purchase_row = sqlx::query_as::<_, (i32,)>(
+        "INSERT INTO event_types (name) VALUES ($1) RETURNING id",
+    )
+    .bind(&purchase_name)
+    .fetch_one(sqlx_pool)
+    .await?;
+
+    Ok((login_row.0, purchase_row.0))
+}
+
 pub async fn create_test_user(
     container: &TestPostgresContainer,
 ) -> Result<Uuid> {

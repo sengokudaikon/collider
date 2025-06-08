@@ -25,6 +25,8 @@ members = [
     # Binaries
     "binaries/migrator",
     "binaries/seeder",
+    # Benchmarks
+    "benchmarks",
 ]
 
 
@@ -78,6 +80,7 @@ dotenvy = "0.15"
 # Performance testing
 goose = { version = "0.18.0", features = ["reqwest"] }
 criterion = { version = "0.6.0", features = ["html_reports"] }
+reqwest = { version = "0.11", features = ["json"] }
 
 test-utils = { path = "libs/test-utils" }
 analytics = { path = "domains/analytics" }
@@ -99,6 +102,7 @@ sql-connection = { path = "libs/persistence/sql_connection" }
 redis-connection = { path = "libs/persistence/redis_connection" }
 seeders = { path = "libs/seeders" }
 domain = { path = "libs/domain" }
+
 
 [profile.release]
 lto = true

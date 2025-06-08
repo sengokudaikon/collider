@@ -252,6 +252,220 @@ quick-perf:
 flamegraph:
     cargo flamegraph --bin collider --root
 
+# Profile app with flamegraph while running benchmarks
+profile-bench: dev-up
+    #!/usr/bin/env bash
+    set -e
+    echo "🔥 Starting app with flamegraph profiling + benchmarks..."
+    
+    # Start the app with flamegraph in background
+    echo "📊 Starting flamegraph profiling..."
+    cd server && cargo flamegraph --bin server -- &
+    APP_PID=$!
+    
+    # Wait for app to start
+    echo "⏳ Waiting for app to start..."
+    sleep 10
+    
+    # Check if app is ready
+    until curl -f http://localhost:8080/health &>/dev/null; do
+        echo "Waiting for app to be ready..."
+        sleep 2
+    done
+    echo "✅ App is ready!"
+    
+    # Run benchmarks
+    echo "🚀 Running benchmarks..."
+    cargo bench --package collider-benchmarks || true
+    
+    # Stop the app and generate flamegraph
+    echo "🛑 Stopping app and generating flamegraph..."
+    kill $APP_PID
+    wait $APP_PID 2>/dev/null || true
+    
+    echo "✅ Profiling complete! Check flamegraph.svg"
+
+# Profile specific benchmark with perf
+profile-perf-bench benchmark="http_bench":
+    #!/usr/bin/env bash
+    set -e
+    echo "🔍 Profiling {{ benchmark }} with perf..."
+    
+    # Start dev environment
+    just dev-up
+    
+    # Run benchmark with perf profiling
+    perf record -g --call-graph=dwarf \
+        cargo bench --package collider-benchmarks {{ benchmark }}
+    
+    # Generate perf report
+    perf report --stdio > perf_report_{{ benchmark }}.txt
+    echo "✅ Perf report saved to perf_report_{{ benchmark }}.txt"
+
+# Profile app in docker while running external benchmarks
+profile-docker-bench:
+    #!/usr/bin/env bash
+    set -e
+    echo "🐳 Profiling dockerized app with external benchmarks..."
+    
+    # Start dev environment
+    just dev-up
+    
+    # Start profiling the containerized app
+    echo "📊 Starting profiling..."
+    docker exec -d collider_app_dev sh -c "apt-get update && apt-get install -y linux-perf" || true
+    
+    # Run benchmarks from host
+    echo "🚀 Running benchmarks..."
+    cargo bench --package collider-benchmarks
+    
+    # Collect container stats
+    echo "📈 Collecting container performance stats..."
+    docker stats collider_app_dev --no-stream > docker_stats_during_bench.txt
+    
+    echo "✅ Docker profiling complete!"
+
+# Advanced: Profile with multiple tools simultaneously
+profile-comprehensive:
+    #!/usr/bin/env bash
+    set -e
+    echo "🎯 Comprehensive profiling + benchmarking..."
+    
+    # Create results directory
+    mkdir -p profiling_results/$(date +%Y%m%d_%H%M%S)
+    RESULTS_DIR="profiling_results/$(date +%Y%m%d_%H%M%S)"
+    
+    # Start dev environment
+    just dev-up
+    
+    # Start container monitoring
+    echo "📊 Starting container monitoring..."
+    docker stats collider_app_dev --no-stream > "$RESULTS_DIR/docker_stats.log" &
+    STATS_PID=$!
+    
+    # Start application profiling (if running natively)
+    if pgrep -f "target.*server" > /dev/null; then
+        echo "🔥 Starting flamegraph on native app..."
+        sudo perf record -g -p $(pgrep -f "target.*server") &
+        PERF_PID=$!
+    fi
+    
+    # Run benchmarks with detailed logging
+    echo "🚀 Running comprehensive benchmarks..."
+    {
+        echo "=== Criterion Benchmarks ==="
+        cargo bench --package collider-benchmarks 2>&1
+        echo ""
+        echo "=== K6 Load Tests ==="
+        docker run --rm --network collider \
+            -v $(pwd)/infrastructure/benchmarking/k6:/scripts \
+            grafana/k6:latest run /scripts/load-test.js 2>&1
+        echo ""
+        echo "=== Goose Load Tests ==="
+        cd infrastructure/benchmarking && cargo run --bin goose_load_test 2>&1
+    } | tee "$RESULTS_DIR/benchmark_output.log"
+    
+    # Stop monitoring
+    kill $STATS_PID 2>/dev/null || true
+    if [[ -n "${PERF_PID:-}" ]]; then
+        sudo kill $PERF_PID 2>/dev/null || true
+        sudo perf report --stdio > "$RESULTS_DIR/perf_report.txt" 2>/dev/null || true
+    fi
+    
+    echo "✅ Comprehensive profiling complete!"
+    echo "📁 Results in: $RESULTS_DIR"
+
+# Profile dockerized app with flamegraph + benchmarks (recommended)
+profile-docker: dev-up
+    @echo "🔥 Profiling dockerized app with benchmarks..."
+    ./scripts/profile-docker-app.sh
+
+# Profile native app with continuous monitoring
+profile-native-live:
+    #!/usr/bin/env bash
+    set -e
+    echo "🔥 Live profiling of native app with benchmarks..."
+    
+    # Ensure dev environment is running for external services
+    just dev-up
+    
+    # Create results directory
+    RESULTS_DIR="profiling_results/native_$(date +%Y%m%d_%H%M%S)"
+    mkdir -p "$RESULTS_DIR"
+    
+    # Start the app with flamegraph in background
+    echo "📊 Starting app with flamegraph profiling..."
+    cd server
+    
+    # Start app with perf profiling
+    RUST_LOG=info cargo build --release
+    perf record -g -F 99 ./target/release/server &
+    APP_PID=$!
+    
+    # Wait for app to start
+    echo "⏳ Waiting for app to start..."
+    sleep 5
+    
+    # Check if app is ready
+    until curl -f http://localhost:8080/health &>/dev/null; do
+        echo "Waiting for app to be ready..."
+        sleep 2
+    done
+    echo "✅ App is ready!"
+    
+    # Start system monitoring
+    top -l 0 -s 1 | grep -E "(CPU usage|server)" > "../$RESULTS_DIR/system_stats.log" &
+    TOP_PID=$!
+    
+    # Run benchmarks
+    echo "🚀 Running benchmarks..."
+    {
+        cd ..
+        cargo bench --package collider-benchmarks 2>&1
+    } | tee "$RESULTS_DIR/benchmark_output.log"
+    
+    # Stop everything
+    echo "🛑 Stopping profiling..."
+    kill $APP_PID 2>/dev/null || true
+    kill $TOP_PID 2>/dev/null || true
+    
+    # Generate flamegraph
+    cd ..
+    if [[ -f perf.data ]]; then
+        echo "🔥 Generating flamegraph..."
+        perf script | flamegraph > "$RESULTS_DIR/flamegraph.svg" 2>/dev/null || true
+        mv perf.data "$RESULTS_DIR/" 2>/dev/null || true
+    fi
+    
+    echo "✅ Native profiling complete!"
+    echo "📁 Results in: $RESULTS_DIR"
+
+# Real-time monitoring while running benchmarks (no profiling)
+monitor-bench: dev-up
+    #!/usr/bin/env bash
+    set -e
+    echo "📊 Real-time monitoring during benchmarks..."
+    
+    # Start real-time monitoring in background
+    {
+        echo "Starting container monitoring..."
+        while true; do
+            echo "=== $(date) ==="
+            docker stats collider_app_dev --no-stream
+            echo ""
+            sleep 5
+        done
+    } &
+    MONITOR_PID=$!
+    
+    # Run benchmarks
+    echo "🚀 Running benchmarks with live monitoring..."
+    cargo bench --package collider-benchmarks
+    
+    # Stop monitoring
+    kill $MONITOR_PID 2>/dev/null || true
+    echo "✅ Monitoring complete!"
+
 # Analyze binary size
 bloat:
     cargo bloat --release --crates
@@ -270,6 +484,55 @@ criterion-bench:
 quick-bench:
     cd infrastructure && just quick-bench
 
+# ==== Benchmarking Commands ====
+
+# Run all benchmarks in docker-compose environment
+bench-all: dev-up
+    @echo "🚀 Running all benchmarks in docker-compose environment..."
+    docker-compose -f docker-compose.yml -f infrastructure/benchmarking/docker-compose-bench.yml --profile bench up bench-runner
+    @echo "✅ All benchmarks completed!"
+
+# Run Criterion micro-benchmarks
+bench-criterion: dev-up
+    @echo "📊 Running Criterion benchmarks..."
+    cargo bench --package collider-benchmarks
+    @echo "✅ Criterion benchmarks completed!"
+
+# Run K6 load tests in docker
+bench-k6: dev-up
+    @echo "🚀 Running K6 load tests..."
+    docker-compose -f docker-compose.yml -f infrastructure/benchmarking/docker-compose-bench.yml --profile k6 run k6 run /scripts/load-test.js
+    @echo "✅ K6 load tests completed!"
+
+# Run Goose load tests
+bench-goose: dev-up
+    @echo "🦆 Running Goose load tests..."
+    cd infrastructure/benchmarking && cargo run --bin goose_load_test
+    @echo "✅ Goose load tests completed!"
+
+# Quick benchmark validation
+bench-quick: dev-up
+    @echo "⚡ Running quick benchmarks..."
+    cargo bench --package collider-benchmarks -- --sample-size 10 --measurement-time 5
+    @echo "✅ Quick benchmarks completed!"
+
+# Clean benchmark results
+bench-clean:
+    @echo "🧹 Cleaning benchmark results..."
+    rm -rf target/criterion/
+    rm -rf infrastructure/benchmarking/results/
+    @echo "✅ Benchmark results cleaned!"
+
+# Simple one-command profiling + benchmarking (recommended)
+profile-simple:
+    @echo "🔥 Simple flamegraph profiling + benchmarks..."
+    ./scripts/simple-profile-bench.sh
+
+# Live profiling dashboard with real-time metrics
+profile-live:
+    @echo "📊 Starting live profiling dashboard..."
+    ./scripts/live-profile-dashboard.sh
+
 # Run all code quality checks
 quality: lint audit udeps geiger
     @echo "✅ All code quality checks completed!"
@@ -281,27 +544,27 @@ security: audit geiger
 # ==== Deployment ====
 
 # Deploy to local K3S environment (recommended)
-deploy-local:
+k3s-deploy-local:
     cd infrastructure && just deploy-local
 
 # Deploy to production K3S environment
-deploy-prod project_id:
+k3s-deploy-prod project_id:
     cd infrastructure && just deploy-prod {{ project_id }}
 
 # Quick development setup (K3S + verification)
-dev-setup:
+k3s-dev-setup:
     cd infrastructure && just dev-setup
 
 # Verify local deployment
-verify-local:
+k3s-verify-local:
     cd infrastructure && just verify-local
 
 # Verify production deployment
-verify-prod:
+k3s-verify-prod:
     cd infrastructure && just verify-prod
 
 # Destroy local environment
-destroy-local:
+k3s-destroy-local:
     cd infrastructure && just destroy-local
 
 # Get cluster status and endpoints
@@ -438,6 +701,57 @@ perf-help:
     @echo "  just perf-critical http://localhost:8080 50000      # 50k RPS critical test"
     @echo "  just perf-goose http://localhost:8080 500 50/1s     # 500 users, 50/sec"
     @echo "  just perf-criterion http://localhost:8080 quick     # Quick benchmarks"
+
+# Show profiling + benchmarking help
+profile-help:
+    @echo "🔥 Collider Profiling + Benchmarking Commands"
+    @echo "============================================="
+    @echo ""
+    @echo "🚀 Quick Start (Recommended):"
+    @echo "  just profile-simple       # One-command flamegraph + benchmarks"
+    @echo "  just profile-live         # Live dashboard with real-time metrics"
+    @echo "  just monitor-bench        # Real-time monitoring (no profiling)"
+    @echo ""
+    @echo "📊 Benchmarking Only:"
+    @echo "  just bench-criterion      # Criterion micro-benchmarks"
+    @echo "  just bench-k6             # K6 load tests"
+    @echo "  just bench-goose          # Goose load tests"
+    @echo "  just bench-quick          # Quick validation"
+    @echo "  just bench-all            # All benchmarks"
+    @echo ""
+    @echo "🔥 Advanced Profiling:"
+    @echo "  just profile-docker       # Profile dockerized app"
+    @echo "  just profile-native-live  # Profile native app with live monitoring"
+    @echo "  just profile-comprehensive # Full profiling suite"
+    @echo ""
+    @echo "🧹 Cleanup:"
+    @echo "  just bench-clean          # Clean benchmark results"
+    @echo "  just perf-clean           # Clean all performance results"
+    @echo ""
+    @echo "📈 Monitoring Stack:"
+    @echo "  just dev-up               # Includes Prometheus (port 9090) + Grafana (port 3000)"
+    @echo "  http://localhost:9090     # Prometheus metrics"
+    @echo "  http://localhost:3000     # Grafana dashboards (admin/admin)"
+    @echo ""
+    @echo "💡 Usage Examples:"
+    @echo "  # Quick profiling + benchmarks:"
+    @echo "  just profile-simple"
+    @echo ""
+    @echo "  # Live dashboard with continuous metrics:"
+    @echo "  just profile-live"
+    @echo ""
+    @echo "  # Just run benchmarks without profiling:"
+    @echo "  just bench-criterion"
+    @echo ""
+    @echo "  # Monitor resource usage during benchmarks:"
+    @echo "  just monitor-bench"
+    @echo ""
+    @echo "📋 What Each Tool Does:"
+    @echo "  • profile-simple: Runs app with flamegraph, executes benchmarks, generates SVG"
+    @echo "  • profile-live: Creates web dashboard with real-time metrics + continuous benchmarks"
+    @echo "  • profile-docker: Profiles the containerized app while running benchmarks"
+    @echo "  • bench-*: Run specific benchmark tools against the docker-compose app"
+    @echo "  • monitor-bench: Shows live container stats during benchmark execution"
 
 help:
     @just --list

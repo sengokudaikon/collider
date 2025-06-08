@@ -1,0 +1,16 @@
+[package]
+name = "collider-benchmarks"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+criterion = { workspace = true }
+tokio = { workspace = true }
+reqwest = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+futures = { workspace = true }
+
+[[bench]]
+name = "http_bench"
+harness = false
