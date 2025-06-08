@@ -215,7 +215,6 @@ impl AnalyticsBackgroundTask {
 
 #[cfg(test)]
 mod tests {
-
     use chrono::{Duration, Utc};
     use events_dao::EventDao;
     use events_models::CreateEventRequest;
@@ -224,7 +223,7 @@ mod tests {
         create_sql_connect, postgres::TestPostgresContainer,
         redis::TestRedisContainer,
     };
-    use tokio::time::{Duration as TokioDuration, sleep};
+    use tokio::time::{sleep, Duration as TokioDuration};
     use uuid::Uuid;
 
     use super::*;
@@ -264,8 +263,8 @@ mod tests {
     ) -> anyhow::Result<Uuid> {
         let user_id = Uuid::now_v7();
         let query = format!(
-            "INSERT INTO users (id, name, email, created_at, updated_at) \
-             VALUES ('{}', 'Test User', 'test@example.com', NOW(), NOW())",
+            "INSERT INTO users (id, name, created_at, updated_at) VALUES \
+             ('{}', 'Test User', NOW(), NOW())",
             user_id
         );
         container.execute_sql(&query).await?;
@@ -434,10 +433,9 @@ mod tests {
         for i in 0..3 {
             let user_id = Uuid::now_v7();
             let query = format!(
-                "INSERT INTO users (id, name, email, created_at, \
-                 updated_at) VALUES ('{}', 'User {}', 'user{}@example.com', \
-                 NOW(), NOW())",
-                user_id, i, i
+                "INSERT INTO users (id, name, created_at) VALUES ('{}', \
+                 'User {}', NOW())",
+                user_id, i
             );
             postgres_container.execute_sql(&query).await.unwrap();
             user_ids.push(user_id);

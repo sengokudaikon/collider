@@ -56,7 +56,6 @@ curl "http://localhost:8080/api/users?include_metrics=true&limit=10"
 ```json
 {
   "username": "john_doe",
-  "email": "john@example.com",
   "full_name": "John Doe"
 }
 ```
@@ -66,7 +65,6 @@ curl "http://localhost:8080/api/users?include_metrics=true&limit=10"
 {
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "username": "john_doe",
-  "email": "john@example.com",
   "full_name": "John Doe",
   "created_at": "2024-01-15T10:30:00Z",
   "updated_at": "2024-01-15T10:30:00Z"
@@ -101,9 +99,7 @@ curl "http://localhost:8080/api/users/by-name/john_doe"
 **Request Body:**
 ```json
 {
-  "username": "john_doe_updated",
-  "email": "john.updated@example.com",
-  "full_name": "John Doe Updated"
+  "name": "John Doe Updated"
 }
 ```
 
@@ -369,7 +365,7 @@ All endpoints return consistent error responses:
   "error": {
     "code": "VALIDATION_ERROR",
     "message": "Invalid request data",
-    "details": "Field 'email' is required"
+    "details": "Field 'name' is required"
   }
 }
 ```

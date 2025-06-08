@@ -13,7 +13,7 @@ import useSWR from "swr";
 
 export interface UserSchema {
   id: string;
-  username: string;
+  name: string;
   events: Array<{ id: string }>;
   metrics?: {
     total_events: number;
@@ -64,11 +64,11 @@ export default function UsersTable() {
                 <TableCell>
                   <div className="flex items-center space-x-3">
                     <Avatar>
-                      <AvatarImage src={`https://avatar.vercel.sh/${user.username}`} />
-                      <AvatarFallback>{user.username.slice(0, 2).toUpperCase()}</AvatarFallback>
+                      <AvatarImage src={`https://avatar.vercel.sh/${user.name}`} />
+                      <AvatarFallback>{user.name.slice(0, 2).toUpperCase()}</AvatarFallback>
                     </Avatar>
                     <div>
-                      <div className="font-medium">{user.username}</div>
+                      <div className="font-medium">{user.name}</div>
                       <div className="text-sm text-gray-500">ID: {user.id.slice(0, 8)}...</div>
                     </div>
                   </div>

@@ -12,7 +12,7 @@ pub struct SimpleEventResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserResponse {
     pub id: Uuid,
-    pub username: String,
+    pub name: String,
     pub events: Vec<SimpleEventResponse>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metrics: Option<UserEventMetrics>,
@@ -26,7 +26,7 @@ impl From<user_models::Model> for UserResponse {
     fn from(user: user_models::Model) -> Self {
         Self {
             id: user.id,
-            username: user.name,
+            name: user.name,
             events: vec![],
             metrics: None,
         }
@@ -37,7 +37,7 @@ impl From<GetUserByNameResponse> for UserResponse {
     fn from(response: GetUserByNameResponse) -> Self {
         Self {
             id: response.id,
-            username: response.name,
+            name: response.name,
             events: vec![],
             metrics: None,
         }
@@ -50,7 +50,7 @@ impl UserResponse {
     ) -> Self {
         Self {
             id: user.id,
-            username: user.name,
+            name: user.name,
             events: vec![],
             metrics: Some(metrics),
         }
@@ -61,7 +61,7 @@ impl UserResponse {
     ) -> Self {
         Self {
             id: user.id,
-            username: user.name,
+            name: user.name,
             events: event_ids
                 .into_iter()
                 .map(|id| SimpleEventResponse { id })

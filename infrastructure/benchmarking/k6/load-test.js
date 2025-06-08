@@ -13,8 +13,7 @@ const activeUsers = new Gauge('active_users');
 const testUsers = new SharedArray('test_users', function () {
   return Array.from({ length: 1000 }, (_, i) => ({
     id: `k6_user_${i.toString().padStart(4, '0')}`,
-    name: `K6 Test User ${i}`,
-    email: `k6user${i}@loadtest.example`
+    name: `K6 Test User ${i}`
   }));
 });
 

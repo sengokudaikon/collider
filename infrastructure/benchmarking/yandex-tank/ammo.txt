@@ -59,7 +59,6 @@ Connection: close
   "data": {
     "id": "tank_user_002",
     "name": "Tank Test User",
-    "email": "tank@loadtest.example",
     "created_at": "2025-06-08T10:30:00Z",
     "metadata": {
       "test_run": true,

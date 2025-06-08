@@ -15,7 +15,7 @@ pub enum GetUserByNameError {
 
 #[derive(Debug, Deserialize)]
 pub struct GetUserByNameQuery {
-    pub username: String,
+    pub name: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -53,11 +53,9 @@ impl GetUserByNameQueryHandler {
     ) -> Result<GetUserByNameResponse, GetUserByNameError> {
         let user = self
             .user_dao
-            .find_by_name(&query.username)
+            .find_by_name(&query.name)
             .await?
-            .ok_or_else(|| {
-                GetUserByNameError::NotFound(query.username.clone())
-            })?;
+            .ok_or_else(|| GetUserByNameError::NotFound(query.name.clone()))?;
 
         Ok(user.into())
     }

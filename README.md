@@ -133,7 +133,7 @@ curl "http://localhost:8080/api/analytics/metrics/timeseries?from=2024-01-01T00:
 # Create a user
 curl -X POST http://localhost:8080/api/users \
   -H "Content-Type: application/json" \
-  -d '{"username": "john", "email": "john@example.com", "full_name": "John Doe"}'
+  -d '{"name": "John Doe"}'
 
 # Get user with metrics
 curl "http://localhost:8080/api/users/550e8400-e29b-41d4-a716-446655440000?include_metrics=true"
