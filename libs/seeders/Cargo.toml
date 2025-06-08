@@ -10,10 +10,8 @@ chrono = { workspace = true }
 fake = "4.3.0"
 rand = "0.9.1"
 sea-orm = { workspace = true }
-serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = "0.3"
 uuid = { workspace = true }
 tokio = { workspace = true }
 anyhow = "1.0"

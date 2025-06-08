@@ -25,7 +25,6 @@ chrono.workspace = true
 test-utils = { workspace = true }
 events-dao = { path = "../dao" }
 database-traits.workspace = true
-sea-orm-migration = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
 anyhow = { workspace = true }
 serde_json = { workspace = true }

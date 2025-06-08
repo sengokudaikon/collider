@@ -15,8 +15,6 @@ tokio.workspace = true
 sea-orm.workspace = true
 sqlx.workspace = true
 
-user-models = { path = "../domains/user/models" }
-user-dao = { path = "../domains/user/dao" }
 events-http = { path = "../domains/events/http" }
 analytics-http = { path = "../domains/analytics/http" }
 user-http = { path = "../domains/user/http" }

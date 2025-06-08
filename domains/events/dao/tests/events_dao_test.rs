@@ -2,41 +2,20 @@ use chrono::Utc;
 use events_dao::{EventDao, EventDaoError};
 use events_models::{CreateEventRequest, UpdateEventRequest};
 use sql_connection::database_traits::dao::GenericDao;
-use test_utils::{create_sql_connect, postgres::TestPostgresContainer};
+use test_utils::{clean_test_data, create_sql_connect, create_test_event_type, create_test_event_type_with_name, create_test_user, create_test_user_with_name, postgres::TestPostgresContainer};
 use uuid::Uuid;
 
 async fn setup_test_db() -> anyhow::Result<(TestPostgresContainer, EventDao)>
 {
     let container = TestPostgresContainer::new().await?;
+    
+    // Clean any existing test data to ensure test isolation
+    let _ = clean_test_data(&container).await;
 
     let sql_connect = create_sql_connect(&container);
     let event_dao = EventDao::new(sql_connect);
 
     Ok((container, event_dao))
-}
-
-async fn create_test_event_type(
-    container: &TestPostgresContainer,
-) -> anyhow::Result<i32> {
-    container
-        .execute_sql(
-            "INSERT INTO event_types (id, name) VALUES (1, 'test_event')",
-        )
-        .await?;
-    Ok(1)
-}
-
-async fn create_test_user(
-    container: &TestPostgresContainer,
-) -> anyhow::Result<Uuid> {
-    let user_id = Uuid::now_v7();
-    let query = format!(
-        "INSERT INTO users (id, name, email, created_at, updated_at) VALUES \
-         ('{}', 'Test User', 'test@example.com', NOW(), NOW())",
-        user_id
-    );
-    container.execute_sql(&query).await?;
-    Ok(user_id)
 }
 
 #[tokio::test]
@@ -96,13 +75,7 @@ async fn test_update_event_success() {
     let event_type_id = create_test_event_type(&container).await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
 
-    container
-        .execute_sql(
-            "INSERT INTO event_types (id, name, description) VALUES (2, \
-             'updated_event', 'Updated event type')",
-        )
-        .await
-        .unwrap();
+    let updated_event_type_id = create_test_event_type_with_name(&container, "updated_event").await.unwrap();
 
     let create_request = CreateEventRequest {
         user_id,
@@ -113,7 +86,7 @@ async fn test_update_event_success() {
     let created_event = event_dao.create(create_request).await.unwrap();
 
     let update_request = UpdateEventRequest {
-        event_type_id: Some(2),
+        event_type_id: Some(updated_event_type_id),
         metadata: Some(serde_json::json!({"updated": "data"})),
     };
 
@@ -123,7 +96,7 @@ async fn test_update_event_success() {
         .unwrap();
 
     assert_eq!(updated_event.id, created_event.id);
-    assert_eq!(updated_event.event_type_id, 2);
+    assert_eq!(updated_event.event_type_id, updated_event_type_id);
     assert_eq!(
         updated_event.metadata,
         Some(serde_json::json!({"updated": "data"}))
@@ -156,13 +129,7 @@ async fn test_find_with_filters_by_user() {
     let event_type_id = create_test_event_type(&container).await.unwrap();
     let user_id_1 = create_test_user(&container).await.unwrap();
 
-    let user_id_2 = Uuid::now_v7();
-    let query = format!(
-        "INSERT INTO users (id, name, email, created_at, updated_at) VALUES \
-         ('{}', 'Test User 2', 'test2@example.com', NOW(), NOW())",
-        user_id_2
-    );
-    container.execute_sql(&query).await.unwrap();
+    let user_id_2 = create_test_user_with_name(&container, "Test User 2").await.unwrap();
 
     for user_id in [user_id_1, user_id_2] {
         let create_request = CreateEventRequest {
@@ -189,17 +156,11 @@ async fn test_find_with_filters_by_event_type() {
     let (container, event_dao) = setup_test_db().await.unwrap();
     let event_type_id_1 = create_test_event_type(&container).await.unwrap();
 
-    container
-        .execute_sql(
-            "INSERT INTO event_types (id, name, description) VALUES (2, \
-             'other_event', 'Other event type')",
-        )
-        .await
-        .unwrap();
+    let event_type_id_2 = create_test_event_type_with_name(&container, "other_event").await.unwrap();
 
     let user_id = create_test_user(&container).await.unwrap();
 
-    for event_type_id in [event_type_id_1, 2] {
+    for event_type_id in [event_type_id_1, event_type_id_2] {
         let create_request = CreateEventRequest {
             user_id,
             event_type_id,
