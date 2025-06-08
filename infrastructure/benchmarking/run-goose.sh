@@ -80,22 +80,20 @@ async fn health_check(user: &mut GooseUser) -> TransactionResult {
 
 async fn create_event(user: &mut GooseUser) -> TransactionResult {
     let event_payload = json!({
-        "data": {
-            "event_type": "user_action",
-            "timestamp": chrono::Utc::now().to_rfc3339(),
-            "user_id": format!("goose_user_{}", user.weighted_users_index),
+        "user_id": format!("550e8400-e29b-41d4-a716-{:012}", user.weighted_users_index % 1000),
+        "event_type": "user_action",
+        "timestamp": chrono::Utc::now().to_rfc3339(),
+        "metadata": {
             "session_id": format!("goose_session_{}", fastrand::u64(..)),
             "action": ["click", "view", "scroll", "submit"][fastrand::usize(0..4)],
             "element": format!("element_{}", fastrand::u32(0..100)),
             "page": ["/dashboard", "/profile", "/settings", "/analytics"][fastrand::usize(0..4)],
-            "metadata": {
-                "browser": "Chrome",
-                "version": "120.0.0.0",
-                "platform": "Linux",
-                "screen_resolution": "1920x1080",
-                "test_tool": "goose",
-                "user_index": user.weighted_users_index
-            }
+            "browser": "Chrome",
+            "version": "120.0.0.0",
+            "platform": "Linux",
+            "screen_resolution": "1920x1080",
+            "test_tool": "goose",
+            "user_index": user.weighted_users_index
         }
     });
 

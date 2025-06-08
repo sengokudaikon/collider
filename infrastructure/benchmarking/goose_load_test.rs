@@ -30,20 +30,18 @@ async fn health_check(user: &mut GooseUser) -> TransactionResult {
 
 async fn create_event(user: &mut GooseUser) -> TransactionResult {
     let event_payload = serde_json::json!({
-        "data": {
-            "event_type": "user_action",
-            "timestamp": chrono::Utc::now().to_rfc3339(),
-            "user_id": format!("user_{}", user.weighted_users_index),
+        "user_id": format!("550e8400-e29b-41d4-a716-{:012}", user.weighted_users_index % 1000),
+        "event_type": "user_action",
+        "timestamp": chrono::Utc::now().to_rfc3339(),
+        "metadata": {
             "session_id": format!("session_{}", fastrand::u64(..)),
             "action": "click",
             "element": "button_submit",
             "page": "/dashboard",
-            "metadata": {
-                "browser": "Chrome",
-                "version": "91.0.4472.124",
-                "platform": "Linux",
-                "screen_resolution": "1920x1080"
-            }
+            "browser": "Chrome",
+            "version": "91.0.4472.124",
+            "platform": "Linux",
+            "screen_resolution": "1920x1080"
         }
     });
 

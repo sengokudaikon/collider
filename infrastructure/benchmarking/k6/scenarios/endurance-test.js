@@ -38,21 +38,20 @@ export default function () {
     }
     
     // Create event with realistic data
+    // Create event with correct format
     const eventPayload = {
-      data: {
-        event_type: 'endurance_event',
-        user_id: `endurance_user_${(__VU % 100).toString().padStart(3, '0')}`, // Reuse users
+      user_id: `550e8400-e29b-41d4-a716-${(__VU % 100).toString().padStart(12, '0')}`, // Use UUID format
+      event_type: 'endurance_event',
+      timestamp: new Date().toISOString(),
+      metadata: {
         session_id: `session_${__VU}_${Math.floor(__ITER / 50)}`, // New session every 50 iterations
         action: ['click', 'view', 'scroll', 'submit'][__ITER % 4],
         element: `element_${__ITER % 20}`,
         page: ['/dashboard', '/profile', '/settings', '/analytics'][__ITER % 4],
-        timestamp: new Date().toISOString(),
-        metadata: {
-          test_type: 'endurance',
-          duration_minutes: Math.floor((__ITER * 1000) / (60 * 1000)), // Track test duration
-          browser: 'Chrome',
-          version: '120.0.0.0',
-        }
+        test_type: 'endurance',
+        duration_minutes: Math.floor((__ITER * 1000) / (60 * 1000)), // Track test duration
+        browser: 'Chrome',
+        version: '120.0.0.0',
       }
     };
     

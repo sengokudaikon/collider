@@ -47,7 +47,7 @@ services:
     image: collider-app-dev
     build:
       context: .
-      dockerfile: server/Dockerfile.dev
+      dockerfile: server/Dockerfile
     container_name: collider_app_dev
     environment:
       ENVIRONMENT: development

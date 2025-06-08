@@ -53,12 +53,12 @@ pub fn benchmark_http_requests(c: &mut Criterion) {
         });
     });
 
-    // Event creation benchmark
+    // Event creation benchmark - use correct CreateEventCommand format
     let event_payload = serde_json::json!({
-        "data": {
-            "event_type": "user_action",
-            "timestamp": chrono::Utc::now().to_rfc3339(),
-            "user_id": "bench_user",
+        "user_id": "550e8400-e29b-41d4-a716-446655440000",
+        "event_type": "user_action",
+        "timestamp": chrono::Utc::now().to_rfc3339(),
+        "metadata": {
             "session_id": "bench_session",
             "action": "click",
             "element": "button_submit",
@@ -81,12 +81,12 @@ pub fn benchmark_http_requests(c: &mut Criterion) {
         });
     });
 
-    // Analytics endpoint benchmark
+    // User analytics endpoint benchmark - use valid UUID
     group.bench_function("user_analytics", |b| {
         b.to_async(&rt).iter(|| {
             async {
                 let response = client
-                    .get("http://localhost:8080/api/analytics/users/1")
+                    .get("http://localhost:8080/api/users/550e8400-e29b-41d4-a716-446655440000/analytics")
                     .send()
                     .await
                     .unwrap();

@@ -40,21 +40,19 @@ fi
 # Create test payload
 cat > "$RESULTS_DIR/payload.json" <<EOF
 {
-  "data": {
-    "event_type": "user_action",
-    "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
-    "user_id": "test_user_$(date +%s)",
+  "user_id": "550e8400-e29b-41d4-a716-$(date +%s | tail -c 13)",
+  "event_type": "user_action",
+  "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+  "metadata": {
     "session_id": "session_$(date +%s)",
     "action": "click",
     "element": "button_submit",
     "page": "/dashboard",
-    "metadata": {
-      "browser": "Chrome",
-      "version": "91.0.4472.124",
-      "platform": "Linux",
-      "screen_resolution": "1920x1080",
-      "referrer": "https://example.com"
-    },
+    "browser": "Chrome",
+    "version": "91.0.4472.124",
+    "platform": "Linux",
+    "screen_resolution": "1920x1080",
+    "referrer": "https://example.com",
     "performance_data": {
       "load_time": 234,
       "dom_ready": 189,

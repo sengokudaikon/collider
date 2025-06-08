@@ -1,16 +1,12 @@
 {
-  "data": {
-    "type": "test_event",
-    "timestamp": "2025-06-08T00:00:00Z",
-    "payload": {
-      "user_id": "test-user-123",
-      "action": "page_view",
-      "metadata": {
-        "page": "/dashboard",
-        "referrer": "https://google.com",
-        "user_agent": "Mozilla/5.0 (compatible; LoadTest/1.0)"
-      }
-    },
+  "user_id": "550e8400-e29b-41d4-a716-446655440000",
+  "event_type": "test_event",
+  "timestamp": "2025-06-08T00:00:00Z",
+  "metadata": {
+    "action": "page_view",
+    "page": "/dashboard",
+    "referrer": "https://google.com",
+    "user_agent": "Mozilla/5.0 (compatible; LoadTest/1.0)",
     "value": 42
   }
 }

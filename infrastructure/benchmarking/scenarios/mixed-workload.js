@@ -59,19 +59,16 @@ function generateEventData() {
   const platforms = ['Windows', 'macOS', 'Linux', 'iOS', 'Android'];
   
   return {
-    user_id: `test_user_${Math.floor(Math.random() * 10000)}`,
+    // Use valid UUID format for user_id
+    user_id: `550e8400-e29b-41d4-a716-${Math.floor(Math.random() * 1000).toString().padStart(12, '0')}`,
     event_type: eventTypes[Math.floor(Math.random() * eventTypes.length)],
-    timestamp: new Date().toISOString(),
-    metadata: {
-      action: actions[Math.floor(Math.random() * actions.length)],
-      page: pages[Math.floor(Math.random() * pages.length)],
-      browser: browsers[Math.floor(Math.random() * browsers.length)],
-      platform: platforms[Math.floor(Math.random() * platforms.length)],
-      session_id: `session_${__VU}_${Math.floor(__ITER / 10)}`,
-      test_iteration: __ITER,
-      virtual_user: __VU,
-      test_run: true
-    }
+    action: actions[Math.floor(Math.random() * actions.length)],
+    element: `element_${Math.floor(Math.random() * 20)}`,
+    page: pages[Math.floor(Math.random() * pages.length)],
+    browser: browsers[Math.floor(Math.random() * browsers.length)],
+    version: '120.0.0.0',
+    platform: platforms[Math.floor(Math.random() * platforms.length)],
+    screen_resolution: '1920x1080'
   };
 }
 
@@ -93,7 +90,24 @@ function executeHealthCheck() {
 function executeCreateEvent() {
   const eventData = generateEventData();
   
-  const response = http.post(`${BASE_URL}/api/events`, JSON.stringify({ data: eventData }), {
+  // Use correct CreateEventCommand format
+  const eventPayload = {
+    user_id: eventData.user_id,
+    event_type: eventData.event_type,
+    timestamp: new Date().toISOString(),
+    metadata: {
+      action: eventData.action,
+      element: eventData.element,
+      page: eventData.page,
+      browser: eventData.browser,
+      version: eventData.version,
+      platform: eventData.platform,
+      screen_resolution: eventData.screen_resolution,
+      test_tool: 'k6-mixed-workload'
+    }
+  };
+  
+  const response = http.post(`${BASE_URL}/api/events`, JSON.stringify(eventPayload), {
     headers: {
       'Content-Type': 'application/json',
       'User-Agent': 'k6-mixed-workload/1.0'
