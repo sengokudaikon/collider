@@ -4,7 +4,6 @@ use uuid::Uuid;
 
 use crate::postgres::TestPostgresContainer;
 
-/// Create a test event type with id=1 and name='test_event'
 pub async fn create_test_event_type(
     container: &TestPostgresContainer,
 ) -> Result<i32> {
@@ -16,7 +15,6 @@ pub async fn create_test_event_type(
     Ok(1)
 }
 
-/// Create two test event types and return their IDs
 pub async fn create_test_event_types(
     container: &TestPostgresContainer,
 ) -> Result<(i32, i32)> {
@@ -33,7 +31,6 @@ pub async fn create_test_event_types(
     Ok((1, 2))
 }
 
-/// Create a test user with generated UUID and return the user ID
 pub async fn create_test_user(
     container: &TestPostgresContainer,
 ) -> Result<Uuid> {
@@ -47,7 +44,6 @@ pub async fn create_test_user(
     Ok(user_id)
 }
 
-/// Create a test user with a specific name
 pub async fn create_test_user_with_name(
     container: &TestPostgresContainer, name: &str,
 ) -> Result<Uuid> {
@@ -63,7 +59,6 @@ pub async fn create_test_user_with_name(
     Ok(user_id)
 }
 
-/// Create two test users and return their UUIDs
 pub async fn create_test_users(
     container: &TestPostgresContainer,
 ) -> Result<(Uuid, Uuid)> {
@@ -72,7 +67,6 @@ pub async fn create_test_users(
     Ok((user1_id, user2_id))
 }
 
-/// Create a test event and return its UUID
 pub async fn create_test_event(
     container: &TestPostgresContainer, user_id: Uuid, event_type_id: i32,
     metadata: Option<&str>,
@@ -88,20 +82,15 @@ pub async fn create_test_event(
     Ok(event_id)
 }
 
-/// Clean all test data from the database (useful for cleanup between tests if
-/// needed)
 pub async fn clean_test_data(
     container: &TestPostgresContainer,
 ) -> Result<()> {
-    // Clean in dependency order
     container.execute_sql("DELETE FROM events").await?;
     container.execute_sql("DELETE FROM event_types").await?;
     container.execute_sql("DELETE FROM users").await?;
     Ok(())
 }
 
-/// Create a SQL connection from a test container for use with DAOs and
-/// handlers
 pub fn create_sql_connect(container: &TestPostgresContainer) -> SqlConnect {
     SqlConnect::new(container.connection.clone())
 }
@@ -122,8 +111,6 @@ mod tests {
     async fn test_create_test_user() {
         let container = TestPostgresContainer::new().await.unwrap();
         let user_id = create_test_user(&container).await.unwrap();
-
-        // Verify user was created
         let result = container
             .execute_sql(&format!(
                 "SELECT 1 FROM users WHERE id = '{}'",
@@ -148,7 +135,6 @@ mod tests {
         .await
         .unwrap();
 
-        // Verify event was created
         let result = container
             .execute_sql(&format!(
                 "SELECT 1 FROM events WHERE id = '{}'",

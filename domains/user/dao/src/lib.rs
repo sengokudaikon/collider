@@ -28,10 +28,8 @@ pub struct UserDao {
 impl UserDao {
     pub fn new(db: SqlConnect) -> Self { Self { db } }
 
-    /// Get database connection for commands
     pub fn db(&self) -> &SqlConnect { &self.db }
 
-    /// Find user by name (username)
     #[instrument(skip(self))]
     pub async fn find_by_name(
         &self, name: &str,
@@ -46,7 +44,6 @@ impl UserDao {
     }
 }
 
-// Generic DAO implementation using ActiveModel for commands
 #[async_trait]
 impl GenericDao for UserDao {
     type ActiveModel = users::ActiveModel;

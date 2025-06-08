@@ -18,7 +18,6 @@ pub enum UpdateUserError {
     NotFound { user_id: Uuid },
 }
 
-/// Unified command for all user updates - doubles as HTTP request model
 #[derive(Debug, Deserialize)]
 pub struct UpdateUserCommand {
     #[serde(skip)]
@@ -26,7 +25,6 @@ pub struct UpdateUserCommand {
     pub name: Option<String>,
 }
 
-/// Response that doubles as HTTP response model
 #[derive(Debug, Serialize)]
 pub struct UpdateUserResponse {
     pub id: Uuid,
@@ -40,7 +38,6 @@ pub struct UpdateUserResult {
     pub events: Vec<UserEvent>,
 }
 
-/// User event for domain events
 #[derive(Debug, Serialize)]
 pub struct UserEvent {
     pub event_type: String,
@@ -74,7 +71,6 @@ impl UpdateUserHandler {
         let mut user_active: users::ActiveModel =
             existing_user.clone().into();
 
-        // Check what's being updated for events
         let name_updated = command.name.is_some();
         let user_id = command.user_id;
 
@@ -84,7 +80,6 @@ impl UpdateUserHandler {
         let updated_user =
             self.user_dao.update(command.user_id, user_active).await?;
 
-        // Generate domain events for user update
         let mut events = vec![];
 
         if name_updated {

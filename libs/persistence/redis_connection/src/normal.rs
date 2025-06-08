@@ -31,10 +31,6 @@ where
     R: redis::aio::ConnectionLike + Send + Sync,
     T: RedisValue<'redis>,
 {
-    /// Determine whether the current value exists
-    ///
-    /// ## reference
-    /// - [`AsyncCommands::exists`]
     pub async fn exists<RV>(&mut self) -> RedisResult<RV>
     where
         RV: FromRedisValue,
@@ -42,10 +38,6 @@ where
         self.redis.exists(&*self.key).await
     }
 
-    /// write current value
-    ///
-    /// ## reference
-    /// - [`AsyncCommands::set`]
     pub async fn set<RV>(&mut self, value: T::Input) -> RedisResult<RV>
     where
         RV: FromRedisValue,
@@ -53,10 +45,6 @@ where
         self.redis.set(&*self.key, value).await
     }
 
-    /// When the value does not exist, write the value    
-    ///
-    /// ## reference
-    /// - [`AsyncCommands::set_nx`]
     pub async fn set_if_not_exist<RV>(
         &mut self, value: T::Input,
     ) -> RedisResult<RV>
@@ -66,10 +54,6 @@ where
         self.redis.set_nx(&*self.key, value).await
     }
 
-    /// Write the value and add expiration
-    ///
-    /// ## reference
-    /// - [`AsyncCommands::set_ex`]
     pub async fn set_with_expire<RV>(
         &mut self, value: T::Input, duration: Duration,
     ) -> RedisResult<RV>
@@ -81,19 +65,10 @@ where
             .await
     }
 
-    /// Get value
-    ///
-    /// ## reference
-    /// - [`AsyncCommands::get`]
     pub async fn get(&mut self) -> RedisResult<T::Output> {
         self.redis.get(&*self.key).await
     }
 
-    /// Try to get the value, if it does not exist, return [`None`]
-    ///
-    /// ## reference
-    /// - [`AsyncCommands::get`]
-    /// - [`AsyncCommands::exists`]
     pub async fn try_get(&mut self) -> RedisResult<Option<T::Output>> {
         Ok(if self.exists().await? {
             Some(self.get().await?)
@@ -103,10 +78,6 @@ where
         })
     }
 
-    /// Delete value
-    ///
-    /// ## reference
-    /// - [`AsyncCommands::del`]
     pub async fn remove<RV>(&mut self) -> RedisResult<RV>
     where
         RV: FromRedisValue,

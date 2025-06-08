@@ -26,7 +26,6 @@ async fn setup_test_app(
     Ok((container, app, dao))
 }
 
-
 #[tokio::test]
 async fn test_create_event_endpoint() {
     let (container, app, _) = setup_test_app().await.unwrap();
@@ -68,10 +67,9 @@ async fn test_create_event_invalid_data() {
     let _event_type_id = create_test_event_type(&container).await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
 
-    // Try to create event with non-existent event type
     let command = CreateEventCommand {
         user_id,
-        event_type: "non_existent_event_type".to_string(), // Non-existent
+        event_type: "non_existent_event_type".to_string(),
         timestamp: None,
         metadata: None,
     };
@@ -94,7 +92,6 @@ async fn test_get_event_endpoint() {
     let event_type_id = create_test_event_type(&container).await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
 
-    // Create an event first
     let create_request = CreateEventRequest {
         user_id,
         event_type_id,
@@ -102,7 +99,6 @@ async fn test_get_event_endpoint() {
     };
     let created_event = dao.create(create_request).await.unwrap();
 
-    // Get the event via HTTP
     let request = Request::builder()
         .method(Method::GET)
         .uri(&format!("/{}", created_event.id))
@@ -147,7 +143,6 @@ async fn test_update_event_endpoint() {
     let event_type_id = create_test_event_type(&container).await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
 
-    // Create second event type for update
     container
         .execute_sql(
             "INSERT INTO event_types (id, name, description) VALUES (2, \
@@ -156,7 +151,6 @@ async fn test_update_event_endpoint() {
         .await
         .unwrap();
 
-    // Create an event first
     let create_request = CreateEventRequest {
         user_id,
         event_type_id,
@@ -164,7 +158,6 @@ async fn test_update_event_endpoint() {
     };
     let created_event = dao.create(create_request).await.unwrap();
 
-    // Update the event
     let update_data = json!({
         "event_type_id": 2,
         "metadata": {"updated": "metadata"}
@@ -198,7 +191,6 @@ async fn test_delete_event_endpoint() {
     let event_type_id = create_test_event_type(&container).await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
 
-    // Create an event first
     let create_request = CreateEventRequest {
         user_id,
         event_type_id,

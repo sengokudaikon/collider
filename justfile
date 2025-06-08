@@ -5,33 +5,35 @@ default:
     @just --list
 
 # ==== Testing ====
-
-# Install cargo-tarpaulin for coverage
-install-coverage:
-    cargo install cargo-tarpaulin
+# Test infrastructure uses different ports to avoid conflicts with local deployment:
+# - PostgreSQL: 5433 (vs 30432 for local K3S NodePort, 5432 for port-forward)
+# - Dragonfly: 6380 (vs 30379 for local K3S NodePort, 6379 for port-forward)
+# - Local K3S services: 30080 (app), 30090 (prometheus), 30300 (grafana), 30686 (jaeger)
 
 # Start test environment (lightweight)
 test-env:
     @echo "Starting test environment..."
-    cd infrastructure/docker && docker compose -f docker-compose.test.yml up -d
+    docker compose -f docker-compose.test.yml up -d
+    @echo "Waiting for services to be ready..."
+    docker compose -f docker-compose.test.yml run --rm wait-for-services
     @echo "Test services started. Use 'just test-env-down' to stop."
     @echo "PostgreSQL: localhost:5433"
-    @echo "Redis: localhost:6380"
+    @echo "Dragonfly (Redis): localhost:6380"
 
 # Stop test environment
 test-env-down:
-    cd infrastructure/docker && docker compose -f docker-compose.test.yml down
+    docker compose -f docker-compose.test.yml down -v
 
 # Check test environment health
 test-env-health:
     @echo "Checking test environment health..."
-    @docker exec collider-postgres-test pg_isready -U postgres || echo "Postgres unhealthy"
-    @docker exec collider-redis-test redis-cli ping || echo "Redis unhealthy"
+    @docker exec collider_postgres_test pg_isready -U postgres || echo "Postgres unhealthy"
+    @docker exec collider_dragonfly_test redis-cli ping || echo "Dragonfly unhealthy"
 
 # Run database migrations and seeding for test environment
 test-setup-db:
     @echo "Setting up test database (migrations + minimal seeding)..."
-    DATABASE_URL="postgresql://postgres:password@localhost:5433/collider" \
+    DATABASE_URL="postgresql://postgres:postgres@localhost:5433/test_db" \
     MIN_USERS=10 \
     MAX_USERS=50 \
     MIN_EVENT_TYPES=5 \
@@ -40,68 +42,84 @@ test-setup-db:
     BATCH_SIZE=100 \
     cargo run --bin migrate_and_seed
 
-# Run analytics demo with test environment (includes setup)
-test-analytics-demo: test-setup-db
+test-analytics-demo:
     @echo "Running analytics demo with test environment..."
-    DATABASE_URL="postgresql://postgres:password@localhost:5433/collider" \
+    DATABASE_URL="postgresql://postgres:postgres@localhost:5433/test_db" \
     REDIS_HOST="127.0.0.1" \
     REDIS_PORT="6380" \
     cargo run --example analytics_usage
 
 # Full test workflow: start environment, setup database, run demo
-test-full-demo: test-env test-analytics-demo
+test-full-demo: test-env test-setup-db test-analytics-demo
     @echo "✅ Analytics demo completed successfully!"
     @echo "Use 'just test-env-down' to stop test environment"
 
-# Run all tests
-test:
+# ==== Main Test Commands ====
+
+# 1) Unit tests (no database required)
+test-unit:
+    @echo "Running unit tests (no database required)..."
+    cargo test --all --lib --bins
+
+# 2) Unit tests with coverage (no database required)
+test-unit-coverage:
+    @echo "Running unit tests with coverage (no database required)..."
+    cargo tarpaulin --all --out Html --output-dir coverage --timeout 120 --lib --bins
+
+# 3) Tests that require database
+test-db: test-env
+    @echo "Running tests that require database..."
+    DATABASE_URL="postgres://postgres:postgres@localhost:5433/test_db" \
+    REDIS_URL="redis://localhost:6380" \
     cargo test --all
+    just test-env-down
 
-# Run tests with output
-test-verbose:
-    cargo test --all -- --nocapture
+# 4) Tests that require database with coverage
+test-db-coverage: test-env
+    @echo "Running tests that require database with coverage..."
+    DATABASE_URL="postgres://postgres:postgres@localhost:5433/test_db" \
+    REDIS_URL="redis://localhost:6380" \
+    cargo tarpaulin --all --out Html --output-dir coverage --timeout 180
+    just test-env-down
 
-# Run specific domain tests
-test-events:
-    cargo test --package events-dao --package events-commands --package events-queries --package events-http --package events-models
+# 5) All tests (unit + database)
+test-all:
+    @echo "Running all tests (unit + database)..."
+    @echo "1. Running unit tests..."
+    just test-unit
+    @echo "2. Running database tests..."
+    just test-db
+    @echo "✅ All tests completed successfully!"
 
-test-user:
-    cargo test --package user-dao --package user-commands --package user-queries --package user-http --package user-models
-
-test-analytics:
-    cargo test --package analytics
-
-test-persistence:
-    cargo test --package database-traits --package sql-connection --package redis-connection
-
-# Run tests with coverage
+# 6) All tests with coverage (unit + database)
 coverage:
-    cargo tarpaulin --all --out Html --output-dir coverage --timeout 120
+    @echo "Running all tests with coverage (unit + database)..."
+    just test-unit-coverage
+    just test-db-coverage
+    @echo "✅ All tests with coverage completed successfully!"
 
-# Run coverage excluding test-utils and integration tests
-coverage-core:
-    cargo tarpaulin --package analytics --package user-dao --package user-commands --package user-queries --package user-http --package user-models --package events-dao --package events-commands --package events-queries --package events-http --package events-models --package database-traits --package sql-connection --package redis-connection --out Html --output-dir coverage --timeout 120
+# Check that coverage meets minimum threshold (80%) - unit tests only
+check-coverage:
+    cargo tarpaulin --all --out Json --output-dir coverage --timeout 120 --fail-under 80 --lib --bins
 
-# Watch tests during development
-test-watch:
-    cargo watch -x "test --all"
+# Check that coverage meets minimum threshold including database tests
+check-coverage-db: test-env
+    DATABASE_URL="postgres://postgres:postgres@localhost:5433/test_db" \
+    REDIS_URL="redis://localhost:6380" \
+    cargo tarpaulin --all --out Json --output-dir coverage --timeout 180 --fail-under 80
+    just test-env-down
+
+# Quick test for CI/CD
+test-ci:
+    @echo "Running CI test suite..."
+    just test-unit
+    just test-db
 
 # Clean test artifacts
 clean-test:
     cargo clean
     rm -rf coverage/
-
-# Run integration tests only
-test-integration:
-    cargo test integration
-
-# Run unit tests only
-test-unit:
-    cargo test --lib --bins
-
-# Check that coverage meets minimum threshold (80%)
-check-coverage:
-    cargo tarpaulin --all --out Json --output-dir coverage --timeout 120 --fail-under 80
+    just test-env-down
 
 # ==== Development Environment ====
 
@@ -115,115 +133,44 @@ dev:
 dev-backend:
     cd server && cargo run
 
-# Run frontend in development mode
-dev-frontend:
-    cd frontend && npm run dev
-
-# ==== Docker Compose Commands ====
-
-# Start all services with Docker Compose
-up:
-    cd infrastructure/docker && docker compose up -d
-
-# Stop all services
-down:
-    cd infrastructure/docker && docker compose down
-
-# View logs for all services
-logs:
-    cd infrastructure/docker && docker compose logs -f
-
-# ==== Build Commands ====
-
-# Build everything
-build: build-frontend build-backend
-
-# Build frontend
-build-frontend:
-    cd frontend && npm install && npm run build
-
-# Build backend
-build-backend:
-    cd server && cargo build --release
-
-# Build docker images
-build-docker:
-    cd infrastructure/docker && docker compose build
-
-# Clean all build artifacts
-clean:
-    cd infrastructure/docker && docker compose down -v
-    docker system prune -f
-    cd server && cargo clean
-    cd frontend && rm -rf node_modules dist
-
 # ==== Linting and Formatting ====
 
 # Install development tools
 install-dev-tools:
     cargo install cargo-watch cargo-audit cargo-tarpaulin cargo-criterion cargo-bloat cargo-udeps cargo-llvm-lines cargo-geiger
 
-# Run linting on backend
-lint-backend:
+lint:
     cargo clippy -- -D warnings
 
-# Run linting on frontend
-lint-frontend:
-    cd frontend && npm run lint
-
-# Run all linting
-lint: lint-backend lint-frontend
-
 # Format backend code
-format-backend:
-    cd server && cargo +nightly fmt
+format:
+    cargo +nightly fmt
 
-# Format frontend code
-format-frontend:
-    cd frontend && npm run format || echo "No format script in frontend"
-
-# Format all code
-format: format-backend format-frontend
-
-# Check dependencies for security vulnerabilities
 audit:
     cargo audit
 
-# ==== Database Commands ====
-
-# Run database migrations
 db-migrate:
-    cd server && cargo run --bin migrate
+    cargo run --bin migrate
 
-# Reset database (destructive)
-db-reset:
-    cd infrastructure/docker && docker compose down postgres
-    docker volume rm collider_postgres_data
-    cd infrastructure/docker && docker compose up -d postgres
-
-# ==== Performance Testing (Essential) ====
-
-# Install essential performance tools
 install-perf-tools:
     cargo install cargo-criterion cargo-flamegraph cargo-bloat
 
-# Quick performance analysis
 quick-perf:
     @echo "Running quick performance analysis..."
-    cd server && cargo bloat --release --crates
+    cargo bloat --release --crates
     cd infrastructure/benchmarking && timeout 30s ./run_load_test.sh
 
 # Create a flame graph for profiling
 flamegraph:
-    cd server && cargo flamegraph --bin collider
+    cargo flamegraph --bin collider
 
 # Analyze binary size
 bloat:
-    cd server && cargo bloat --release --crates
+    && cargo bloat --release --crates
 
-# Run simple HTTP benchmarks  
+# Run simple HTTP benchmarks
 http-bench path="/" requests="1000" concurrency="50":
-    hey -n {{requests}} -c {{concurrency}} http://localhost:8080{{path}}
+    hey -n {{ requests }} -c {{ concurrency }} http://localhost:8080{{ path }}
 
 # Delegate to infrastructure-specific commands
 load-test:
@@ -243,7 +190,7 @@ deploy-local:
 
 # Deploy to production K3S environment
 deploy-prod project_id:
-    cd infrastructure && just deploy-prod {{project_id}}
+    cd infrastructure && just deploy-prod {{ project_id }}
 
 # Quick development setup (K3S + verification)
 dev-setup:

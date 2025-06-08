@@ -1,6 +1,3 @@
--- Migration: Create analytics materialized views
--- Created: 2025-06-08
-
 CREATE MATERIALIZED VIEW IF NOT EXISTS event_hourly_summaries AS
 SELECT et.name                                                          as event_type,
        date_trunc('hour', e.timestamp)                                  as hour,
@@ -26,7 +23,6 @@ WHERE e.timestamp >= NOW() - INTERVAL '90 days'
 GROUP BY e.user_id, date_trunc('day', e.timestamp)
 ORDER BY date DESC, total_events DESC;
 
--- 3. Popular events materialized view with growth rate calculation
 CREATE MATERIALIZED VIEW IF NOT EXISTS popular_events AS
 WITH current_period AS (SELECT et.name                   as event_type,
                                'last_7_days'             as period,
@@ -67,8 +63,3 @@ CREATE INDEX IF NOT EXISTS idx_user_daily_activity_user_date ON user_daily_activ
 CREATE INDEX IF NOT EXISTS idx_popular_events_period ON popular_events (period);
 CREATE INDEX IF NOT EXISTS idx_popular_events_total_count ON popular_events (total_count DESC);
 
--- Note: These materialized views should be refreshed periodically
--- Example refresh commands (to be run by a scheduler):
--- REFRESH MATERIALIZED VIEW CONCURRENTLY event_hourly_summaries;
--- REFRESH MATERIALIZED VIEW CONCURRENTLY user_daily_activity;
--- REFRESH MATERIALIZED VIEW CONCURRENTLY popular_events;

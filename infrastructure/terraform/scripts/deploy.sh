@@ -166,11 +166,11 @@ build_local_image() {
         
         # Build the Docker image
         cd "$PROJECT_ROOT"
-        docker build -t localhost:5000/collider:latest -f server/Dockerfile .
+        docker build -t localhost:5001/collider:latest -f server/Dockerfile .
         
         # Push to local registry (created by k3d)
         if docker ps --format '{{.Names}}' | grep -q "k3d-collider-registry"; then
-            docker push localhost:5000/collider:latest
+            docker push localhost:5001/collider:latest
             log "Application image pushed to local registry"
         else
             warn "Local registry not running yet, image will be pushed after cluster creation"
@@ -263,7 +263,7 @@ post_deployment() {
     if [[ "$ENVIRONMENT" == "local" ]]; then
         # Wait for registry to be ready
         sleep 10
-        docker push localhost:5000/collider:latest || warn "Failed to push image to local registry"
+        docker push localhost:5001/collider:latest || warn "Failed to push image to local registry"
     fi
     
     # Wait for all pods to be ready

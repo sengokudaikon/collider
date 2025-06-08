@@ -17,6 +17,9 @@ events-models .workspace = true
 events-dao .workspace = true
 redis-connection = { workspace = true }
 sql-connection = { workspace = true }
+hyperloglogplus = "0.4.1"
+fnv = "1.0"
 
 [dev-dependencies]
 test-utils = { workspace = true }
+anyhow.workspace = true

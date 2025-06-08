@@ -19,7 +19,7 @@ postgres:
   enabled: true
   image:
     repository: postgres
-    tag: "16-alpine"
+    tag: "17"
     pullPolicy: IfNotPresent
   
   auth:
@@ -52,9 +52,9 @@ postgres:
     randomPageCost: 1.1
   
   service:
-    type: ClusterIP
+    type: NodePort             # Default to NodePort for local development
     port: 5432
-    nodePort: 30432            # Used when nodePort enabled
+    nodePort: 30432
   
   healthcheck:
     enabled: true
@@ -97,7 +97,7 @@ dragonfly:
       memory: "1Gi"
   
   service:
-    type: ClusterIP
+    type: NodePort             # Default to NodePort for local development
     port: 6379
     nodePort: 30379
   
@@ -112,7 +112,7 @@ dragonfly:
 app:
   enabled: true
   image:
-    repository: collider        # Override via Terraform (localhost:5000/collider or gcr.io/project/collider)
+    repository: collider        # Override via Terraform (localhost:5001/collider or gcr.io/project/collider)
     tag: "latest"
     pullPolicy: IfNotPresent   # Override via Terraform (Always for local)
   
@@ -134,7 +134,7 @@ app:
       memory: "512Mi"
   
   service:
-    type: ClusterIP
+    type: NodePort             # Default to NodePort for local development
     port: 8080
     nodePort: 30080
   

@@ -15,13 +15,11 @@ pub enum CreateUserError {
     Dao(#[from] user_dao::UserDaoError),
 }
 
-/// Command that doubles as HTTP request model
 #[derive(Debug, Deserialize)]
 pub struct CreateUserCommand {
     pub name: String,
 }
 
-/// Response that doubles as HTTP response model
 #[derive(Debug, Serialize)]
 pub struct CreateUserResponse {
     pub id: Uuid,
@@ -35,7 +33,6 @@ pub struct CreateUserResult {
     pub events: Vec<UserEvent>,
 }
 
-/// User event placeholder for domain events
 #[derive(Debug, Serialize)]
 pub struct UserEvent {
     pub event_type: String,
@@ -66,7 +63,6 @@ impl CreateUserHandler {
 
         let saved_user = self.user_dao.create(user_active).await?;
 
-        // Generate domain events for user creation
         let events = vec![UserEvent {
             event_type: "user_created".to_string(),
             user_id: saved_user.id,

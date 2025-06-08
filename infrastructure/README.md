@@ -310,7 +310,7 @@ terraform output
 
 ### Local Environment (K3D)
 - **K3D cluster**: `collider-local` with integrated registry
-- **Local registry**: `localhost:5000` for image storage
+- **Local registry**: `localhost:5001` for image storage
 - **Nginx Ingress**: Automatic HTTP routing
 - **Local storage**: `local-path` provisioner
 - **Direct access**: NodePort services on localhost

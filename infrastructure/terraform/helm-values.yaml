@@ -124,7 +124,7 @@ app:
   enabled: true
   image:
     %{ if environment == "local" }
-    repository: localhost:5000/collider
+    repository: localhost:5001/collider
     %{ else }
     repository: ${image_registry}/collider
     %{ endif }

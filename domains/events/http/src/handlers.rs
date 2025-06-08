@@ -49,13 +49,12 @@ impl EventHandlers {
         Router::new()
             .route("/", get(list_events))
             .route("/", post(create_event))
-            .route("/:id", get(get_event))
-            .route("/:id", put(update_event))
-            .route("/:id", delete(delete_event))
+            .route("/{id}", get(get_event))
+            .route("/{id}", put(update_event))
+            .route("/{id}", delete(delete_event))
     }
 }
 
-// Command handlers
 #[instrument(skip_all)]
 async fn create_event(
     State(services): State<EventServices>,
@@ -85,7 +84,6 @@ async fn delete_event(
     Ok(StatusCode::NO_CONTENT)
 }
 
-// Query handlers
 #[instrument(skip_all)]
 async fn get_event(
     State(services): State<EventServices>, Path(id): Path<Uuid>,

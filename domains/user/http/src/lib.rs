@@ -4,24 +4,20 @@ pub mod handlers;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-/// Minimal event representation for efficient responses
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SimpleEventResponse {
     pub id: Uuid,
 }
 
-/// HTTP response model for user data
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserResponse {
     pub id: Uuid,
     pub username: String,
     pub events: Vec<SimpleEventResponse>,
-    /// Aggregated event metrics for efficient querying
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metrics: Option<UserEventMetrics>,
 }
 
-// Re-export from user_queries for consistency
 pub use user_queries::{
     EventTypeCount, GetUserByNameResponse, UserEventMetrics,
 };
@@ -48,7 +44,6 @@ impl From<GetUserByNameResponse> for UserResponse {
     }
 }
 
-/// Constructor for UserResponse with aggregated metrics
 impl UserResponse {
     pub fn with_metrics(
         user: user_models::Model, metrics: UserEventMetrics,
@@ -56,7 +51,7 @@ impl UserResponse {
         Self {
             id: user.id,
             username: user.name,
-            events: vec![], // Skip individual events when showing metrics
+            events: vec![],
             metrics: Some(metrics),
         }
     }

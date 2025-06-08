@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use chrono::{Duration, Utc};
 use database_traits::connection::GetDatabaseConnect;
 use events_models::{event_types, events};
-use rand::{prelude::IndexedRandom, rng, Rng};
+use rand::{Rng, prelude::IndexedRandom, rng};
 use sea_orm::{EntityTrait, Set};
 use serde_json::json;
 use sql_connection::SqlConnect;
@@ -71,7 +71,6 @@ impl EventSeeder {
     fn generate_metadata(&self) -> serde_json::Value {
         let mut rng = rng();
 
-        // Generate realistic event metadata
         match rng.random_range(0..5) {
             0 => {
                 json!({
@@ -123,7 +122,7 @@ impl EventSeeder {
         let db = self.db.get_connect();
         let mut batch_events = Vec::with_capacity(batch_size);
 
-        let start_time = Utc::now() - Duration::days(365); // Events from last year
+        let start_time = Utc::now() - Duration::days(30);
         let end_time = Utc::now();
         let time_range_seconds = (end_time - start_time).num_seconds();
 
@@ -136,7 +135,6 @@ impl EventSeeder {
                 (user_id, event_type_id, random_seconds)
             };
 
-            // Generate random timestamp within the last year
             let timestamp = start_time + Duration::seconds(random_seconds);
 
             let metadata = self.generate_metadata();
@@ -152,7 +150,6 @@ impl EventSeeder {
             batch_events.push(active_event);
         }
 
-        // Insert batch
         events::Entity::insert_many(batch_events).exec(db).await?;
 
         let current_total = batch_start + batch_size;

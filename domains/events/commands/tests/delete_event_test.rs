@@ -22,7 +22,6 @@ async fn test_delete_event_success() {
     let event_type_id = create_test_event_type(&container).await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
 
-    // Create an event first
     let create_request = CreateEventRequest {
         user_id,
         event_type_id,
@@ -30,18 +29,15 @@ async fn test_delete_event_success() {
     };
     let created_event = dao.create(create_request).await.unwrap();
 
-    // Verify event exists
     let found_event = dao.find_by_id(created_event.id).await.unwrap();
     assert_eq!(found_event.id, created_event.id);
 
-    // Delete the event
     let command = DeleteEventCommand {
         event_id: created_event.id,
     };
     let result = handler.execute(command).await;
     assert!(result.is_ok());
 
-    // Verify event is deleted
     let result = dao.find_by_id(created_event.id).await;
     assert!(matches!(result, Err(EventDaoError::NotFound)));
 }
@@ -65,7 +61,6 @@ async fn test_delete_multiple_events() {
     let event_type_id = create_test_event_type(&container).await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
 
-    // Create multiple events
     let mut event_ids = Vec::new();
     for i in 0..3 {
         let create_request = CreateEventRequest {
@@ -77,13 +72,11 @@ async fn test_delete_multiple_events() {
         event_ids.push(created_event.id);
     }
 
-    // Delete first event
     let command = DeleteEventCommand {
         event_id: event_ids[0],
     };
     handler.execute(command).await.unwrap();
 
-    // Verify first event is deleted, others still exist
     let result = dao.find_by_id(event_ids[0]).await;
     assert!(matches!(result, Err(EventDaoError::NotFound)));
 
@@ -100,7 +93,6 @@ async fn test_delete_event_with_complex_metadata() {
     let event_type_id = create_test_event_type(&container).await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
 
-    // Create an event with complex metadata
     let complex_metadata = serde_json::json!({
         "nested": {
             "data": ["array", "values"],
@@ -117,14 +109,12 @@ async fn test_delete_event_with_complex_metadata() {
     };
     let created_event = dao.create(create_request).await.unwrap();
 
-    // Delete the event
     let command = DeleteEventCommand {
         event_id: created_event.id,
     };
     let result = handler.execute(command).await;
     assert!(result.is_ok());
 
-    // Verify event is deleted
     let result = dao.find_by_id(created_event.id).await;
     assert!(matches!(result, Err(EventDaoError::NotFound)));
 }

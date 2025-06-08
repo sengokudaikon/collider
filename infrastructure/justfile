@@ -4,9 +4,26 @@
 
 # ==== Deployment ====
 
-# Deploy to local K3S environment (auto-creates K3D cluster)
+# Deploy to local K3S environment (auto-creates K3D cluster with port mapping)
 deploy-local:
-    ./terraform/scripts/deploy.sh -e local
+    @echo "Creating K3D cluster with NodePort mappings..."
+    @k3d cluster delete collider-local 2>/dev/null || true
+    @k3d cluster create collider-local --registry-create collider-local-registry:5001 \
+        --port "30080:30080@server:0" \
+        --port "30432:30432@server:0" \
+        --port "30379:30379@server:0" \
+        --port "80:80@loadbalancer" \
+        --port "443:443@loadbalancer"
+    @echo "Building and importing application image..."
+    @docker build -t collider:latest -f ../server/Dockerfile ..
+    @k3d image import collider:latest --cluster collider-local
+    @echo "Deploying application..."
+    @helm install collider ../charts/collider --create-namespace -n collider
+    @echo "Waiting for pods to be ready..."
+    @kubectl wait --for=condition=ready pod --all -n collider --timeout=300s || echo "Some pods may not be ready yet"
+    @echo "✅ Local deployment complete!"
+    @echo ""
+    @just cluster-endpoints
 
 # Deploy to production K3S environment
 deploy-prod project_id:
@@ -64,10 +81,15 @@ cluster-resources:
 # Get cluster endpoints
 cluster-endpoints:
     @echo "=== Local Development ==="
-    @echo "Application: http://localhost:30080"
-    @echo "Prometheus:  http://localhost:30090"
-    @echo "Grafana:     http://localhost:30300"
-    @echo "Jaeger:      http://localhost:30686"
+    @echo "Application:  http://localhost:30080"
+    @echo "              curl -s http://localhost:30080/health"
+    @echo "Database:     localhost:30432"
+    @echo "              psql postgres://postgres:gcp-local-password@localhost:30432/events"
+    @echo "Cache:        localhost:30379"
+    @echo "              redis-cli -h localhost -p 30379"
+    @echo "Prometheus:   http://localhost:30090"
+    @echo "Grafana:      http://localhost:30300"
+    @echo "Jaeger:       http://localhost:30686"
     @echo ""
     @echo "=== Production ==="
     @echo "External IP: $(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="ExternalIP")].address}' 2>/dev/null || echo 'N/A')"
@@ -156,7 +178,17 @@ helm-values:
 
 # Upgrade Helm release (after image rebuild)
 helm-upgrade:
-    helm upgrade collider ../../charts/collider -n collider
+    helm upgrade collider ../charts/collider -n collider
+
+# Quick rebuild and redeploy application
+rebuild-app:
+    @echo "Rebuilding and deploying application..."
+    @docker build -t collider:latest -f ../server/Dockerfile ..
+    @k3d image import collider:latest --cluster collider-local
+    @kubectl rollout restart deployment/collider-app -n collider
+    @echo "Waiting for pod to be ready..."
+    @kubectl wait --for=condition=ready pod -l app.kubernetes.io/component=app -n collider --timeout=120s
+    @echo "✅ Application rebuilt and deployed!"
 
 # ==== Application Management ====
 

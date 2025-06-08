@@ -18,7 +18,6 @@ members = [
     "libs/persistence/sql_connection",
     "libs/persistence/redis_connection",
     # Shared libs
-    "libs/event-bus",
     "libs/test-utils",
     "libs/seeders",
 ]
@@ -92,9 +91,6 @@ events-http = { path = "domains/events/http" }
 database-traits = { path = "libs/persistence/database_traits" }
 sql-connection = { path = "libs/persistence/sql_connection" }
 redis-connection = { path = "libs/persistence/redis_connection" }
-
-# Shared libs
-event-bus = { path = "libs/event-bus" }
 seeders = { path = "libs/seeders" }
 
 [profile.release]

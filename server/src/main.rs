@@ -28,9 +28,9 @@ async fn main() -> anyhow::Result<()> {
         uri: std::env::var("DATABASE_URL").unwrap_or_else(|_| {
             "postgresql://postgres:password@localhost/collider".to_string()
         }),
-        max_conn: Some(100), // Increased for high throughput
-        min_conn: Some(20),  // Higher minimum to avoid cold starts
-        logger: false,       // Disable in production for performance
+        max_conn: Some(100),
+        min_conn: Some(20),
+        logger: false,
     };
     connect_postgres_db(&db_config).await?;
     info!("PostgreSQL connection pool initialized");

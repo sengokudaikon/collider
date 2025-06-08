@@ -18,8 +18,7 @@ pub trait RedisTypeBind: CacheKey {
     type RedisType<'redis, R>: RedisTypeTrait<'redis, R>
     where
         R: 'redis;
-    /// Construct a Redis type binding, when key construction requires 2 or
-    /// more parameters
+
     fn bind_with_args<'redis, R>(
         &self, redis: &'redis mut R, args: <Self as CacheKey>::Args<'_>,
     ) -> Self::RedisType<'redis, R>
@@ -29,8 +28,7 @@ pub trait RedisTypeBind: CacheKey {
         let key = CacheKey::get_key_with_args(self, args);
         RedisTypeTrait::from_redis_and_key(redis, key, None)
     }
-    /// Construct a Redis type binding, when key construction requires a
-    /// parameter
+
     fn bind_with<'redis, R>(
         &self, redis: &'redis mut R,
         arg: <<Self as CacheKey>::Args<'_> as CacheKeyArg1>::Arg0,
@@ -45,8 +43,6 @@ pub trait RedisTypeBind: CacheKey {
         )
     }
 
-    /// Construct a Redis type binding, when key construction does not require
-    /// any parameters
     fn bind<'redis, R>(
         &self, redis: &'redis mut R,
     ) -> Self::RedisType<'redis, R>
@@ -89,7 +85,6 @@ pub trait RedisTypeBind: CacheKey {
         RedisTypeTrait::from_redis_and_key(redis, key, Some(memory))
     }
 
-    /// Construct a Redis type binding with memory cache
     fn bind_tiered<'redis, R>(
         &self, redis: &'redis mut R, memory: Cache<String, Bytes>,
     ) -> Self::RedisType<'redis, R>

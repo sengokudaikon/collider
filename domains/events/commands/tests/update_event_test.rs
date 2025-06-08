@@ -23,7 +23,6 @@ async fn test_update_event_metadata_only() {
         create_test_event_types(&container).await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
 
-    // Create an event first
     let create_request = CreateEventRequest {
         user_id,
         event_type_id,
@@ -31,7 +30,6 @@ async fn test_update_event_metadata_only() {
     };
     let created_event = dao.create(create_request).await.unwrap();
 
-    // Update only metadata
     let command = UpdateEventCommand {
         event_id: created_event.id,
         event_type_id: None,
@@ -41,7 +39,7 @@ async fn test_update_event_metadata_only() {
     let result = handler.execute(command).await.unwrap();
 
     assert_eq!(result.event.id, created_event.id);
-    assert_eq!(result.event.event_type_id, event_type_id); // Should remain unchanged
+    assert_eq!(result.event.event_type_id, event_type_id);
     assert_eq!(
         result.event.metadata,
         Some(serde_json::json!({"updated": "metadata"}))
@@ -55,7 +53,6 @@ async fn test_update_event_type_only() {
         create_test_event_types(&container).await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
 
-    // Create an event first
     let create_request = CreateEventRequest {
         user_id,
         event_type_id: original_type,
@@ -63,7 +60,6 @@ async fn test_update_event_type_only() {
     };
     let created_event = dao.create(create_request).await.unwrap();
 
-    // Update only event type
     let command = UpdateEventCommand {
         event_id: created_event.id,
         event_type_id: Some(new_type),
@@ -77,7 +73,7 @@ async fn test_update_event_type_only() {
     assert_eq!(
         result.event.metadata,
         Some(serde_json::json!({"key": "value"}))
-    ); // Should remain unchanged
+    );
 }
 
 #[tokio::test]
@@ -87,7 +83,6 @@ async fn test_update_event_both_fields() {
         create_test_event_types(&container).await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
 
-    // Create an event first
     let create_request = CreateEventRequest {
         user_id,
         event_type_id: original_type,
@@ -95,7 +90,6 @@ async fn test_update_event_both_fields() {
     };
     let created_event = dao.create(create_request).await.unwrap();
 
-    // Update both fields
     let command = UpdateEventCommand {
         event_id: created_event.id,
         event_type_id: Some(new_type),
@@ -121,7 +115,6 @@ async fn test_update_event_clear_metadata() {
         create_test_event_types(&container).await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
 
-    // Create an event with metadata
     let create_request = CreateEventRequest {
         user_id,
         event_type_id,
@@ -129,7 +122,6 @@ async fn test_update_event_clear_metadata() {
     };
     let created_event = dao.create(create_request).await.unwrap();
 
-    // Clear metadata by setting it to null
     let command = UpdateEventCommand {
         event_id: created_event.id,
         event_type_id: None,
@@ -168,7 +160,6 @@ async fn test_update_event_invalid_event_type() {
         create_test_event_types(&container).await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
 
-    // Create an event first
     let create_request = CreateEventRequest {
         user_id,
         event_type_id,
@@ -176,10 +167,9 @@ async fn test_update_event_invalid_event_type() {
     };
     let created_event = dao.create(create_request).await.unwrap();
 
-    // Try to update with invalid event type
     let command = UpdateEventCommand {
         event_id: created_event.id,
-        event_type_id: Some(999), // Non-existent event type
+        event_type_id: Some(999),
         metadata: None,
     };
 

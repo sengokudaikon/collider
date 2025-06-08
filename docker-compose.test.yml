@@ -1,0 +1,47 @@
+services:
+  postgres_test:
+    build:
+      context: ./infrastructure/config/configs/postgres
+      dockerfile: Dockerfile
+    container_name: collider_postgres_test
+    environment:
+      POSTGRES_DB: test_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./infrastructure/config/configs/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    command: postgres -c log_statement=all -c log_destination=stderr
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  dragonfly_test:
+    image: docker.dragonflydb.io/dragonflydb/dragonfly:v1.25.1
+    container_name: collider_dragonfly_test
+    ports:
+      - "6380:6379"
+    command: dragonfly --logtostderr --maxmemory=1gb --proactor_threads=1
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Wait for services to be ready
+  wait-for-services:
+    image: postgres:17
+    depends_on:
+      postgres_test:
+        condition: service_healthy
+      dragonfly_test:
+        condition: service_healthy
+    command: echo "All services are ready!"
+
+networks:
+  default:
+    driver: bridge

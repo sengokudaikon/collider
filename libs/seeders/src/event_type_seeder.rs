@@ -32,7 +32,6 @@ impl EventTypeSeeder {
 
         info!("Generating {} event types", count);
 
-        // Common event type prefixes for more realistic names
         let prefixes = [
             "user",
             "page",
@@ -68,7 +67,7 @@ impl EventTypeSeeder {
             let event_name = format!("{}_{}", prefix, suffix.to_lowercase());
 
             let active_event_type = event_types::ActiveModel {
-                id: Set(0), // Auto-increment
+                id: sea_orm::NotSet,
                 name: Set(event_name),
             };
 

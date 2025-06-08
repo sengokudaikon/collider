@@ -9,7 +9,6 @@ pub trait DbConnectConfig: serde::de::DeserializeOwned {
     fn uri(&self) -> &str { "" }
 }
 
-/// Configure database connection pool data
 pub trait DbOptionsConfig {
     fn max_conn(&self) -> Option<u32> { None }
     fn min_conn(&self) -> Option<u32> { None }

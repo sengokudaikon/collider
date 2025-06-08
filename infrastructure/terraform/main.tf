@@ -41,7 +41,7 @@ locals {
   # Helm values based on environment
   helm_values = local.is_local ? {
     environment     = "local"
-    image_registry  = "localhost:5000"
+    image_registry  = "localhost:5001"
     storage_class   = "local-path"
     node_port       = true
     resource_limits = "development"
@@ -92,7 +92,7 @@ resource "null_resource" "k3d_cluster" {
         --api-port 6550 \
         --port "8080:80@loadbalancer" \
         --port "8443:443@loadbalancer" \
-        --registry-create collider-registry:5000 \
+        --registry-create collider-registry:5001 \
         --k3s-arg "--disable=traefik@server:0" \
         --wait
       

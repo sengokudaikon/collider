@@ -11,16 +11,14 @@ use tracing::instrument;
 use user_queries::{UserAnalyticsService, UserEventMetrics};
 use uuid::Uuid;
 
-/// Query parameters for analytics endpoints
 #[derive(Debug, Deserialize)]
 pub struct AnalyticsQuery {
-    /// Include metrics in response (default: true)
     #[serde(default = "default_true")]
     pub include_metrics: bool,
-    /// Time range for analytics (default: 30 days)
+
     #[serde(default = "default_30_days")]
     pub days: u32,
-    /// Batch size for multi-user requests
+
     #[serde(default = "default_batch_size")]
     pub batch_size: usize,
 }
@@ -51,9 +49,7 @@ pub struct AnalyticsServices {
 }
 
 impl Default for AnalyticsServices {
-    fn default() -> Self {
-        Self::new()
-    }
+    fn default() -> Self { Self::new() }
 }
 
 impl AnalyticsServices {
@@ -75,8 +71,6 @@ impl AnalyticsHandlers {
     }
 }
 
-/// Get aggregated analytics for a specific user
-/// GET /users/{id}/analytics?days=30&include_metrics=true
 #[instrument(skip_all)]
 async fn get_user_analytics(
     State(services): State<AnalyticsServices>, Path(user_id): Path<Uuid>,
@@ -91,15 +85,13 @@ async fn get_user_analytics(
     }))
 }
 
-/// Get analytics for multiple users efficiently
-/// GET /users/analytics/batch?user_ids=uuid1,uuid2,uuid3&batch_size=100
 #[instrument(skip_all)]
 async fn get_batch_analytics(
     State(services): State<AnalyticsServices>,
     Query(params): Query<BatchUsersQuery>,
 ) -> Result<Json<BatchAnalyticsResponse>, AppError> {
     let user_ids = params.parse_user_ids()?;
-    let batch_size = params.batch_size.unwrap_or(100).min(1000); // Max 1000 users per request
+    let batch_size = params.batch_size.unwrap_or(100).min(1000);
 
     if user_ids.len() > batch_size {
         return Err(AppError::BadRequest(format!(
@@ -133,9 +125,6 @@ async fn get_batch_analytics(
     }))
 }
 
-/// Alternative endpoint: Get users with their analytics in one call
-/// Bypasses traditional CRUD and goes straight to aggregated data
-/// GET /analytics/users?limit=50&offset=0&include_metrics=true
 #[instrument(skip_all)]
 async fn get_users_with_analytics(
     State(services): State<AnalyticsServices>,
@@ -216,7 +205,6 @@ async fn get_users_with_analytics(
 
 #[derive(Debug, Deserialize)]
 struct BatchUsersQuery {
-    /// Comma-separated list of UUIDs
     user_ids: String,
     batch_size: Option<usize>,
 }

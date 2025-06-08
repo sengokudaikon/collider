@@ -11,12 +11,10 @@ use tracing::{Level, info};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize tracing
     tracing_subscriber::fmt().with_max_level(Level::INFO).init();
 
     info!("Starting database migration and seeding process");
 
-    // Get database configuration from environment
     let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| {
         "postgresql://postgres:password@localhost:5432/collider".to_string()
     });
@@ -28,24 +26,19 @@ async fn main() -> Result<()> {
         logger: false,
     };
 
-    // Initialize database connection
     connect_postgres_db(&config).await?;
     info!("Connected to database successfully");
 
-    // Get database connection for migrations
     let db = SqlConnect::from_global();
     let db_conn = db.get_connect();
 
-    // Extract SqlX pool from SeaORM connection for migrations
     let sqlx_pool = db_conn.get_postgres_connection_pool();
 
-    // Run migrations
     info!("Running database migrations...");
     let migrator = SqlMigrator::new(sqlx_pool.clone());
     migrator.run_all_migrations().await?;
     info!("✓ Database migrations completed successfully");
 
-    // Determine if we should seed based on environment
     let should_seed = env::var("SKIP_SEEDING")
         .map(|v| v.to_lowercase() != "true")
         .unwrap_or(true);
@@ -53,11 +46,10 @@ async fn main() -> Result<()> {
     if should_seed {
         info!("Starting database seeding...");
 
-        // Configure seeding parameters for testing/demo
         let min_users = env::var("MIN_USERS")
             .ok()
             .and_then(|v| v.parse().ok())
-            .unwrap_or(100); // Smaller for test environment
+            .unwrap_or(100);
 
         let max_users = env::var("MAX_USERS")
             .ok()
@@ -77,7 +69,7 @@ async fn main() -> Result<()> {
         let target_events = env::var("TARGET_EVENTS")
             .ok()
             .and_then(|v| v.parse().ok())
-            .unwrap_or(10_000); // Smaller for test environment
+            .unwrap_or(10_000);
 
         let batch_size = env::var("BATCH_SIZE")
             .ok()
@@ -90,7 +82,6 @@ async fn main() -> Result<()> {
         info!("  Target Events: {}", target_events);
         info!("  Batch Size: {}", batch_size);
 
-        // Create seeders
         let user_seeder = UserSeeder::new(db.clone(), min_users, max_users);
         let event_type_seeder = EventTypeSeeder::new(
             db.clone(),
@@ -100,7 +91,6 @@ async fn main() -> Result<()> {
         let event_seeder =
             EventSeeder::new(db.clone(), target_events, batch_size);
 
-        // Create and run seeder runner
         let runner = SeederRunner::new(db)
             .add_seeder(Box::new(user_seeder))
             .add_seeder(Box::new(event_type_seeder))

@@ -13,13 +13,11 @@ pub enum GetUserByNameError {
     NotFound(String),
 }
 
-/// Query to get user by username
 #[derive(Debug, Deserialize)]
 pub struct GetUserByNameQuery {
     pub username: String,
 }
 
-/// Response for get user by name query
 #[derive(Debug, Serialize)]
 pub struct GetUserByNameResponse {
     pub id: uuid::Uuid,
@@ -53,7 +51,6 @@ impl GetUserByNameQueryHandler {
     pub async fn execute(
         &self, query: GetUserByNameQuery,
     ) -> Result<GetUserByNameResponse, GetUserByNameError> {
-        // Search for user by name
         let user = self
             .user_dao
             .find_by_name(&query.username)

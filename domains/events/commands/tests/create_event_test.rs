@@ -57,7 +57,7 @@ async fn test_create_event_without_metadata() {
 #[tokio::test]
 async fn test_create_event_with_complex_metadata() {
     let (container, handler) = setup_test_db().await.unwrap();
-    let event_type_id = create_test_event_type(&container).await.unwrap();
+    create_test_event_type(&container).await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
 
     let complex_metadata = serde_json::json!({
@@ -104,8 +104,8 @@ async fn test_create_event_invalid_event_type() {
 #[tokio::test]
 async fn test_create_event_invalid_user() {
     let (container, handler) = setup_test_db().await.unwrap();
-    let event_type_id = create_test_event_type(&container).await.unwrap();
-    let invalid_user_id = Uuid::now_v7(); // Non-existent user
+    create_test_event_type(&container).await.unwrap();
+    let invalid_user_id = Uuid::now_v7();
 
     let command = CreateEventCommand {
         user_id: invalid_user_id,

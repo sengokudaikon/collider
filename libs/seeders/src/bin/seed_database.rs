@@ -9,12 +9,10 @@ use tracing::{Level, info};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize tracing
     tracing_subscriber::fmt().with_max_level(Level::INFO).init();
 
     info!("Starting database seeding process");
 
-    // Get database configuration from environment or use defaults
     let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| {
         "postgresql://user:password@localhost:5432/collider".to_string()
     });
@@ -26,14 +24,11 @@ async fn main() -> Result<()> {
         logger: false,
     };
 
-    // Initialize database connection
     connect_postgres_db(&config).await?;
     info!("Connected to database successfully");
 
-    // Create SqlConnect instance (uses the static connection)
     let db = SqlConnect::from_global();
 
-    // Configure seeding parameters
     let min_users = env::var("MIN_USERS")
         .ok()
         .and_then(|v| v.parse().ok())
@@ -70,14 +65,12 @@ async fn main() -> Result<()> {
     info!("  Target Events: {}", target_events);
     info!("  Batch Size: {}", batch_size);
 
-    // Create seeders
     let user_seeder = UserSeeder::new(db.clone(), min_users, max_users);
     let event_type_seeder =
         EventTypeSeeder::new(db.clone(), min_event_types, max_event_types);
     let event_seeder =
         EventSeeder::new(db.clone(), target_events, batch_size);
 
-    // Create and run seeder runner
     let runner = SeederRunner::new(db)
         .add_seeder(Box::new(user_seeder))
         .add_seeder(Box::new(event_type_seeder))

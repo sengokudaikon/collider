@@ -83,7 +83,6 @@ impl EventTypeDao {
     ) -> Result<EventTypeResponse, EventTypeDaoError> {
         let ctx = self.db.get_transaction().await?;
 
-        // Check if event type with this name already exists
         if EventTypeEntity::find()
             .filter(EventTypeColumn::Name.eq(&req.name))
             .one(&ctx)
@@ -116,7 +115,6 @@ impl EventTypeDao {
         let mut event_type_active: EventTypeActiveModel = event_type.into();
 
         if let Some(name) = req.name {
-            // Check if another event type with this name exists
             if let Some(_existing) = EventTypeEntity::find()
                 .filter(
                     Condition::all()

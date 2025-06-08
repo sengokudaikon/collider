@@ -22,7 +22,6 @@ async fn test_get_event_success() {
     let event_type_id = create_test_event_type(&container).await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
 
-    // Create an event
     let create_request = CreateEventRequest {
         user_id,
         event_type_id,
@@ -30,7 +29,6 @@ async fn test_get_event_success() {
     };
     let created_event = dao.create(create_request).await.unwrap();
 
-    // Get the event via query handler
     let query = GetEventQuery {
         event_id: created_event.id,
     };
@@ -86,7 +84,6 @@ async fn test_get_event_with_complex_metadata() {
         }
     });
 
-    // Create an event with complex metadata
     let create_request = CreateEventRequest {
         user_id,
         event_type_id,
@@ -94,7 +91,6 @@ async fn test_get_event_with_complex_metadata() {
     };
     let created_event = dao.create(create_request).await.unwrap();
 
-    // Get the event
     let query = GetEventQuery {
         event_id: created_event.id,
     };
@@ -109,7 +105,6 @@ async fn test_get_event_without_metadata() {
     let event_type_id = create_test_event_type(&container).await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
 
-    // Create an event without metadata
     let create_request = CreateEventRequest {
         user_id,
         event_type_id,
@@ -117,7 +112,6 @@ async fn test_get_event_without_metadata() {
     };
     let created_event = dao.create(create_request).await.unwrap();
 
-    // Get the event
     let query = GetEventQuery {
         event_id: created_event.id,
     };
@@ -133,7 +127,6 @@ async fn test_get_multiple_different_events() {
     let event_type_id = create_test_event_type(&container).await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
 
-    // Create multiple events with different data
     let events = vec![
         serde_json::json!({"action": "login"}),
         serde_json::json!({"action": "view_page", "page": "home"}),
@@ -151,7 +144,6 @@ async fn test_get_multiple_different_events() {
         created_event_ids.push(created_event.id);
     }
 
-    // Get each event and verify metadata
     for (i, event_id) in created_event_ids.iter().enumerate() {
         let query = GetEventQuery {
             event_id: *event_id,

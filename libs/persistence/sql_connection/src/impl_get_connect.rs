@@ -5,9 +5,9 @@ use std::{
 };
 
 use database_traits::{
+    BoxedResultSendFuture,
     connection::{FromRequestParts, GetDatabaseConnect, Parts},
     transaction::{GetDatabaseTransaction, TransactionOps},
-    BoxedResultSendFuture,
 };
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbErr,

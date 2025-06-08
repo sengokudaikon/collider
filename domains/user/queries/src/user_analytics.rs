@@ -51,7 +51,6 @@ impl UserAnalyticsService {
     ) -> Result<UserEventMetrics, UserAnalyticsError> {
         let now = Utc::now();
 
-        // Get metrics for different time periods
         let events_last_24h = self
             .get_user_events_in_period(
                 user_id,
@@ -66,11 +65,8 @@ impl UserAnalyticsService {
             .get_user_events_in_period(user_id, now - Duration::days(30), now)
             .await?;
 
-        // Get total events from monthly buckets (approximation for
-        // efficiency)
         let total_events = self.get_user_total_events(user_id).await?;
 
-        // Get event type breakdown for last 30 days
         let event_type_counts = self
             .get_user_event_types(user_id, now - Duration::days(30), now)
             .await?;
@@ -96,8 +92,6 @@ impl UserAnalyticsService {
     ) -> Result<Vec<(Uuid, UserEventMetrics)>, UserAnalyticsError> {
         use futures::future::join_all;
 
-        // Use concurrent futures for better performance than sequential Redis
-        // calls
         let futures = user_ids.iter().map(|&user_id| {
             async move {
                 match self.get_user_metrics(user_id).await {
@@ -114,11 +108,7 @@ impl UserAnalyticsService {
             }
         });
 
-        let results = join_all(futures)
-            .await
-            .into_iter()
-            .flatten()
-            .collect();
+        let results = join_all(futures).await.into_iter().flatten().collect();
 
         Ok(results)
     }
@@ -132,7 +122,6 @@ impl UserAnalyticsService {
             .await
             .map_err(UserAnalyticsError::from)?;
 
-        // Use appropriate bucket based on time range
         let bucket = if end - start <= Duration::days(1) {
             TimeBucket::Hour
         }
@@ -177,7 +166,6 @@ impl UserAnalyticsService {
             .await
             .map_err(UserAnalyticsError::from)?;
 
-        // Get pattern for all monthly buckets for this user
         let pattern = format!("events:month:*:users:{}:total", user_id);
         let keys: Vec<String> = conn.keys(&pattern).await?;
 
@@ -228,7 +216,6 @@ impl UserAnalyticsService {
             .map(|(event_type, count)| EventTypeCount { event_type, count })
             .collect();
 
-        // Sort by count descending
         result.sort_by(|a, b| b.count.cmp(&a.count));
 
         Ok(result)

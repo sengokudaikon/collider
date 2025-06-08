@@ -23,7 +23,6 @@ async fn test_list_all_events() {
         create_test_event_types(&container).await.unwrap();
     let (user_1, user_2) = create_test_users(&container).await.unwrap();
 
-    // Create multiple events
     let events_data = vec![
         (user_1, login_type, serde_json::json!({"ip": "192.168.1.1"})),
         (user_1, purchase_type, serde_json::json!({"amount": 50.0})),
@@ -40,7 +39,6 @@ async fn test_list_all_events() {
         dao.create(create_request).await.unwrap();
     }
 
-    // List all events
     let query = ListEventsQuery {
         user_id: None,
         event_type_id: None,
@@ -59,7 +57,6 @@ async fn test_list_events_by_user() {
         create_test_event_types(&container).await.unwrap();
     let (user_1, user_2) = create_test_users(&container).await.unwrap();
 
-    // Create events for both users
     let create_request_1 = CreateEventRequest {
         user_id: user_1,
         event_type_id: login_type,
@@ -80,7 +77,6 @@ async fn test_list_events_by_user() {
     dao.create(create_request_2).await.unwrap();
     dao.create(create_request_3).await.unwrap();
 
-    // List events for user_1 only
     let query = ListEventsQuery {
         user_id: Some(user_1),
         event_type_id: None,
@@ -102,7 +98,6 @@ async fn test_list_events_by_event_type() {
         create_test_event_types(&container).await.unwrap();
     let (user_1, user_2) = create_test_users(&container).await.unwrap();
 
-    // Create events of different types
     let events = vec![
         (user_1, login_type, "login_1"),
         (user_2, login_type, "login_2"),
@@ -120,7 +115,6 @@ async fn test_list_events_by_event_type() {
         dao.create(create_request).await.unwrap();
     }
 
-    // List only login events
     let query = ListEventsQuery {
         user_id: None,
         event_type_id: Some(login_type),
@@ -141,7 +135,6 @@ async fn test_list_events_with_pagination() {
     let (login_type, _) = create_test_event_types(&container).await.unwrap();
     let (user_1, _) = create_test_users(&container).await.unwrap();
 
-    // Create 10 events
     for i in 0..10 {
         let create_request = CreateEventRequest {
             user_id: user_1,
@@ -151,7 +144,6 @@ async fn test_list_events_with_pagination() {
         dao.create(create_request).await.unwrap();
     }
 
-    // Test limit
     let query = ListEventsQuery {
         user_id: None,
         event_type_id: None,
@@ -161,7 +153,6 @@ async fn test_list_events_with_pagination() {
     let result = handler.execute(query).await.unwrap();
     assert_eq!(result.len(), 5);
 
-    // Test offset
     let query = ListEventsQuery {
         user_id: None,
         event_type_id: None,
@@ -171,7 +162,6 @@ async fn test_list_events_with_pagination() {
     let result = handler.execute(query).await.unwrap();
     assert_eq!(result.len(), 3);
 
-    // Test large offset (should return fewer results)
     let query = ListEventsQuery {
         user_id: None,
         event_type_id: None,
@@ -179,7 +169,7 @@ async fn test_list_events_with_pagination() {
         offset: Some(8),
     };
     let result = handler.execute(query).await.unwrap();
-    assert_eq!(result.len(), 2); // Only 2 events left after offset 8
+    assert_eq!(result.len(), 2);
 }
 
 #[tokio::test]
@@ -189,7 +179,6 @@ async fn test_list_events_with_combined_filters() {
         create_test_event_types(&container).await.unwrap();
     let (user_1, user_2) = create_test_users(&container).await.unwrap();
 
-    // Create mixed events
     let events = vec![
         (user_1, login_type, "user1_login"),
         (user_1, purchase_type, "user1_purchase"),
@@ -207,7 +196,6 @@ async fn test_list_events_with_combined_filters() {
         dao.create(create_request).await.unwrap();
     }
 
-    // Filter by user_1 AND login_type
     let query = ListEventsQuery {
         user_id: Some(user_1),
         event_type_id: Some(login_type),
@@ -229,7 +217,6 @@ async fn test_list_events_empty_result() {
     let (..) = create_test_event_types(&container).await.unwrap();
     let (user_1, _) = create_test_users(&container).await.unwrap();
 
-    // Query for events when none exist
     let query = ListEventsQuery {
         user_id: Some(user_1),
         event_type_id: None,
@@ -247,7 +234,6 @@ async fn test_list_events_edge_cases() {
     let (login_type, _) = create_test_event_types(&container).await.unwrap();
     let (user_1, _) = create_test_users(&container).await.unwrap();
 
-    // Create one event
     let create_request = CreateEventRequest {
         user_id: user_1,
         event_type_id: login_type,
@@ -255,7 +241,6 @@ async fn test_list_events_edge_cases() {
     };
     dao.create(create_request).await.unwrap();
 
-    // Test limit 0
     let query = ListEventsQuery {
         user_id: None,
         event_type_id: None,
@@ -265,7 +250,6 @@ async fn test_list_events_edge_cases() {
     let result = handler.execute(query).await.unwrap();
     assert_eq!(result.len(), 0);
 
-    // Test very large limit
     let query = ListEventsQuery {
         user_id: None,
         event_type_id: None,

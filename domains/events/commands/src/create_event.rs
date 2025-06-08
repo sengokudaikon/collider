@@ -57,9 +57,11 @@ impl CreateEventHandler {
     pub async fn execute(
         &self, command: CreateEventCommand,
     ) -> Result<CreateEventResult, CreateEventError> {
-        // Look up event type by name to get the ID
-        let event_type = self.event_type_dao.find_by_name(&command.event_type).await?;
-        
+        let event_type = self
+            .event_type_dao
+            .find_by_name(&command.event_type)
+            .await?;
+
         let create_request = CreateEventRequest {
             user_id: command.user_id,
             event_type_id: event_type.id,

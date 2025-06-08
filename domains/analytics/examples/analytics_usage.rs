@@ -1,4 +1,3 @@
-// Example showing how to use the high-performance analytics system
 // This demonstrates the complete flow from event creation to analytics
 // queries
 
@@ -12,7 +11,9 @@ use chrono::{Duration, Utc};
 use events_dao::EventDao;
 use events_models::CreateEventRequest;
 use redis_connection::{config::RedisDbConfig, connect_redis_db};
-use sql_connection::{config::PostgresDbConfig, connect_postgres_db, SqlConnect};
+use sql_connection::{
+    SqlConnect, config::PostgresDbConfig, connect_postgres_db,
+};
 use uuid::Uuid;
 
 #[tokio::main]
@@ -30,7 +31,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let sql = SqlConnect::from_global();
 
     let redis_config = RedisDbConfig {
-        host: std::env::var("REDIS_HOST").unwrap_or_else(|_| "127.0.0.1".to_string()),
+        host: std::env::var("REDIS_HOST")
+            .unwrap_or_else(|_| "127.0.0.1".to_string()),
         port: std::env::var("REDIS_PORT")
             .unwrap_or_else(|_| "6379".to_string())
             .parse()
@@ -49,7 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Start background services
     let processing_service = EventProcessingService::new(processor);
     processing_service.start_background_services().await;
-    
+
     // Get reference to processor through the service
     let processor = &processing_service.processor;
 

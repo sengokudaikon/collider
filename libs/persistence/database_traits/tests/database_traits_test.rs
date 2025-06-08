@@ -163,7 +163,7 @@ async fn test_trait_object_compatibility() {
     let get_db_connect: &dyn GetDatabaseConnect<Connect = MockConnection> =
         &connect;
     let _connection = get_db_connect.get_connect();
-    
+
     let transaction = connect.get_transaction().await.unwrap();
     transaction.submit().await.unwrap();
 }

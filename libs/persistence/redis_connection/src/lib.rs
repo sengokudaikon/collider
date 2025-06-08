@@ -61,7 +61,6 @@ mod tests {
             fn db(&self) -> u8 { self.db }
         }
 
-        // Test that URL construction works without panicking
         let mut url = Url::parse("redis://").unwrap();
         let config = TestConfig {
             host: "localhost".to_string(),

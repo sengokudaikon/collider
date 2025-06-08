@@ -65,7 +65,6 @@ where
         FromRedisValue::from_redis_value(&Value::Int(exists as i64))
     }
 
-    /// Get value from cache
     pub async fn get(&mut self) -> RedisResult<T::Output> {
         if let Some(bytes) = self.memory.get(&self.key.to_string()).await {
             FromRedisValue::from_redis_value(&Value::BulkString(
@@ -80,7 +79,6 @@ where
         }
     }
 
-    /// Try to get value, returns None if not exists
     pub async fn try_get(&mut self) -> RedisResult<Option<T::Output>> {
         if !bool::from_redis_value(&self.exists::<Value>().await?)? {
             return Ok(None);
@@ -88,7 +86,6 @@ where
         self.get().await.map(Some)
     }
 
-    /// Set value in cache
     pub async fn set<RV>(&mut self, value: T::Input) -> RedisResult<RV>
     where
         RV: FromRedisValue,
@@ -104,7 +101,6 @@ where
         ))
     }
 
-    /// Set value with expiration (note: actual TTL is set at cache creation)
     pub async fn set_with_expire<RV>(
         &mut self, value: T::Input, _duration: Duration,
     ) -> RedisResult<RV>
@@ -114,7 +110,6 @@ where
         self.set(value).await
     }
 
-    /// Set if not exists
     pub async fn set_if_not_exist<RV>(
         &mut self, value: T::Input,
     ) -> RedisResult<RV>
@@ -136,7 +131,6 @@ where
         }
     }
 
-    /// Remove value from cache
     pub async fn remove<RV>(&mut self) -> RedisResult<RV>
     where
         RV: FromRedisValue,

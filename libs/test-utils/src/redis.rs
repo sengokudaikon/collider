@@ -21,14 +21,12 @@ impl TestRedisContainer {
 
         let connection_string = format!("redis://{}:{}", host, port);
 
-        // Wait a bit longer for Redis to start
         sleep(Duration::from_secs(2)).await;
 
         let mut cfg = Config::from_url(&connection_string);
         cfg.pool = Some(deadpool_redis::PoolConfig::new(10));
         let pool = cfg.create_pool(Some(Runtime::Tokio1))?;
 
-        // Retry connection with exponential backoff
         let mut attempts = 0;
         loop {
             match pool.get().await {
@@ -40,7 +38,8 @@ impl TestRedisContainer {
                         Ok(_) => break,
                         Err(_) if attempts < 10 => {
                             attempts += 1;
-                            sleep(Duration::from_millis(500 * attempts)).await;
+                            sleep(Duration::from_millis(500 * attempts))
+                                .await;
                             continue;
                         }
                         Err(e) => return Err(e.into()),

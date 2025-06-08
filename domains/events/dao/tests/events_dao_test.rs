@@ -96,7 +96,6 @@ async fn test_update_event_success() {
     let event_type_id = create_test_event_type(&container).await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
 
-    // Create another event type for update test
     container
         .execute_sql(
             "INSERT INTO event_types (id, name, description) VALUES (2, \
@@ -145,10 +144,8 @@ async fn test_delete_event_success() {
 
     let created_event = event_dao.create(create_request).await.unwrap();
 
-    // Delete the event
     event_dao.delete(created_event.id).await.unwrap();
 
-    // Verify it's deleted
     let result = event_dao.find_by_id(created_event.id).await;
     assert!(matches!(result, Err(EventDaoError::NotFound)));
 }
@@ -159,7 +156,6 @@ async fn test_find_with_filters_by_user() {
     let event_type_id = create_test_event_type(&container).await.unwrap();
     let user_id_1 = create_test_user(&container).await.unwrap();
 
-    // Create second user
     let user_id_2 = Uuid::now_v7();
     let query = format!(
         "INSERT INTO users (id, name, email, created_at, updated_at) VALUES \
@@ -168,7 +164,6 @@ async fn test_find_with_filters_by_user() {
     );
     container.execute_sql(&query).await.unwrap();
 
-    // Create events for both users
     for user_id in [user_id_1, user_id_2] {
         let create_request = CreateEventRequest {
             user_id,
@@ -180,7 +175,6 @@ async fn test_find_with_filters_by_user() {
         event_dao.create(create_request).await.unwrap();
     }
 
-    // Filter by user_id_1
     let events = event_dao
         .find_with_filters(Some(user_id_1), None, None, None)
         .await
@@ -195,7 +189,6 @@ async fn test_find_with_filters_by_event_type() {
     let (container, event_dao) = setup_test_db().await.unwrap();
     let event_type_id_1 = create_test_event_type(&container).await.unwrap();
 
-    // Create second event type
     container
         .execute_sql(
             "INSERT INTO event_types (id, name, description) VALUES (2, \
@@ -206,7 +199,6 @@ async fn test_find_with_filters_by_event_type() {
 
     let user_id = create_test_user(&container).await.unwrap();
 
-    // Create events for both event types
     for event_type_id in [event_type_id_1, 2] {
         let create_request = CreateEventRequest {
             user_id,
@@ -218,7 +210,6 @@ async fn test_find_with_filters_by_event_type() {
         event_dao.create(create_request).await.unwrap();
     }
 
-    // Filter by event_type_id_1
     let events = event_dao
         .find_with_filters(None, Some(event_type_id_1), None, None)
         .await
@@ -234,7 +225,6 @@ async fn test_find_with_pagination() {
     let event_type_id = create_test_event_type(&container).await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
 
-    // Create 5 events
     for i in 0..5 {
         let create_request = CreateEventRequest {
             user_id,
@@ -244,21 +234,18 @@ async fn test_find_with_pagination() {
         event_dao.create(create_request).await.unwrap();
     }
 
-    // Test limit
     let events = event_dao
         .find_with_filters(None, None, Some(2), None)
         .await
         .unwrap();
     assert_eq!(events.len(), 2);
 
-    // Test offset
     let events = event_dao
         .find_with_filters(None, None, Some(2), Some(2))
         .await
         .unwrap();
     assert_eq!(events.len(), 2);
 
-    // Test limit + offset
     let events = event_dao
         .find_with_filters(None, None, Some(1), Some(4))
         .await
@@ -272,7 +259,6 @@ async fn test_all_events() {
     let event_type_id = create_test_event_type(&container).await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
 
-    // Create 3 events
     for i in 0..3 {
         let create_request = CreateEventRequest {
             user_id,

@@ -133,7 +133,6 @@ where
         }
     }
 
-    /// Check if key exists in either cache
     pub async fn exists<RV>(&mut self) -> RedisResult<RV>
     where
         RV: FromRedisValue,
@@ -144,21 +143,17 @@ where
         self.redis.exists(&*self.key).await
     }
 
-    /// Get value, checking memory cache first
     pub async fn get(
         &mut self,
     ) -> RedisResult<<T as RedisValue<'_>>::Output> {
-        // Try memory cache first
         if let Some(bytes) = self.memory.get(&self.key.to_string()).await {
             return FromRedisValue::from_redis_value(&Value::BulkString(
                 bytes.to_vec(),
             ));
         }
 
-        // Get from Redis
         let value: T::Output = self.redis.get(&*self.key).await?;
 
-        // Store in memory cache
         let mut bytes = Vec::new();
         value.clone().write_redis_args(&mut bytes);
         let bytes: Vec<u8> = bytes.into_iter().flatten().collect();
@@ -169,7 +164,6 @@ where
         Ok(value)
     }
 
-    /// Try to get value, returns None if not exists
     pub async fn try_get(
         &mut self,
     ) -> RedisResult<Option<<T as RedisValue<'_>>::Output>> {
@@ -179,7 +173,6 @@ where
         self.get().await.map(Some)
     }
 
-    /// Set value in both caches
     pub async fn set<RV>(
         &mut self, value: <T as RedisValue<'_>>::Input,
     ) -> RedisResult<RV>
@@ -188,7 +181,6 @@ where
     {
         let result: RV = self.redis.set(&*self.key, value).await?;
 
-        // Update memory cache with the stored value
         if let Ok(stored_value) =
             self.redis.get::<_, T::Output>(&*self.key).await
         {
@@ -203,7 +195,6 @@ where
         Ok(result)
     }
 
-    /// Set value with expiration
     pub async fn set_with_expire<RV>(
         &mut self, value: <T as RedisValue<'_>>::Input, duration: Duration,
     ) -> RedisResult<RV>
@@ -215,7 +206,6 @@ where
             .set_ex(&*self.key, value, duration.as_secs() as _)
             .await?;
 
-        // Update memory cache with the stored value
         if let Ok(stored_value) =
             self.redis.get::<_, T::Output>(&*self.key).await
         {
@@ -230,7 +220,6 @@ where
         Ok(result)
     }
 
-    /// Set if not exists
     pub async fn set_if_not_exist<RV>(
         &mut self, value: <T as RedisValue<'_>>::Input,
     ) -> RedisResult<RV>
@@ -239,7 +228,6 @@ where
     {
         let result = self.redis.set_nx(&*self.key, value).await;
 
-        // Update memory cache if set was successful
         if let Ok(_val) = &result {
             if let Ok(stored_value) =
                 self.redis.get::<_, T::Output>(&*self.key).await
@@ -256,7 +244,6 @@ where
         result
     }
 
-    /// Remove value from both caches
     pub async fn remove<RV>(&mut self) -> RedisResult<RV>
     where
         RV: FromRedisValue,
@@ -267,8 +254,5 @@ where
 }
 
 impl<R, T> Drop for Tiered<'_, R, T> {
-    fn drop(&mut self) {
-        // Ensure we drop the sender so the eviction handler can complete
-        self.eviction_tx.take();
-    }
+    fn drop(&mut self) { self.eviction_tx.take(); }
 }

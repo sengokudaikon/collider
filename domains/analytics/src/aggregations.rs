@@ -59,6 +59,16 @@ pub struct RedisEventAggregator;
 impl RedisEventAggregator {
     pub fn new() -> Self { Self }
 
+    /// Merge HyperLogLog data from source key into target key at Redis level
+    pub async fn merge_hyperloglog(
+        &self, target_key: &str, source_key: &str,
+    ) -> Result<(), AggregationError> {
+        let redis = RedisConnectionManager::from_static();
+        let mut conn = redis.get_mut_connection().await?;
+        let _: () = conn.pfmerge(target_key, source_key).await?;
+        Ok(())
+    }
+
     pub fn build_bucket_key(
         &self, bucket: TimeBucket, timestamp: DateTime<Utc>,
         suffix: Option<&str>,
@@ -85,12 +95,12 @@ impl RedisEventAggregator {
         Ok(())
     }
 
-    async fn add_to_set(
+    async fn add_to_hyperloglog(
         &self, key: &str, value: &str,
     ) -> Result<(), AggregationError> {
         let redis = RedisConnectionManager::from_static();
         let mut conn = redis.get_mut_connection().await?;
-        let _: () = conn.sadd(key, value).await?;
+        let _: () = conn.pfadd(key, value).await?;
         Ok(())
     }
 
@@ -113,11 +123,13 @@ impl RedisEventAggregator {
         Ok(result)
     }
 
-    async fn get_set_size(&self, key: &str) -> Result<u64, AggregationError> {
+    async fn get_hyperloglog_count(
+        &self, key: &str,
+    ) -> Result<u64, AggregationError> {
         let redis = RedisConnectionManager::from_static();
         let mut conn = redis.get_mut_connection().await?;
-        let size: u64 = conn.scard(key).await?;
-        Ok(size)
+        let count: u64 = conn.pfcount(key).await?;
+        Ok(count)
     }
 
     async fn get_hash_field(
@@ -157,22 +169,20 @@ impl EventAggregator for RedisEventAggregator {
             let bucket_key =
                 self.build_bucket_key(bucket, event.timestamp, None);
 
-            // Increment total event count
             let total_key = format!("{}:total", bucket_key);
             self.increment_counter(&total_key, 1).await?;
 
-            // Increment event type count
             let event_type_key =
                 format!("{}:types:{}", bucket_key, event.event_type);
             self.increment_counter(&event_type_key, 1).await?;
 
-            // Track unique users (using HyperLogLog would be better for large
-            // scale)
-            let users_key = format!("{}:users", bucket_key);
-            self.add_to_set(&users_key, &event.user_id.to_string())
-                .await?;
+            let users_hll_key = format!("{}:users_hll", bucket_key);
+            self.add_to_hyperloglog(
+                &users_hll_key,
+                &event.user_id.to_string(),
+            )
+            .await?;
 
-            // Store metadata aggregations if present
             if let Some(metadata) = &event.metadata {
                 let metadata_key = format!("{}:metadata", bucket_key);
                 let metadata_json = serde_json::to_string(metadata)?;
@@ -180,7 +190,6 @@ impl EventAggregator for RedisEventAggregator {
                     .await?;
             }
 
-            // Set expiry for bucket if configured
             if let Some(expiry) = bucket.expiry_seconds() {
                 self.set_expiry(&bucket_key, expiry).await?;
             }
@@ -201,15 +210,15 @@ impl EventAggregator for RedisEventAggregator {
     ) -> Result<BucketMetrics, AggregationError> {
         let bucket_key = self.build_bucket_key(bucket, timestamp, None);
 
-        // Get total events
         let total_key = format!("{}:total", bucket_key);
         let total_events: u64 = self.get_value(&total_key).await.unwrap_or(0);
 
-        // Get unique users count
-        let users_key = format!("{}:users", bucket_key);
-        let unique_users = self.get_set_size(&users_key).await.unwrap_or(0);
+        let users_hll_key = format!("{}:users_hll", bucket_key);
+        let unique_users = self
+            .get_hyperloglog_count(&users_hll_key)
+            .await
+            .unwrap_or(0);
 
-        // Get event type counts
         let mut event_type_counts = HashMap::new();
 
         if let Some(filters) = &filters {
@@ -220,8 +229,6 @@ impl EventAggregator for RedisEventAggregator {
                     let count: u64 =
                         self.get_value(&type_key).await.unwrap_or(0);
                     if count > 0 {
-                        // For string event types, we'll use a hash of the
-                        // string as the key
                         let type_id =
                             event_type.chars().map(|c| c as u32).sum::<u32>()
                                 as i32;
@@ -231,7 +238,6 @@ impl EventAggregator for RedisEventAggregator {
             }
         }
 
-        // Get metadata
         let metadata_key = format!("{}:metadata", bucket_key);
         let properties = if let Ok(metadata_json) =
             self.get_hash_field(&metadata_key, "latest").await
@@ -242,12 +248,12 @@ impl EventAggregator for RedisEventAggregator {
             HashMap::new()
         };
 
-        Ok(BucketMetrics {
-            total_events,
-            unique_users,
-            event_type_counts,
-            properties,
-        })
+        let mut metrics = BucketMetrics::default();
+        metrics.total_events = total_events;
+        metrics.unique_users = unique_users;
+        metrics.event_type_counts = event_type_counts;
+        metrics.properties = properties;
+        Ok(metrics)
     }
 
     #[instrument(skip(self))]
