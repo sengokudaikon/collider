@@ -32,14 +32,14 @@ test-env-health:
 
 # Run database migrations and seeding for test environment
 test-setup-db:
-    @echo "Setting up test database (migrations + minimal seeding)..."
+    @echo "Setting up test database (migrations + full seeding)..."
     DATABASE_URL="postgresql://postgres:postgres@localhost:5433/test_db" \
-    MIN_USERS=10 \
-    MAX_USERS=50 \
+    MIN_USERS=1000 \
+    MAX_USERS=50000 \
     MIN_EVENT_TYPES=5 \
-    MAX_EVENT_TYPES=5 \
-    TARGET_EVENTS=1000 \
-    BATCH_SIZE=100 \
+    MAX_EVENT_TYPES=50 \
+    TARGET_EVENTS=10000000 \
+    BATCH_SIZE=10000 \
     cargo run --bin migrate_and_seed
 
 test-analytics-demo:

@@ -4,7 +4,7 @@ use chrono::Utc;
 use database_traits::connection::GetDatabaseConnect;
 use fake::{Fake, faker::name::en::Name};
 use rand::{Rng, rng};
-use sea_orm::{ActiveModelTrait, Set};
+use sea_orm::{EntityTrait, Set};
 use sql_connection::SqlConnect;
 use tracing::{info, instrument};
 use user_models as users;
@@ -16,25 +16,40 @@ pub struct UserSeeder {
     db: SqlConnect,
     min_users: usize,
     max_users: usize,
+    batch_size: usize,
 }
 
 impl UserSeeder {
     pub fn new(db: SqlConnect, min_users: usize, max_users: usize) -> Self {
+        let batch_size = Self::calculate_batch_size(min_users, max_users);
         Self {
             db,
             min_users,
             max_users,
+            batch_size,
         }
     }
 
-    #[instrument(skip(self))]
-    async fn generate_users(&self, count: usize) -> Result<Vec<Uuid>> {
+    fn calculate_batch_size(min_users: usize, max_users: usize) -> usize {
+        let expected_avg = (min_users + max_users) / 2;
+        match expected_avg {
+            0..=100 => 50,
+            101..=1000 => 100,
+            1001..=10000 => 500,
+            10001..=100000 => 1000,
+            _ => 2000,
+        }
+    }
+
+    #[instrument(skip(self), fields(batch_size = self.batch_size))]
+    async fn generate_user_batch(
+        &self, batch_size: usize,
+    ) -> Result<Vec<Uuid>> {
         let db = self.db.get_connect();
-        let mut user_ids = Vec::with_capacity(count);
+        let mut batch_users = Vec::with_capacity(batch_size);
+        let mut user_ids = Vec::with_capacity(batch_size);
 
-        info!("Generating {} users", count);
-
-        for i in 0..count {
+        for _ in 0..batch_size {
             let user_id = Uuid::new_v7(uuid::Timestamp::now(uuid::NoContext));
             let fake_name: String = Name().fake();
 
@@ -44,15 +59,43 @@ impl UserSeeder {
                 created_at: Set(Utc::now()),
             };
 
-            active_user.insert(db).await?;
+            batch_users.push(active_user);
             user_ids.push(user_id);
+        }
 
-            if (i + 1) % 10000 == 0 {
-                info!("Generated {} users", i + 1);
+        users::Entity::insert_many(batch_users).exec(db).await?;
+        Ok(user_ids)
+    }
+
+    #[instrument(skip(self))]
+    async fn generate_users(&self, count: usize) -> Result<Vec<Uuid>> {
+        info!(
+            "Generating {} users in batches of {}",
+            count, self.batch_size
+        );
+
+        let mut all_user_ids = Vec::with_capacity(count);
+        let total_batches = count.div_ceil(self.batch_size);
+
+        for batch_num in 0..total_batches {
+            let batch_start = batch_num * self.batch_size;
+            let remaining_users = count - batch_start;
+            let current_batch_size = std::cmp::min(self.batch_size, remaining_users);
+
+            if current_batch_size == 0 {
+                break;
+            }
+
+            let batch_user_ids = self.generate_user_batch(current_batch_size).await?;
+            all_user_ids.extend(batch_user_ids);
+
+            let current_total = batch_start + current_batch_size;
+            if current_total % 10000 == 0 || current_total == count {
+                info!("Generated {} users", current_total);
             }
         }
 
-        Ok(user_ids)
+        Ok(all_user_ids)
     }
 }
 
