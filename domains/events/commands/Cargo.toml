@@ -1,7 +1,7 @@
 [package]
 name = "events-commands"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 # Domain dependencies
@@ -23,7 +23,6 @@ serde_json.workspace = true
 
 [dev-dependencies]
 test-utils = { workspace = true }
-sea-orm-migration = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
 anyhow = { workspace = true }
 serde_json = { workspace = true }

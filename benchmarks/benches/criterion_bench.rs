@@ -99,7 +99,6 @@ pub fn benchmark_http_requests(c: &mut Criterion) {
     group.bench_function("delete_event", |b| {
         b.to_async(&rt).iter(|| {
             async {
-                // Note: This may fail if event doesn't exist, but we're measuring performance
                 let response = client
                     .delete("http://localhost:8080/api/events/550e8400-e29b-41d4-a716-446655440000")
                     .send()

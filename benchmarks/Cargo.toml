@@ -1,15 +1,15 @@
 [package]
 name = "collider-benchmarks"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
-criterion = { workspace = true, features = ["async"] }
-tokio = { workspace = true }
-reqwest = { workspace = true }
-serde_json = { workspace = true }
-chrono = { workspace = true }
-futures = { workspace = true }
+criterion = { version = "0.6.0", features = ["async_tokio", "html_reports"] }
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.11", features = ["json"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+futures = "0.3"
 
 [[bench]]
 name = "http_bench"

@@ -1,7 +1,7 @@
 [package]
 name = "events-queries"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 # Domain dependencies
@@ -11,19 +11,15 @@ events-dao = { path = "../dao" }
 # Infrastructure
 database-traits.workspace = true
 sql-connection.workspace = true
-sea-orm = { workspace = true }
 serde_json.workspace = true
 # Core dependencies
 uuid = { workspace = true }
 serde = { workspace = true }
-chrono = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
 test-utils = { workspace = true }
-sea-orm-migration = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
 anyhow = { workspace = true }
 serde_json = { workspace = true }
-chrono = { workspace = true }
