@@ -101,3 +101,4 @@ hey/
 secrets/
 *.secret
 /infrastructure/terraform/.terraform.tfstate.lock.info
+/.env.prod
