@@ -1,6 +1,3 @@
-// This demonstrates the complete flow from event creation to analytics
-// queries
-
 use std::sync::Arc;
 
 use analytics::{
@@ -18,7 +15,6 @@ use uuid::Uuid;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize connections (these would come from your app config)
     let db_config = PostgresDbConfig {
         uri: std::env::var("DATABASE_URL").unwrap_or_else(|_| {
             "postgresql://postgres:password@localhost/collider".to_string()
@@ -41,58 +37,58 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let _redis_pool = connect_redis_db(&redis_config).await?;
 
-    // Create the analytics service
+    
     let analytics = Arc::new(EventsAnalyticsService::new(sql.clone()));
 
-    // Create the event processor (handles both persistence and analytics)
+    
     let event_dao = EventDao::new(sql);
     let processor = EventProcessor::new(event_dao, analytics.clone());
 
-    // Start background services
+    
     let processing_service = EventProcessingService::new(processor);
     processing_service.start_background_services().await;
 
-    // Get reference to processor through the service
+    
     let processor = &processing_service.processor;
 
-    // Example 1: Create high-volume events
+    
     println!("Creating sample events...");
     let user_id = Uuid::new_v4();
 
     let events = vec![
         CreateEventRequest {
             user_id,
-            event_type_id: 1, // login
+            event_type_id: 1, 
             metadata: Some(serde_json::json!({"ip": "192.168.1.1"})),
         },
         CreateEventRequest {
             user_id,
-            event_type_id: 2, // page_view
+            event_type_id: 2, 
             metadata: Some(serde_json::json!({"page": "/dashboard"})),
         },
         CreateEventRequest {
             user_id,
-            event_type_id: 3, // button_click
+            event_type_id: 3, 
             metadata: Some(
                 serde_json::json!({"button": "save", "form": "profile"}),
             ),
         },
     ];
 
-    // Process events (this automatically feeds analytics pipeline)
+    
     for event_req in events {
         processor.create_event(event_req).await?;
     }
 
-    // Wait a moment for async analytics processing
+    
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
-    // Example 2: Real-time analytics queries
+    
     println!("\n=== Real-time Analytics ===");
 
     let now = Utc::now();
 
-    // Get current minute metrics
+    
     let minute_metrics = analytics
         .get_real_time_metrics(TimeBucket::Minute, now, None)
         .await?;
@@ -102,7 +98,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         minute_metrics.total_events, minute_metrics.unique_users
     );
 
-    // Get hourly time series for last 24 hours
+    
     let time_series = analytics
         .get_time_series(
             TimeBucket::Hour,
@@ -127,10 +123,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    // Example 3: Complex analytics via materialized views
+    
     println!("\n=== Complex Analytics (Materialized Views) ===");
 
-    // Get hourly summaries
+    
     let summaries = analytics
         .get_hourly_summaries(
             now - Duration::hours(12),

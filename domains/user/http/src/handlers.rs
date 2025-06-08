@@ -66,7 +66,11 @@ async fn create_user(
     State(services): State<UserServices>,
     Json(command): Json<CreateUserCommand>,
 ) -> Result<(StatusCode, Json<user_commands::CreateUserResponse>), AppError> {
-    let result = services.create_user.execute(command).await?;
+    let result = services
+        .create_user
+        .execute(command)
+        .await
+        .map_err(AppError::from_error)?;
 
     // TODO: Add event bus integration
     tracing::info!("User created: {}", result.user.id);
@@ -80,7 +84,11 @@ async fn update_user(
     Json(mut command): Json<UpdateUserCommand>,
 ) -> Result<Json<user_commands::UpdateUserResponse>, AppError> {
     command.user_id = id;
-    let result = services.update_user.execute(command).await?;
+    let result = services
+        .update_user
+        .execute(command)
+        .await
+        .map_err(AppError::from_error)?;
 
     // TODO: Add event bus integration
     tracing::info!("User updated: {}", id);
@@ -93,7 +101,11 @@ async fn delete_user(
     State(services): State<UserServices>, Path(id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
     let command = DeleteUserCommand { user_id: id };
-    services.delete_user.execute(command).await?;
+    services
+        .delete_user
+        .execute(command)
+        .await
+        .map_err(AppError::from_error)?;
 
     // TODO: Add event bus integration
     tracing::info!("User deleted: {}", id);
@@ -115,7 +127,11 @@ async fn get_user(
     Query(params): Query<UserQueryParams>,
 ) -> Result<Json<UserResponse>, AppError> {
     let query = user_queries::GetUserQuery { user_id: id };
-    let user = services.get_user.execute(query).await?;
+    let user = services
+        .get_user
+        .execute(query)
+        .await
+        .map_err(AppError::from_error)?;
 
     if params.include_metrics {
         match services.analytics.get_user_metrics(id).await {
@@ -140,7 +156,11 @@ async fn list_users(
         limit: params.limit,
         offset: params.offset,
     };
-    let users = services.list_users.execute(query).await?;
+    let users = services
+        .list_users
+        .execute(query)
+        .await
+        .map_err(AppError::from_error)?;
 
     if params.include_metrics {
         let user_ids: Vec<Uuid> = users.iter().map(|u| u.id).collect();
@@ -174,7 +194,11 @@ async fn get_user_by_name(
     State(services): State<UserServices>, Path(username): Path<String>,
 ) -> Result<Json<UserResponse>, AppError> {
     let query = user_queries::GetUserByNameQuery { username };
-    let user = services.get_user_by_name.execute(query).await?;
+    let user = services
+        .get_user_by_name
+        .execute(query)
+        .await
+        .map_err(AppError::from_error)?;
     Ok(Json(user.into()))
 }
 
@@ -183,7 +207,11 @@ async fn get_user_with_metrics(
     State(services): State<UserServices>, Path(id): Path<Uuid>,
 ) -> Result<Json<UserResponse>, AppError> {
     let user_query = user_queries::GetUserQuery { user_id: id };
-    let user = services.get_user.execute(user_query).await?;
+    let user = services
+        .get_user
+        .execute(user_query)
+        .await
+        .map_err(AppError::from_error)?;
 
     match services.analytics.get_user_metrics(id).await {
         Ok(metrics) => {
@@ -193,4 +221,3 @@ async fn get_user_with_metrics(
         Err(_) => Ok(Json(user.into())),
     }
 }
-

@@ -62,7 +62,11 @@ async fn create_event(
     Json(command): Json<CreateEventCommand>,
 ) -> Result<(StatusCode, Json<events_commands::CreateEventResponse>), AppError>
 {
-    let result = services.create_event.execute(command).await?;
+    let result = services
+        .create_event
+        .execute(command)
+        .await
+        .map_err(AppError::from_error)?;
     Ok((StatusCode::CREATED, Json(result.event)))
 }
 
@@ -72,7 +76,11 @@ async fn update_event(
     Json(mut command): Json<UpdateEventCommand>,
 ) -> Result<Json<events_commands::UpdateEventResponse>, AppError> {
     command.event_id = id;
-    let result = services.update_event.execute(command).await?;
+    let result = services
+        .update_event
+        .execute(command)
+        .await
+        .map_err(AppError::from_error)?;
     Ok(Json(result.event))
 }
 
@@ -81,7 +89,11 @@ async fn delete_event(
     State(services): State<EventServices>, Path(id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
     let command = events_commands::DeleteEventCommand { event_id: id };
-    services.delete_event.execute(command).await?;
+    services
+        .delete_event
+        .execute(command)
+        .await
+        .map_err(AppError::from_error)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -90,7 +102,11 @@ async fn get_event(
     State(services): State<EventServices>, Path(id): Path<Uuid>,
 ) -> Result<Json<EventResponse>, AppError> {
     let query = GetEventQuery { event_id: id };
-    let event = services.get_event.execute(query).await?;
+    let event = services
+        .get_event
+        .execute(query)
+        .await
+        .map_err(AppError::from_error)?;
     Ok(Json(event))
 }
 
@@ -105,7 +121,11 @@ async fn list_events(
         limit: params.limit,
         offset: params.offset,
     };
-    let events = services.list_events.execute(query).await?;
+    let events = services
+        .list_events
+        .execute(query)
+        .await
+        .map_err(AppError::from_error)?;
     Ok(Json(events))
 }
 
@@ -116,4 +136,3 @@ struct ListEventsParams {
     limit: Option<u64>,
     offset: Option<u64>,
 }
-

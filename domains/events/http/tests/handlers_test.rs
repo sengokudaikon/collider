@@ -198,7 +198,6 @@ async fn test_delete_event_endpoint() {
     };
     let created_event = dao.create(create_request).await.unwrap();
 
-    // Delete the event
     let request = Request::builder()
         .method(Method::DELETE)
         .uri(&format!("/{}", created_event.id))
@@ -209,7 +208,6 @@ async fn test_delete_event_endpoint() {
 
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
 
-    // Verify event is deleted
     let find_result = dao.find_by_id(created_event.id).await;
     assert!(find_result.is_err());
 }
@@ -220,7 +218,6 @@ async fn test_list_events_endpoint() {
     let event_type_id = create_test_event_type(&container).await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
 
-    // Create multiple events
     for i in 0..3 {
         let create_request = CreateEventRequest {
             user_id,
@@ -230,7 +227,6 @@ async fn test_list_events_endpoint() {
         dao.create(create_request).await.unwrap();
     }
 
-    // List all events
     let request = Request::builder()
         .method(Method::GET)
         .uri("/")
@@ -257,7 +253,6 @@ async fn test_list_events_with_filters() {
     let event_type_id = create_test_event_type(&container).await.unwrap();
     let user_id_1 = create_test_user(&container).await.unwrap();
 
-    // Create second user
     let user_id_2 = Uuid::now_v7();
     let query = format!(
         "INSERT INTO users (id, name, email, created_at, updated_at) VALUES \
@@ -266,7 +261,6 @@ async fn test_list_events_with_filters() {
     );
     container.execute_sql(&query).await.unwrap();
 
-    // Create events for both users
     let create_request_1 = CreateEventRequest {
         user_id: user_id_1,
         event_type_id,
@@ -280,7 +274,6 @@ async fn test_list_events_with_filters() {
     dao.create(create_request_1).await.unwrap();
     dao.create(create_request_2).await.unwrap();
 
-    // Filter by user_id_1
     let request = Request::builder()
         .method(Method::GET)
         .uri(&format!("/?user_id={}", user_id_1))
@@ -309,7 +302,6 @@ async fn test_list_events_with_pagination() {
     let event_type_id = create_test_event_type(&container).await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
 
-    // Create 5 events
     for i in 0..5 {
         let create_request = CreateEventRequest {
             user_id,
@@ -319,7 +311,6 @@ async fn test_list_events_with_pagination() {
         dao.create(create_request).await.unwrap();
     }
 
-    // Test with limit
     let request = Request::builder()
         .method(Method::GET)
         .uri("/?limit=2")

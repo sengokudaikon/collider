@@ -360,17 +360,14 @@ mod tests {
             assert_eq!(result.metadata, Some(expected_metadata));
         }
 
-        // Give background task time to process
         sleep(Duration::from_millis(200)).await;
 
-        // Verify analytics processed all events
         let processed = mock_analytics.get_processed_events();
         assert_eq!(processed.len(), 3);
     }
 
     #[tokio::test]
     async fn test_event_processor_with_real_analytics() {
-        // Skip test if test infrastructure is not available
         if std::env::var("DATABASE_URL").is_err() {
             println!(
                 "Skipping integration test - DATABASE_URL not set. Run with \
@@ -382,7 +379,6 @@ mod tests {
         let postgres_container = TestPostgresContainer::new().await.unwrap();
         let _redis_container = TestRedisContainer::new().await.unwrap();
 
-        // Create test event type and user
         postgres_container
             .execute_sql(
                 "INSERT INTO event_types (id, name) VALUES (1, \
@@ -412,26 +408,21 @@ mod tests {
 
         let result = processor.create_event(request).await.unwrap();
 
-        // Verify event was created
         assert_eq!(result.user_id, user_id);
         assert_eq!(result.event_type_id, 1);
 
-        // Give background task time to process
         sleep(Duration::from_millis(100)).await;
 
-        // Verify we can get real-time metrics
         let metrics = real_analytics
             .get_real_time_metrics(TimeBucket::Hour, Utc::now(), None)
             .await
             .unwrap();
 
-        // Should have at least 1 event (might have more from Redis state)
         assert!(metrics.total_events >= 1);
     }
 
     #[tokio::test]
     async fn test_event_processing_service_background_tasks() {
-        // Skip test if test infrastructure is not available
         if std::env::var("DATABASE_URL").is_err() {
             println!(
                 "Skipping integration test - DATABASE_URL not set. Run with \
@@ -446,16 +437,12 @@ mod tests {
             EventProcessor::new(event_dao, mock_analytics.clone());
         let service = EventProcessingService::new(processor);
 
-        // Start background services (non-blocking)
         tokio::spawn(async move {
             service.start_background_services().await;
         });
 
-        // Give background services time to start
         sleep(Duration::from_millis(50)).await;
 
-        // In a real test, you'd verify materialized view refresh behavior
-        // For now, just verify the service can be created and started
         assert!(true);
     }
 }

@@ -2,7 +2,7 @@ use anyhow::Result;
 use sql_connection::SqlConnect;
 use tracing::{info, instrument, warn};
 
-use crate::{Seeder, ProgressTracker};
+use crate::{ProgressTracker, Seeder};
 
 pub struct SeederRunner {
     db: SqlConnect,
@@ -24,7 +24,9 @@ impl SeederRunner {
         self
     }
 
-    pub fn with_progress(mut self, progress_tracker: ProgressTracker) -> Self {
+    pub fn with_progress(
+        mut self, progress_tracker: ProgressTracker,
+    ) -> Self {
         self.progress_tracker = Some(progress_tracker);
         self
     }
@@ -38,7 +40,7 @@ impl SeederRunner {
 
         for seeder in &self.seeders {
             info!("Running seeder: {}", seeder.name());
-            
+
             if let Some(tracker) = &self.progress_tracker {
                 tracker.update(crate::ProgressUpdate {
                     seeder_name: seeder.name().to_string(),
@@ -47,25 +49,26 @@ impl SeederRunner {
                     message: "Starting...".to_string(),
                 });
             }
-            
+
             match seeder.seed().await {
                 Ok(_) => {
                     info!(
                         "✓ Seeder '{}' completed successfully",
                         seeder.name()
                     );
-                    
+
                     if let Some(tracker) = &self.progress_tracker {
                         tracker.complete(seeder.name().to_string());
                     }
                 }
                 Err(e) => {
                     warn!("✗ Seeder '{}' failed: {}", seeder.name(), e);
-                    
+
                     if let Some(tracker) = &self.progress_tracker {
-                        tracker.error(seeder.name().to_string(), e.to_string());
+                        tracker
+                            .error(seeder.name().to_string(), e.to_string());
                     }
-                    
+
                     return Err(e);
                 }
             }

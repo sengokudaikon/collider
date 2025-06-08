@@ -235,45 +235,11 @@ checksum = "ace50bade8e6234aa140d9a2f552bbee1db4d353f69b8217bc503490fc1a9f26"
 
 [[package]]
 name = "axum"
-version = "0.7.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "edca88bc138befd0323b20752846e6587272d3b03b0343c8ea28a6f819e6e71f"
-dependencies = [
- "async-trait",
- "axum-core 0.4.5",
- "bytes",
- "futures-util",
- "http",
- "http-body",
- "http-body-util",
- "hyper",
- "hyper-util",
- "itoa",
- "matchit 0.7.3",
- "memchr",
- "mime",
- "percent-encoding",
- "pin-project-lite",
- "rustversion",
- "serde",
- "serde_json",
- "serde_path_to_error",
- "serde_urlencoded",
- "sync_wrapper",
- "tokio",
- "tower",
- "tower-layer",
- "tower-service",
- "tracing",
-]
-
-[[package]]
-name = "axum"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "021e862c184ae977658b36c4500f7feac3221ca5da43e3f25bd04ab6c79a29b5"
 dependencies = [
- "axum-core 0.5.2",
+ "axum-core",
  "axum-macros",
  "bytes",
  "form_urlencoded",
@@ -284,7 +250,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "itoa",
- "matchit 0.8.4",
+ "matchit",
  "memchr",
  "mime",
  "percent-encoding",
@@ -297,27 +263,6 @@ dependencies = [
  "sync_wrapper",
  "tokio",
  "tower",
- "tower-layer",
- "tower-service",
- "tracing",
-]
-
-[[package]]
-name = "axum-core"
-version = "0.4.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09f2bd6146b97ae3359fa0cc6d6b376d9539582c7b4220f041a33ec24c226199"
-dependencies = [
- "async-trait",
- "bytes",
- "futures-util",
- "http",
- "http-body",
- "http-body-util",
- "mime",
- "pin-project-lite",
- "rustversion",
- "sync_wrapper",
  "tower-layer",
  "tower-service",
  "tracing",
@@ -688,7 +633,7 @@ name = "collider"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "axum 0.8.4",
+ "axum",
  "chrono",
  "criterion",
  "database-traits",
@@ -996,7 +941,7 @@ name = "database-traits"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "axum-core 0.5.2",
+ "axum-core",
  "futures",
  "http",
  "sea-orm",
@@ -1104,15 +1049,7 @@ dependencies = [
 name = "domain"
 version = "0.1.0"
 dependencies = [
- "axum 0.7.9",
- "database-traits",
- "sea-orm",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "tokio",
- "tracing",
- "uuid",
+ "axum",
 ]
 
 [[package]]
@@ -1236,7 +1173,7 @@ name = "events-http"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "axum 0.8.4",
+ "axum",
  "database-traits",
  "domain",
  "events-commands",
@@ -2108,12 +2045,6 @@ checksum = "8263075bb86c5a1b1427b5ae862e8889656f126e9f77c484496e8b47cf5c5558"
 dependencies = [
  "regex-automata 0.1.10",
 ]
-
-[[package]]
-name = "matchit"
-version = "0.7.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e7465ac9959cc2b1404e8e2367b43684a6d13790fe23056cc8c6c5a6b7bcb94"
 
 [[package]]
 name = "matchit"
@@ -3947,6 +3878,7 @@ dependencies = [
  "testcontainers-modules",
  "tokio",
  "tracing",
+ "tracing-subscriber",
  "uuid",
 ]
 
@@ -4449,8 +4381,8 @@ dependencies = [
 name = "user-http"
 version = "0.1.0"
 dependencies = [
- "axum 0.8.4",
- "axum-core 0.5.2",
+ "axum",
+ "axum-core",
  "chrono",
  "domain",
  "http",

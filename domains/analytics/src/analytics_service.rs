@@ -179,7 +179,7 @@ impl AnalyticsBackgroundTask {
     #[instrument(skip(self))]
     pub async fn run_periodic_refresh(&self) {
         let mut interval =
-            tokio::time::interval(tokio::time::Duration::from_secs(3600)); // Every hour
+            tokio::time::interval(tokio::time::Duration::from_secs(3600));
 
         loop {
             interval.tick().await;
@@ -197,11 +197,10 @@ impl AnalyticsBackgroundTask {
         }
     }
 
-    // More frequent refresh for popular events (every 15 minutes)
     #[instrument(skip(self))]
     pub async fn run_frequent_popular_events_refresh(&self) {
         let mut interval =
-            tokio::time::interval(tokio::time::Duration::from_secs(900)); // Every 15 minutes
+            tokio::time::interval(tokio::time::Duration::from_secs(900));
 
         loop {
             interval.tick().await;
@@ -240,7 +239,6 @@ mod tests {
         let postgres_container = TestPostgresContainer::new().await?;
         let redis_container = TestRedisContainer::new().await?;
 
-        // Create test event type
         postgres_container
             .execute_sql(
                 "INSERT INTO event_types (id, name) VALUES (1, \
@@ -276,7 +274,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_analytics_process_event() {
-        // Skip test if test infrastructure is not available
         if std::env::var("DATABASE_URL").is_err() {
             println!(
                 "Skipping integration test - DATABASE_URL not set. Run with \
@@ -293,7 +290,6 @@ mod tests {
         ) = setup_test_analytics().await.unwrap();
         let user_id = create_test_user(&postgres_container).await.unwrap();
 
-        // Create an event using the DAO
         let request = CreateEventRequest {
             user_id,
             event_type_id: 1,
@@ -304,14 +300,14 @@ mod tests {
 
         let event = event_dao.create(request).await.unwrap();
 
-        // Process the event through analytics
+        
         let result = analytics_service.process_event(&event).await;
         assert!(result.is_ok());
 
-        // Give Redis time to persist the data
+        
         sleep(TokioDuration::from_millis(100)).await;
 
-        // Verify analytics metrics
+        
         let metrics = analytics_service
             .get_real_time_metrics(TimeBucket::Hour, Utc::now(), None)
             .await
@@ -323,7 +319,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_analytics_time_series() {
-        // Skip test if test infrastructure is not available
+        
         if std::env::var("DATABASE_URL").is_err() {
             println!(
                 "Skipping integration test - DATABASE_URL not set. Run with \
@@ -340,7 +336,7 @@ mod tests {
         ) = setup_test_analytics().await.unwrap();
         let user_id = create_test_user(&postgres_container).await.unwrap();
 
-        // Create multiple events across time
+        
         for i in 0..3 {
             let request = CreateEventRequest {
                 user_id,
@@ -352,10 +348,10 @@ mod tests {
             analytics_service.process_event(&event).await.unwrap();
         }
 
-        // Give Redis time to persist the data
+        
         sleep(TokioDuration::from_millis(200)).await;
 
-        // Test time series aggregation
+        
         let now = Utc::now();
         let start = now - Duration::hours(1);
         let end = now + Duration::hours(1);
@@ -367,7 +363,7 @@ mod tests {
 
         assert!(!time_series.is_empty());
 
-        // Check that we have metrics for the current hour
+        
         let current_hour_metrics =
             time_series.iter().find(|(bucket_key, _)| {
                 bucket_key.contains(&now.format("%Y-%m-%d:%H").to_string())
@@ -380,7 +376,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_analytics_with_filters() {
-        // Skip test if test infrastructure is not available
+        
         if std::env::var("DATABASE_URL").is_err() {
             println!(
                 "Skipping integration test - DATABASE_URL not set. Run with \
@@ -397,7 +393,7 @@ mod tests {
         ) = setup_test_analytics().await.unwrap();
         let user_id = create_test_user(&postgres_container).await.unwrap();
 
-        // Create events of different types
+        
         for event_type_id in [1, 2] {
             let request = CreateEventRequest {
                 user_id,

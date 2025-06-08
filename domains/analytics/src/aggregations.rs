@@ -59,7 +59,6 @@ pub struct RedisEventAggregator;
 impl RedisEventAggregator {
     pub fn new() -> Self { Self }
 
-    /// Merge HyperLogLog data from source key into target key at Redis level
     pub async fn merge_hyperloglog(
         &self, target_key: &str, source_key: &str,
     ) -> Result<(), AggregationError> {

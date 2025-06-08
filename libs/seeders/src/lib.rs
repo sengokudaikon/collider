@@ -17,6 +17,8 @@ pub trait Seeder: Send + Sync {
 pub use cli::{Cli, Commands};
 pub use event_seeder::EventSeeder;
 pub use event_type_seeder::EventTypeSeeder;
-pub use progress::{ProgressTracker, ProgressUI, ProgressUpdate, ProgressEvent};
+pub use progress::{
+    ProgressEvent, ProgressTracker, ProgressUI, ProgressUpdate,
+};
 pub use seeder_runner::SeederRunner;
 pub use user_seeder::UserSeeder;
