@@ -8,6 +8,10 @@ use test_utils::redis::TestRedisContainer;
 async fn setup_test_redis()
 -> anyhow::Result<(TestRedisContainer, RedisConnectionManager)> {
     let container = TestRedisContainer::new().await?;
+
+    // Clean any existing test data to ensure test isolation
+    container.flush_db().await?;
+
     let manager = RedisConnectionManager::new(container.pool.clone());
     Ok((container, manager))
 }

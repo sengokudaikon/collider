@@ -2,13 +2,17 @@ use chrono::Utc;
 use events_dao::{EventDao, EventDaoError};
 use events_models::{CreateEventRequest, UpdateEventRequest};
 use sql_connection::database_traits::dao::GenericDao;
-use test_utils::{clean_test_data, create_sql_connect, create_test_event_type, create_test_event_type_with_name, create_test_user, create_test_user_with_name, postgres::TestPostgresContainer};
+use test_utils::{
+    clean_test_data, create_sql_connect, create_test_event_type,
+    create_test_event_type_with_name, create_test_user,
+    create_test_user_with_name, postgres::TestPostgresContainer,
+};
 use uuid::Uuid;
 
 async fn setup_test_db() -> anyhow::Result<(TestPostgresContainer, EventDao)>
 {
     let container = TestPostgresContainer::new().await?;
-    
+
     // Clean any existing test data to ensure test isolation
     let _ = clean_test_data(&container).await;
 
@@ -75,7 +79,10 @@ async fn test_update_event_success() {
     let event_type_id = create_test_event_type(&container).await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
 
-    let updated_event_type_id = create_test_event_type_with_name(&container, "updated_event").await.unwrap();
+    let updated_event_type_id =
+        create_test_event_type_with_name(&container, "updated_event")
+            .await
+            .unwrap();
 
     let create_request = CreateEventRequest {
         user_id,
@@ -129,7 +136,9 @@ async fn test_find_with_filters_by_user() {
     let event_type_id = create_test_event_type(&container).await.unwrap();
     let user_id_1 = create_test_user(&container).await.unwrap();
 
-    let user_id_2 = create_test_user_with_name(&container, "Test User 2").await.unwrap();
+    let user_id_2 = create_test_user_with_name(&container, "Test User 2")
+        .await
+        .unwrap();
 
     for user_id in [user_id_1, user_id_2] {
         let create_request = CreateEventRequest {
@@ -156,7 +165,10 @@ async fn test_find_with_filters_by_event_type() {
     let (container, event_dao) = setup_test_db().await.unwrap();
     let event_type_id_1 = create_test_event_type(&container).await.unwrap();
 
-    let event_type_id_2 = create_test_event_type_with_name(&container, "other_event").await.unwrap();
+    let event_type_id_2 =
+        create_test_event_type_with_name(&container, "other_event")
+            .await
+            .unwrap();
 
     let user_id = create_test_user(&container).await.unwrap();
 

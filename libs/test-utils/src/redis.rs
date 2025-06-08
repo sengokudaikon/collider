@@ -62,4 +62,12 @@ impl TestRedisContainer {
     ) -> anyhow::Result<deadpool_redis::Connection> {
         Ok(self.pool.get().await?)
     }
+
+    pub async fn flush_db(&self) -> anyhow::Result<()> {
+        let mut conn = self.get_connection().await?;
+        deadpool_redis::redis::cmd("FLUSHDB")
+            .query_async::<()>(&mut conn)
+            .await?;
+        Ok(())
+    }
 }

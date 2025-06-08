@@ -58,56 +58,24 @@ test-full-demo: test-env test-setup-db test-analytics-demo
     @echo "✅ Analytics demo completed successfully!"
     @echo "Use 'just test-env-down' to stop test environment"
 
-# ==== Main Test Commands ====
-
-# 1) Unit tests (no database required)
-test-unit:
-    @echo "Running unit tests (no database required)..."
-    cargo test --all --lib --bins
-
-# 2) Unit tests with coverage (no database required)
-test-unit-coverage:
-    @echo "Running unit tests with coverage (no database required)..."
-    cargo tarpaulin --all --out Html --output-dir coverage --timeout 120 --lib --bins
-
-# 3) Tests that require database
-test-db: test-env
+tests: test-env
+    @echo "Running all tests (unit + database)..."
     @echo "Running tests that require database..."
     DATABASE_URL="postgres://postgres:postgres@localhost:5433/test_db" \
     REDIS_URL="redis://localhost:6380" \
     cargo test --all
     just test-env-down
+    @echo "✅ All tests completed successfully!"
 
-# 4) Tests that require database with coverage
-test-db-coverage: test-env
-    @echo "Running tests that require database with coverage..."
+coverage: test-env
+    @echo "Running all tests with coverage (unit + database)..."
     DATABASE_URL="postgres://postgres:postgres@localhost:5433/test_db" \
     REDIS_URL="redis://localhost:6380" \
     cargo tarpaulin --all --out Html --output-dir coverage --timeout 180
     just test-env-down
-
-# 5) All tests (unit + database)
-test-all:
-    @echo "Running all tests (unit + database)..."
-    @echo "1. Running unit tests..."
-    just test-unit
-    @echo "2. Running database tests..."
-    just test-db
-    @echo "✅ All tests completed successfully!"
-
-# 6) All tests with coverage (unit + database)
-coverage:
-    @echo "Running all tests with coverage (unit + database)..."
-    just test-unit-coverage
-    just test-db-coverage
     @echo "✅ All tests with coverage completed successfully!"
 
-# Check that coverage meets minimum threshold (80%) - unit tests only
-check-coverage:
-    cargo tarpaulin --all --out Json --output-dir coverage --timeout 120 --fail-under 80 --lib --bins
-
-# Check that coverage meets minimum threshold including database tests
-check-coverage-db: test-env
+check-coverage: test-env
     DATABASE_URL="postgres://postgres:postgres@localhost:5433/test_db" \
     REDIS_URL="redis://localhost:6380" \
     cargo tarpaulin --all --out Json --output-dir coverage --timeout 180 --fail-under 80

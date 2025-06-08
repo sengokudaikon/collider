@@ -11,13 +11,12 @@ pub async fn create_test_event_type(
 }
 
 pub async fn create_test_event_type_with_name(
-    container: &TestPostgresContainer,
-    name: &str,
+    container: &TestPostgresContainer, name: &str,
 ) -> Result<i32> {
     let sqlx_pool = container.connection.get_postgres_connection_pool();
     let row = sqlx::query_as::<_, (i32,)>(
-        "INSERT INTO event_types (name) VALUES ($1) ON CONFLICT \
-         (name) DO UPDATE SET name = EXCLUDED.name RETURNING id",
+        "INSERT INTO event_types (name) VALUES ($1) ON CONFLICT (name) DO \
+         UPDATE SET name = EXCLUDED.name RETURNING id",
     )
     .bind(name)
     .fetch_one(sqlx_pool)
