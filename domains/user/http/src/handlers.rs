@@ -5,6 +5,7 @@ use axum::{
     response::Json,
     routing::{delete, get, post, put},
 };
+use domain::AppError;
 use serde::Deserialize;
 use tracing::instrument;
 use user_commands::{
@@ -193,20 +194,3 @@ async fn get_user_with_metrics(
     }
 }
 
-#[derive(Debug)]
-struct AppError(Box<dyn std::error::Error + Send + Sync>);
-
-impl<E> From<E> for AppError
-where
-    E: Into<Box<dyn std::error::Error + Send + Sync>>,
-{
-    fn from(err: E) -> Self { Self(err.into()) }
-}
-
-impl axum::response::IntoResponse for AppError {
-    fn into_response(self) -> axum::response::Response {
-        let status = StatusCode::INTERNAL_SERVER_ERROR;
-        let message = format!("Internal server error: {}", self.0);
-        (status, message).into_response()
-    }
-}

@@ -47,10 +47,29 @@ impl EventTypeSeeder {
         let mut event_names = Vec::with_capacity(batch_size);
 
         let prefixes = [
-            "user", "page", "button", "form", "video", "purchase",
-            "signup", "login", "click", "view", "download", "share",
-            "comment", "like", "search", "filter", "cart", "checkout",
-            "payment", "notification", "error", "warning", "info",
+            "user",
+            "page",
+            "button",
+            "form",
+            "video",
+            "purchase",
+            "signup",
+            "login",
+            "click",
+            "view",
+            "download",
+            "share",
+            "comment",
+            "like",
+            "search",
+            "filter",
+            "cart",
+            "checkout",
+            "payment",
+            "notification",
+            "error",
+            "warning",
+            "info",
         ];
 
         for _ in 0..batch_size {
@@ -70,12 +89,16 @@ impl EventTypeSeeder {
             event_names.push(event_name);
         }
 
-        event_types::Entity::insert_many(batch_event_types).exec(db).await?;
+        event_types::Entity::insert_many(batch_event_types)
+            .exec(db)
+            .await?;
         Ok(event_names)
     }
 
     #[instrument(skip(self))]
-    async fn generate_event_types(&self, count: usize) -> Result<Vec<String>> {
+    async fn generate_event_types(
+        &self, count: usize,
+    ) -> Result<Vec<String>> {
         info!(
             "Generating {} event types in batches of {}",
             count, self.batch_size
@@ -87,13 +110,15 @@ impl EventTypeSeeder {
         for batch_num in 0..total_batches {
             let batch_start = batch_num * self.batch_size;
             let remaining_types = count - batch_start;
-            let current_batch_size = std::cmp::min(self.batch_size, remaining_types);
+            let current_batch_size =
+                std::cmp::min(self.batch_size, remaining_types);
 
             if current_batch_size == 0 {
                 break;
             }
 
-            let batch_event_names = self.generate_event_type_batch(current_batch_size).await?;
+            let batch_event_names =
+                self.generate_event_type_batch(current_batch_size).await?;
             all_event_names.extend(batch_event_names);
 
             let current_total = batch_start + current_batch_size;

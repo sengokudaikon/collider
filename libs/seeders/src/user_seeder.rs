@@ -80,13 +80,15 @@ impl UserSeeder {
         for batch_num in 0..total_batches {
             let batch_start = batch_num * self.batch_size;
             let remaining_users = count - batch_start;
-            let current_batch_size = std::cmp::min(self.batch_size, remaining_users);
+            let current_batch_size =
+                std::cmp::min(self.batch_size, remaining_users);
 
             if current_batch_size == 0 {
                 break;
             }
 
-            let batch_user_ids = self.generate_user_batch(current_batch_size).await?;
+            let batch_user_ids =
+                self.generate_user_batch(current_batch_size).await?;
             all_user_ids.extend(batch_user_ids);
 
             let current_total = batch_start + current_batch_size;

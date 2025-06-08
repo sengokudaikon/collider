@@ -20,6 +20,9 @@ tracing-subscriber = "0.3"
 uuid = { workspace = true }
 tokio = { workspace = true }
 anyhow = "1.0"
+clap = { version = "4.4", features = ["derive"] }
+ratatui = "0.26"
+crossterm = "0.27"
 
 events-models = { path = "../../domains/events/models" }
 user-models = { path = "../../domains/user/models" }

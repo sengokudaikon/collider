@@ -5,6 +5,7 @@ use axum::{
     routing::{delete, get, post, put},
     Router,
 };
+use domain::AppError;
 use events_commands::{
     CreateEventCommand, CreateEventHandler, DeleteEventHandler,
     UpdateEventCommand, UpdateEventHandler,
@@ -116,20 +117,3 @@ struct ListEventsParams {
     offset: Option<u64>,
 }
 
-#[derive(Debug)]
-struct AppError(Box<dyn std::error::Error + Send + Sync>);
-
-impl<E> From<E> for AppError
-where
-    E: Into<Box<dyn std::error::Error + Send + Sync>>,
-{
-    fn from(err: E) -> Self { Self(err.into()) }
-}
-
-impl axum::response::IntoResponse for AppError {
-    fn into_response(self) -> axum::response::Response {
-        let status = StatusCode::INTERNAL_SERVER_ERROR;
-        let message = format!("Internal server error: {}", self.0);
-        (status, message).into_response()
-    }
-}

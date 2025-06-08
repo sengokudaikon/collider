@@ -18,6 +18,7 @@ members = [
     "libs/persistence/sql_connection",
     "libs/persistence/redis_connection",
     # Shared libs
+    "libs/domain",
     "libs/test-utils",
     "libs/seeders",
 ]
@@ -92,6 +93,7 @@ database-traits = { path = "libs/persistence/database_traits" }
 sql-connection = { path = "libs/persistence/sql_connection" }
 redis-connection = { path = "libs/persistence/redis_connection" }
 seeders = { path = "libs/seeders" }
+domain = { path = "libs/domain" }
 
 [profile.release]
 lto = true
