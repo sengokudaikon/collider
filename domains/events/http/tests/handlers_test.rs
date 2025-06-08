@@ -35,7 +35,8 @@ async fn test_create_event_endpoint() {
 
     let command = CreateEventCommand {
         user_id,
-        event_type_id,
+        event_type: "test_event".to_string(),
+        timestamp: None,
         metadata: Some(json!({"action": "click", "button": "submit"})),
     };
 
@@ -70,7 +71,8 @@ async fn test_create_event_invalid_data() {
     // Try to create event with non-existent event type
     let command = CreateEventCommand {
         user_id,
-        event_type_id: 999, // Non-existent
+        event_type: "non_existent_event_type".to_string(), // Non-existent
+        timestamp: None,
         metadata: None,
     };
 

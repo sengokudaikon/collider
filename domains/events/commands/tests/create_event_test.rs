@@ -21,7 +21,8 @@ async fn test_create_event_success() {
 
     let command = CreateEventCommand {
         user_id,
-        event_type_id,
+        event_type: "test_event".to_string(),
+        timestamp: None,
         metadata: Some(serde_json::json!({"key": "value"})),
     };
 
@@ -41,7 +42,8 @@ async fn test_create_event_without_metadata() {
 
     let command = CreateEventCommand {
         user_id,
-        event_type_id,
+        event_type: "test_event".to_string(),
+        timestamp: None,
         metadata: None,
     };
 
@@ -73,7 +75,8 @@ async fn test_create_event_with_complex_metadata() {
 
     let command = CreateEventCommand {
         user_id,
-        event_type_id,
+        event_type: "test_event".to_string(),
+        timestamp: None,
         metadata: Some(complex_metadata.clone()),
     };
 
@@ -86,11 +89,11 @@ async fn test_create_event_with_complex_metadata() {
 async fn test_create_event_invalid_event_type() {
     let (container, handler) = setup_test_db().await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
-    let invalid_event_type_id = 999;
 
     let command = CreateEventCommand {
         user_id,
-        event_type_id: invalid_event_type_id,
+        event_type: "non_existent_event_type".to_string(),
+        timestamp: None,
         metadata: None,
     };
 
@@ -106,7 +109,8 @@ async fn test_create_event_invalid_user() {
 
     let command = CreateEventCommand {
         user_id: invalid_user_id,
-        event_type_id,
+        event_type: "test_event".to_string(),
+        timestamp: None,
         metadata: None,
     };
 

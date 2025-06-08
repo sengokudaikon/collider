@@ -17,6 +17,7 @@ sqlx.workspace = true
 
 user-models = { path = "../domains/user/models" }
 user-dao = { path = "../domains/user/dao" }
+events-http = { path = "../domains/events/http" }
 test-utils.workspace = true
 seeders = { path = "../libs/seeders" }
 database-traits.workspace = true

@@ -620,6 +620,7 @@ dependencies = [
  "criterion",
  "database-traits",
  "dotenvy",
+ "events-http",
  "redis-connection",
  "sea-orm",
  "seeders",

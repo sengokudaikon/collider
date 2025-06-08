@@ -1,6 +1,7 @@
 use std::net::SocketAddr;
 
 use axum::{Router, http::StatusCode, response::IntoResponse, routing::get};
+use events_http::event_routes;
 use redis_connection::{
     config::RedisDbConfig, connect_redis_db,
     connection::RedisConnectionManager,
@@ -51,8 +52,7 @@ async fn main() -> anyhow::Result<()> {
 
     let app = Router::new()
         .route("/health", get(health_check))
-        // .route("/api/events", post(create_event))
-        // .route("/api/events/count", get(get_event_count))
+        .nest("/api/events", event_routes())
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http());
 

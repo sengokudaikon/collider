@@ -18,6 +18,7 @@ pub enum EventTypeDaoError {
     AlreadyExists,
 }
 
+#[derive(Clone)]
 pub struct EventTypeDao {
     db: SqlConnect,
 }

@@ -1,5 +1,5 @@
 use database_traits::dao::GenericDao;
-use events_dao::EventDao;
+use events_dao::{EventDao, EventTypeDao};
 use events_models::{CreateEventRequest, EventResponse};
 use serde::{Deserialize, Serialize};
 use sql_connection::SqlConnect;
@@ -11,14 +11,17 @@ use uuid::Uuid;
 pub enum CreateEventError {
     #[error("Database error: {0}")]
     Database(#[from] sea_orm::DbErr),
-    #[error("DAO error: {0}")]
-    Dao(#[from] events_dao::EventDaoError),
+    #[error("Event DAO error: {0}")]
+    EventDao(#[from] events_dao::EventDaoError),
+    #[error("Event type DAO error: {0}")]
+    EventTypeDao(#[from] events_dao::EventTypeDaoError),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateEventCommand {
     pub user_id: Uuid,
-    pub event_type_id: i32,
+    pub event_type: String,
+    pub timestamp: Option<chrono::DateTime<chrono::Utc>>,
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -39,12 +42,14 @@ pub struct CreateEventResult {
 #[derive(Clone)]
 pub struct CreateEventHandler {
     event_dao: EventDao,
+    event_type_dao: EventTypeDao,
 }
 
 impl CreateEventHandler {
     pub fn new(db: SqlConnect) -> Self {
         Self {
-            event_dao: EventDao::new(db),
+            event_dao: EventDao::new(db.clone()),
+            event_type_dao: EventTypeDao::new(db),
         }
     }
 
@@ -52,9 +57,12 @@ impl CreateEventHandler {
     pub async fn execute(
         &self, command: CreateEventCommand,
     ) -> Result<CreateEventResult, CreateEventError> {
+        // Look up event type by name to get the ID
+        let event_type = self.event_type_dao.find_by_name(&command.event_type).await?;
+        
         let create_request = CreateEventRequest {
             user_id: command.user_id,
-            event_type_id: command.event_type_id,
+            event_type_id: event_type.id,
             metadata: command.metadata,
         };
 
