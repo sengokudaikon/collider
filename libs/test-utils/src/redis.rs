@@ -1,25 +1,23 @@
 use std::time::Duration;
 
 use deadpool_redis::{Config, Pool, Runtime};
-use testcontainers::{ContainerAsync, runners::AsyncRunner};
-use testcontainers_modules::redis::Redis;
 use tokio::time::sleep;
 
 pub struct TestRedisContainer {
-    #[allow(dead_code)]
-    container: ContainerAsync<Redis>,
     pub pool: Pool,
     pub connection_string: String,
 }
 
 impl TestRedisContainer {
     pub async fn new() -> anyhow::Result<Self> {
-        let container = Redis::default().start().await?;
+        
+        Self::new_with_connection_string("redis://localhost:6380").await
+    }
 
-        let host = container.get_host().await?;
-        let port = container.get_host_port_ipv4(6379).await?;
-
-        let connection_string = format!("redis://{}:{}", host, port);
+    pub async fn new_with_connection_string(
+        connection_string: &str,
+    ) -> anyhow::Result<Self> {
+        let connection_string = connection_string.to_string();
 
         sleep(Duration::from_secs(2)).await;
 
@@ -55,7 +53,6 @@ impl TestRedisContainer {
         }
 
         Ok(Self {
-            container,
             pool,
             connection_string,
         })

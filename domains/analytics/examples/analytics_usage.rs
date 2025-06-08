@@ -37,58 +37,49 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let _redis_pool = connect_redis_db(&redis_config).await?;
 
-    
     let analytics = Arc::new(EventsAnalyticsService::new(sql.clone()));
 
-    
     let event_dao = EventDao::new(sql);
     let processor = EventProcessor::new(event_dao, analytics.clone());
 
-    
     let processing_service = EventProcessingService::new(processor);
     processing_service.start_background_services().await;
 
-    
     let processor = &processing_service.processor;
 
-    
     println!("Creating sample events...");
     let user_id = Uuid::new_v4();
 
     let events = vec![
         CreateEventRequest {
             user_id,
-            event_type_id: 1, 
+            event_type_id: 1,
             metadata: Some(serde_json::json!({"ip": "192.168.1.1"})),
         },
         CreateEventRequest {
             user_id,
-            event_type_id: 2, 
+            event_type_id: 2,
             metadata: Some(serde_json::json!({"page": "/dashboard"})),
         },
         CreateEventRequest {
             user_id,
-            event_type_id: 3, 
+            event_type_id: 3,
             metadata: Some(
                 serde_json::json!({"button": "save", "form": "profile"}),
             ),
         },
     ];
 
-    
     for event_req in events {
         processor.create_event(event_req).await?;
     }
 
-    
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
-    
     println!("\n=== Real-time Analytics ===");
 
     let now = Utc::now();
 
-    
     let minute_metrics = analytics
         .get_real_time_metrics(TimeBucket::Minute, now, None)
         .await?;
@@ -98,7 +89,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         minute_metrics.total_events, minute_metrics.unique_users
     );
 
-    
     let time_series = analytics
         .get_time_series(
             TimeBucket::Hour,
@@ -123,10 +113,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    
     println!("\n=== Complex Analytics (Materialized Views) ===");
 
-    
     let summaries = analytics
         .get_hourly_summaries(
             now - Duration::hours(12),
@@ -147,7 +135,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    // Get user activity
+    
     let activity = analytics
         .get_user_activity(Some(user_id), now - Duration::days(7), now)
         .await?;
@@ -162,7 +150,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    // Get popular events
+    
     let popular = analytics
         .get_popular_events("last_7_days", Some(10))
         .await?;
@@ -178,10 +166,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    // Example 4: High-throughput batch processing
+    
     println!("\n=== Batch Processing ===");
 
-    // Simulate high-volume event creation
+    
     let batch_events: Vec<CreateEventRequest> = (0..1000)
         .map(|i| {
             CreateEventRequest {
@@ -206,10 +194,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         results.len() as f64 / duration.as_secs_f64()
     );
 
-    // Example 5: Background maintenance
+    
     println!("\n=== Background Maintenance ===");
 
-    // Manually refresh materialized views (usually done automatically)
+    
     analytics.refresh_materialized_views().await?;
     println!("Materialized views refreshed successfully");
 
@@ -225,19 +213,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-// Example of how to integrate with your existing event handling
+
 async fn handle_user_action_example(
     processor: &EventProcessor, user_id: Uuid, action: &str,
     metadata: serde_json::Value,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Map actions to event type IDs
+    
     let event_type_id = match action {
         "login" => 1,
         "logout" => 2,
         "page_view" => 3,
         "button_click" => 4,
         "form_submit" => 5,
-        _ => 999, // unknown action
+        _ => 999, 
     };
 
     let event = processor

@@ -300,14 +300,11 @@ mod tests {
 
         let event = event_dao.create(request).await.unwrap();
 
-        
         let result = analytics_service.process_event(&event).await;
         assert!(result.is_ok());
 
-        
         sleep(TokioDuration::from_millis(100)).await;
 
-        
         let metrics = analytics_service
             .get_real_time_metrics(TimeBucket::Hour, Utc::now(), None)
             .await
@@ -319,7 +316,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_analytics_time_series() {
-        
         if std::env::var("DATABASE_URL").is_err() {
             println!(
                 "Skipping integration test - DATABASE_URL not set. Run with \
@@ -336,7 +332,6 @@ mod tests {
         ) = setup_test_analytics().await.unwrap();
         let user_id = create_test_user(&postgres_container).await.unwrap();
 
-        
         for i in 0..3 {
             let request = CreateEventRequest {
                 user_id,
@@ -348,10 +343,8 @@ mod tests {
             analytics_service.process_event(&event).await.unwrap();
         }
 
-        
         sleep(TokioDuration::from_millis(200)).await;
 
-        
         let now = Utc::now();
         let start = now - Duration::hours(1);
         let end = now + Duration::hours(1);
@@ -363,7 +356,6 @@ mod tests {
 
         assert!(!time_series.is_empty());
 
-        
         let current_hour_metrics =
             time_series.iter().find(|(bucket_key, _)| {
                 bucket_key.contains(&now.format("%Y-%m-%d:%H").to_string())
@@ -376,7 +368,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_analytics_with_filters() {
-        
         if std::env::var("DATABASE_URL").is_err() {
             println!(
                 "Skipping integration test - DATABASE_URL not set. Run with \
@@ -393,7 +384,6 @@ mod tests {
         ) = setup_test_analytics().await.unwrap();
         let user_id = create_test_user(&postgres_container).await.unwrap();
 
-        
         for event_type_id in [1, 2] {
             let request = CreateEventRequest {
                 user_id,
@@ -407,10 +397,10 @@ mod tests {
             analytics_service.process_event(&event).await.unwrap();
         }
 
-        // Give Redis time to persist the data
+        
         sleep(TokioDuration::from_millis(200)).await;
 
-        // Test filtering by event type
+        
         let filters = Some(AggregationFilters {
             event_types: Some(vec!["type_1".to_string()]),
             user_ids: None,
@@ -422,13 +412,13 @@ mod tests {
             .await
             .unwrap();
 
-        // Should have metrics for filtered event type
+        
         assert!(metrics.total_events >= 1);
     }
 
     #[tokio::test]
     async fn test_analytics_unique_user_tracking() {
-        // Skip test if test infrastructure is not available
+        
         if std::env::var("DATABASE_URL").is_err() {
             println!(
                 "Skipping integration test - DATABASE_URL not set. Run with \
@@ -444,7 +434,7 @@ mod tests {
             event_dao,
         ) = setup_test_analytics().await.unwrap();
 
-        // Create multiple users
+        
         let mut user_ids = Vec::new();
         for i in 0..3 {
             let user_id = Uuid::now_v7();
@@ -458,7 +448,7 @@ mod tests {
             user_ids.push(user_id);
         }
 
-        // Create events for each user (multiple events per user)
+        
         for (i, user_id) in user_ids.iter().enumerate() {
             for j in 0..2 {
                 let request = CreateEventRequest {
@@ -474,7 +464,7 @@ mod tests {
             }
         }
 
-        // Give Redis time to persist the data
+        
         sleep(TokioDuration::from_millis(300)).await;
 
         let metrics = analytics_service
@@ -482,17 +472,17 @@ mod tests {
             .await
             .unwrap();
 
-        // Should have 6 total events (3 users * 2 events each)
+        
         assert!(metrics.total_events >= 6);
 
-        // Should have 3 unique users (even though we have 6 events)
-        // Note: Due to HyperLogLog approximation, this might be slightly off
+        
+        
         assert!(metrics.unique_users >= 2 && metrics.unique_users <= 4);
     }
 
     #[tokio::test]
     async fn test_analytics_materialized_views() {
-        // Skip test if test infrastructure is not available
+        
         if std::env::var("DATABASE_URL").is_err() {
             println!(
                 "Skipping integration test - DATABASE_URL not set. Run with \
@@ -508,12 +498,12 @@ mod tests {
             _event_dao,
         ) = setup_test_analytics().await.unwrap();
 
-        // Test that materialized view methods don't crash
+        
         let now = Utc::now();
         let start = now - Duration::hours(24);
         let end = now;
 
-        // These might return empty results but shouldn't crash
+        
         let summaries = analytics_service
             .get_hourly_summaries(start, end, Some(vec![1]))
             .await;
@@ -531,7 +521,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_analytics_background_refresh() {
-        // Skip test if test infrastructure is not available
+        
         if std::env::var("DATABASE_URL").is_err() {
             println!(
                 "Skipping integration test - DATABASE_URL not set. Run with \
@@ -547,11 +537,11 @@ mod tests {
             _event_dao,
         ) = setup_test_analytics().await.unwrap();
 
-        // Test that materialized view refresh works
+        
         let result = analytics_service.refresh_materialized_views().await;
 
-        // This might fail if views don't exist yet, but shouldn't crash
-        // In a real system, the views would be created by migrations
+        
+        
         assert!(result.is_ok() || result.is_err());
     }
 }

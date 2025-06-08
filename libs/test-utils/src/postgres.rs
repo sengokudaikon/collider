@@ -3,37 +3,36 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use sea_orm::{Database, DatabaseConnection};
 use sqlx::postgres::PgPoolOptions;
-use testcontainers::{ContainerAsync, runners::AsyncRunner};
-use testcontainers_modules::postgres::Postgres;
 use tokio::time::sleep;
 
 use crate::sql_migrator::SqlMigrator;
 
 pub struct TestPostgresContainer {
-    #[allow(dead_code)]
-    container: ContainerAsync<Postgres>,
     pub connection: DatabaseConnection,
     pub connection_string: String,
 }
 
 impl TestPostgresContainer {
     pub async fn new() -> Result<Self> {
-        let container = Postgres::default()
-            .start()
-            .await
-            .context("Failed to start PostgreSQL container")?;
+        
+        Self::new_with_connection_string(
+            "postgres://postgres:postgres@localhost:5433/test_db",
+        )
+        .await
+    }
 
-        let connection_string =
-            Self::build_connection_string(&container).await?;
+    pub async fn new_with_connection_string(
+        connection_string: &str,
+    ) -> Result<Self> {
+        let connection_string = connection_string.to_string();
 
-        Self::wait_for_postgres_and_setup(&container).await?;
+        Self::wait_for_postgres_ready(&connection_string).await?;
 
         let connection = Database::connect(&connection_string)
             .await
             .context("Failed to create database connection")?;
 
         let instance = Self {
-            container,
             connection,
             connection_string,
         };
@@ -81,39 +80,8 @@ impl TestPostgresContainer {
         Ok(())
     }
 
-    async fn build_connection_string(
-        container: &ContainerAsync<Postgres>,
-    ) -> Result<String> {
-        let host = container
-            .get_host()
-            .await
-            .context("Failed to get container host")?;
-        let port = container
-            .get_host_port_ipv4(5432)
-            .await
-            .context("Failed to get container port")?;
-
-        Ok(format!(
-            "postgres://postgres:postgres@{}:{}/test_db",
-            host, port
-        ))
-    }
-
-    async fn wait_for_postgres_and_setup(
-        container: &ContainerAsync<Postgres>,
-    ) -> Result<()> {
-        let host = container.get_host().await?;
-        let port = container.get_host_port_ipv4(5432).await?;
-        let default_connection_string = format!(
-            "postgres://postgres:postgres@{}:{}/postgres",
-            host, port
-        );
-
-        let pool =
-            Self::wait_for_connection(&default_connection_string).await?;
-
-        Self::create_test_database(&pool).await?;
-
+    async fn wait_for_postgres_ready(connection_string: &str) -> Result<()> {
+        Self::wait_for_connection(connection_string).await?;
         Ok(())
     }
 
@@ -150,20 +118,6 @@ impl TestPostgresContainer {
         }
 
         unreachable!("Loop should have returned or errored")
-    }
-
-    async fn create_test_database(pool: &sqlx::PgPool) -> Result<()> {
-        sqlx::query("DROP DATABASE IF EXISTS test_db")
-            .execute(pool)
-            .await
-            .context("Failed to drop existing test database")?;
-
-        sqlx::query("CREATE DATABASE test_db")
-            .execute(pool)
-            .await
-            .context("Failed to create test database")?;
-
-        Ok(())
     }
 }
 

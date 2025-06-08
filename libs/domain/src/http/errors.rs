@@ -1,7 +1,7 @@
-//! Shared HTTP error handling patterns for domain services.
-//!
-//! This module provides a common `AppError` type that can be used across
-//! all domain HTTP handlers to ensure consistent error responses.
+
+
+
+
 
 use std::fmt;
 
