@@ -5,10 +5,12 @@ use axum::{
     routing::{delete, get, post, put},
     Router,
 };
+use chrono::{DateTime, Utc};
 use domain::AppError;
 use events_commands::{
-    CreateEventCommand, CreateEventHandler, DeleteEventHandler,
-    UpdateEventCommand, UpdateEventHandler,
+    BulkDeleteEventsCommand, BulkDeleteEventsHandler, CreateEventCommand,
+    CreateEventHandler, DeleteEventHandler, UpdateEventCommand,
+    UpdateEventHandler,
 };
 use events_queries::{
     GetEventQuery, GetEventQueryHandler, ListEventsQuery,
@@ -26,6 +28,7 @@ pub struct EventServices {
     pub create_event: CreateEventHandler,
     pub update_event: UpdateEventHandler,
     pub delete_event: DeleteEventHandler,
+    pub bulk_delete_events: BulkDeleteEventsHandler,
 
     pub get_event: GetEventQueryHandler,
     pub list_events: ListEventsQueryHandler,
@@ -37,6 +40,7 @@ impl EventServices {
             create_event: CreateEventHandler::new(db.clone()),
             update_event: UpdateEventHandler::new(db.clone()),
             delete_event: DeleteEventHandler::new(db.clone()),
+            bulk_delete_events: BulkDeleteEventsHandler::new(db.clone()),
             get_event: GetEventQueryHandler::new(db.clone()),
             list_events: ListEventsQueryHandler::new(db),
         }
@@ -50,6 +54,7 @@ impl EventHandlers {
         Router::new()
             .route("/", get(list_events))
             .route("/", post(create_event))
+            .route("/", delete(bulk_delete_events))
             .route("/{id}", get(get_event))
             .route("/{id}", put(update_event))
             .route("/{id}", delete(delete_event))
@@ -115,11 +120,26 @@ async fn list_events(
     State(services): State<EventServices>,
     Query(params): Query<ListEventsParams>,
 ) -> Result<Json<Vec<EventResponse>>, AppError> {
+    let limit = params.limit.unwrap_or(100).min(1000);
+    let offset = params
+        .offset
+        .or_else(|| {
+            params.page.map(|p| {
+                if p > 0 {
+                    (p - 1) * limit
+                }
+                else {
+                    0
+                }
+            })
+        })
+        .unwrap_or(0);
+
     let query = ListEventsQuery {
         user_id: params.user_id,
         event_type_id: params.event_type_id,
-        limit: params.limit,
-        offset: params.offset,
+        limit: Some(limit),
+        offset: Some(offset),
     };
     let events = services
         .list_events
@@ -135,4 +155,26 @@ struct ListEventsParams {
     event_type_id: Option<i32>,
     limit: Option<u64>,
     offset: Option<u64>,
+    page: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BulkDeleteParams {
+    before: DateTime<Utc>,
+}
+
+#[instrument(skip_all)]
+async fn bulk_delete_events(
+    State(services): State<EventServices>,
+    Query(params): Query<BulkDeleteParams>,
+) -> Result<Json<events_commands::BulkDeleteEventsResponse>, AppError> {
+    let command = BulkDeleteEventsCommand {
+        before: params.before,
+    };
+    let result = services
+        .bulk_delete_events
+        .execute(command)
+        .await
+        .map_err(AppError::from_error)?;
+    Ok(Json(result.result))
 }

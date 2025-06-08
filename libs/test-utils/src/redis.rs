@@ -10,7 +10,6 @@ pub struct TestRedisContainer {
 
 impl TestRedisContainer {
     pub async fn new() -> anyhow::Result<Self> {
-        
         Self::new_with_connection_string("redis://localhost:6380").await
     }
 

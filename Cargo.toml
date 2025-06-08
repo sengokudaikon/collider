@@ -13,6 +13,7 @@ members = [
     "domains/events/queries",
     "domains/events/http",
     "domains/analytics",
+    "domains/analytics/http",
     # Shared infrastructure
     "libs/persistence/database_traits",
     "libs/persistence/sql_connection",
@@ -21,6 +22,9 @@ members = [
     "libs/domain",
     "libs/test-utils",
     "libs/seeders",
+    # Binaries
+    "binaries/migrator",
+    "binaries/seeder",
 ]
 
 
@@ -37,6 +41,10 @@ axum-core = "0.5.2"
 tower = "0.5.2"
 tower-http = { version = "0.6.6", features = ["trace", "compression-gzip", "cors"] }
 http = "1.1.0"
+
+# API Documentation
+utoipa = { version = "5.3.1", features = ["axum_extras", "chrono", "uuid"] }
+utoipa-rapidoc = { version = "6.0.0", features = ["axum"] }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
@@ -67,16 +75,13 @@ serde_with = "3.11.0"
 # Environment
 dotenvy = "0.15"
 
-# Test dependencies
-testcontainers = "0.24"
-testcontainers-modules = { version = "0.12", features = ["postgres", "redis"] }
-
 # Performance testing
 goose = { version = "0.18.0", features = ["reqwest"] }
 criterion = { version = "0.6.0", features = ["html_reports"] }
 
 test-utils = { path = "libs/test-utils" }
 analytics = { path = "domains/analytics" }
+analytics-http = { path = "domains/analytics/http" }
 user-models = { path = "domains/user/models" }
 user-dao = { path = "domains/user/dao" }
 user-commands = { path = "domains/user/commands" }

@@ -135,7 +135,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    
     let activity = analytics
         .get_user_activity(Some(user_id), now - Duration::days(7), now)
         .await?;
@@ -150,7 +149,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    
     let popular = analytics
         .get_popular_events("last_7_days", Some(10))
         .await?;
@@ -166,10 +164,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    
     println!("\n=== Batch Processing ===");
 
-    
     let batch_events: Vec<CreateEventRequest> = (0..1000)
         .map(|i| {
             CreateEventRequest {
@@ -194,10 +190,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         results.len() as f64 / duration.as_secs_f64()
     );
 
-    
     println!("\n=== Background Maintenance ===");
 
-    
     analytics.refresh_materialized_views().await?;
     println!("Materialized views refreshed successfully");
 
@@ -213,19 +207,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-
 async fn handle_user_action_example(
     processor: &EventProcessor, user_id: Uuid, action: &str,
     metadata: serde_json::Value,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    
     let event_type_id = match action {
         "login" => 1,
         "logout" => 2,
         "page_view" => 3,
         "button_click" => 4,
         "form_submit" => 5,
-        _ => 999, 
+        _ => 999,
     };
 
     let event = processor

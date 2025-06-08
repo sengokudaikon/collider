@@ -10,7 +10,7 @@ events-commands = { path = "../commands" }
 events-queries = { path = "../queries" }
 
 # Infrastructure
-sql-connection = { path = "../../../libs/persistence/sql_connection" }
+sql-connection.workspace = true
 domain = { workspace = true }
 
 # Web framework
@@ -19,11 +19,12 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 uuid = { workspace = true }
 tracing = { workspace = true }
+chrono.workspace = true
 
 [dev-dependencies]
 test-utils = { workspace = true }
 events-dao = { path = "../dao" }
-database-traits = { path = "../../../libs/persistence/database_traits" }
+database-traits.workspace = true
 sea-orm-migration = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
 anyhow = { workspace = true }

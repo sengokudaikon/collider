@@ -1,0 +1,39 @@
+[package]
+name = "analytics-http"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# Web framework
+axum.workspace = true
+tower-http.workspace = true
+
+# Async runtime
+tokio.workspace = true
+
+# Database
+database-traits.workspace = true
+sql-connection.workspace = true
+
+# Analytics domain
+analytics = { path = ".." }
+events-dao = { path = "../../events/dao" }
+events-models = { path = "../../events/models" }
+
+# Domain lib
+domain.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Logging
+tracing.workspace = true
+
+# Utils
+uuid.workspace = true
+chrono.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+test-utils.workspace = true

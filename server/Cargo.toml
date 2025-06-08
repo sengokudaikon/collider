@@ -18,6 +18,8 @@ sqlx.workspace = true
 user-models = { path = "../domains/user/models" }
 user-dao = { path = "../domains/user/dao" }
 events-http = { path = "../domains/events/http" }
+analytics-http = { path = "../domains/analytics/http" }
+user-http = { path = "../domains/user/http" }
 test-utils.workspace = true
 seeders = { path = "../libs/seeders" }
 database-traits.workspace = true
@@ -41,6 +43,10 @@ thiserror.workspace = true
 
 # Environment
 dotenvy.workspace = true
+
+# API Documentation
+utoipa.workspace = true
+utoipa-rapidoc.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true

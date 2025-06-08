@@ -3,9 +3,6 @@ name = "seeders"
 version = "0.1.0"
 edition = "2024"
 
-[[bin]]
-name = "seed_database"
-path = "src/bin/seed_database.rs"
 
 [dependencies]
 async-trait = { workspace = true }

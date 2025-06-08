@@ -175,4 +175,39 @@ impl EventDao {
 
         Ok(models.into_iter().map(Into::into).collect())
     }
+
+    #[instrument(skip_all)]
+    pub async fn delete_before_timestamp(
+        &self, before: chrono::DateTime<chrono::Utc>,
+    ) -> Result<u64, EventDaoError> {
+        let ctx = self.db.get_transaction().await?;
+
+        let delete_result = EventEntity::delete_many()
+            .filter(EventColumn::Timestamp.lt(before))
+            .exec(&ctx)
+            .await?;
+
+        ctx.submit().await?;
+        Ok(delete_result.rows_affected)
+    }
+
+    #[instrument(skip_all)]
+    pub async fn find_by_user_id(
+        &self, user_id: Uuid, limit: Option<u64>,
+    ) -> Result<Vec<EventResponse>, EventDaoError> {
+        let ctx = self.db.get_transaction().await?;
+
+        let mut query = EventEntity::find()
+            .filter(EventColumn::UserId.eq(user_id))
+            .order_by_desc(EventColumn::Timestamp);
+
+        if let Some(limit) = limit {
+            query = query.limit(limit);
+        }
+
+        let models = query.all(&ctx).await?;
+        ctx.submit().await?;
+
+        Ok(models.into_iter().map(Into::into).collect())
+    }
 }

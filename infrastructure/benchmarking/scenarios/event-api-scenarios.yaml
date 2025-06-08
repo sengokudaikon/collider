@@ -1,0 +1,289 @@
+# Comprehensive Event API Performance Test Scenarios
+# Covers all discovered endpoints with realistic usage patterns
+
+scenarios:
+  # Health Check Scenario
+  health_check:
+    weight: 5
+    endpoint: /health
+    method: GET
+    headers:
+      User-Agent: "LoadTest-HealthCheck/1.0"
+    expected_status: 200
+    timeout_ms: 1000
+    description: "Basic health monitoring endpoint"
+
+  # Event Creation Scenarios
+  create_event_basic:
+    weight: 25
+    endpoint: /api/events
+    method: POST
+    headers:
+      Content-Type: "application/json"
+      User-Agent: "LoadTest-EventCreate/1.0"
+    payload_template: |
+      {
+        "user_id": "{{random_uuid}}",
+        "event_type": "{{random_event_type}}",
+        "timestamp": "{{current_iso_timestamp}}",
+        "metadata": {
+          "action": "{{random_action}}",
+          "page": "{{random_page}}",
+          "element": "{{random_element}}",
+          "browser": "{{random_browser}}",
+          "platform": "{{random_platform}}",
+          "screen_resolution": "{{random_resolution}}",
+          "session_id": "{{session_id}}",
+          "test_run": true
+        }
+      }
+    expected_status: [200, 201]
+    timeout_ms: 2000
+    description: "Create new events with realistic metadata"
+
+  create_event_minimal:
+    weight: 10
+    endpoint: /api/events
+    method: POST
+    headers:
+      Content-Type: "application/json"
+      User-Agent: "LoadTest-EventCreate/1.0"
+    payload_template: |
+      {
+        "user_id": "{{random_uuid}}",
+        "event_type": "{{random_event_type}}"
+      }
+    expected_status: [200, 201]
+    timeout_ms: 2000
+    description: "Create events with minimal required fields"
+
+  create_event_complex:
+    weight: 5
+    endpoint: /api/events
+    method: POST
+    headers:
+      Content-Type: "application/json"
+      User-Agent: "LoadTest-EventCreate/1.0"
+    payload_template: |
+      {
+        "user_id": "{{random_uuid}}",
+        "event_type": "performance_metric",
+        "timestamp": "{{current_iso_timestamp}}",
+        "metadata": {
+          "action": "page_load",
+          "page": "{{random_page}}",
+          "performance_data": {
+            "load_time": {{random_int(100,5000)}},
+            "dom_ready": {{random_int(50,3000)}},
+            "first_paint": {{random_int(30,2000)}},
+            "first_contentful_paint": {{random_int(40,2500)}},
+            "largest_contentful_paint": {{random_int(100,4000)}},
+            "cumulative_layout_shift": {{random_float(0,1)}},
+            "time_to_interactive": {{random_int(200,6000)}}
+          },
+          "browser": "{{random_browser}}",
+          "platform": "{{random_platform}}",
+          "connection_type": "{{random_connection_type}}",
+          "memory_usage": {{random_int(50000000,500000000)}},
+          "cpu_usage": {{random_float(0,100)}},
+          "test_run": true
+        }
+      }
+    expected_status: [200, 201]
+    timeout_ms: 3000
+    description: "Create complex events with performance metrics"
+
+  # Event Listing Scenarios
+  list_events_default:
+    weight: 15
+    endpoint: /api/events
+    method: GET
+    headers:
+      User-Agent: "LoadTest-EventList/1.0"
+    expected_status: 200
+    timeout_ms: 1500
+    description: "List events with default pagination"
+
+  list_events_paginated:
+    weight: 10
+    endpoint: /api/events
+    method: GET
+    query_params:
+      limit: "{{random_int(10,100)}}"
+      offset: "{{random_int(0,1000)}}"
+    headers:
+      User-Agent: "LoadTest-EventList/1.0"
+    expected_status: 200
+    timeout_ms: 2000
+    description: "List events with pagination parameters"
+
+  list_events_filtered:
+    weight: 5
+    endpoint: /api/events
+    method: GET
+    query_params:
+      user_id: "{{random_existing_user_id}}"
+      limit: "50"
+    headers:
+      User-Agent: "LoadTest-EventList/1.0"
+    expected_status: 200
+    timeout_ms: 1500
+    description: "List events filtered by user"
+
+  # Event Retrieval Scenarios
+  get_event_by_id:
+    weight: 12
+    endpoint: /api/events/{{random_existing_event_id}}
+    method: GET
+    headers:
+      User-Agent: "LoadTest-EventGet/1.0"
+    expected_status: [200, 404]
+    timeout_ms: 1000
+    description: "Get specific event by ID"
+
+  get_event_with_caching:
+    weight: 3
+    endpoint: /api/events/{{popular_event_id}}
+    method: GET
+    headers:
+      User-Agent: "LoadTest-EventGet/1.0"
+      Cache-Control: "max-age=300"
+    expected_status: 200
+    timeout_ms: 500
+    description: "Get frequently accessed events (cache testing)"
+
+  # Event Update Scenarios
+  update_event_metadata:
+    weight: 5
+    endpoint: /api/events/{{random_existing_event_id}}
+    method: PUT
+    headers:
+      Content-Type: "application/json"
+      User-Agent: "LoadTest-EventUpdate/1.0"
+    payload_template: |
+      {
+        "metadata": {
+          "updated_at": "{{current_iso_timestamp}}",
+          "update_reason": "load_test_modification",
+          "updated_fields": ["metadata"],
+          "test_run": true
+        }
+      }
+    expected_status: [200, 404]
+    timeout_ms: 2000
+    description: "Update event metadata"
+
+  update_event_type:
+    weight: 2
+    endpoint: /api/events/{{random_existing_event_id}}
+    method: PUT
+    headers:
+      Content-Type: "application/json"
+      User-Agent: "LoadTest-EventUpdate/1.0"
+    payload_template: |
+      {
+        "event_type_id": {{random_int(1,10)}}
+      }
+    expected_status: [200, 404]
+    timeout_ms: 2000
+    description: "Update event type"
+
+  # Event Deletion Scenarios
+  delete_event:
+    weight: 3
+    endpoint: /api/events/{{random_deletable_event_id}}
+    method: DELETE
+    headers:
+      User-Agent: "LoadTest-EventDelete/1.0"
+    expected_status: [204, 404]
+    timeout_ms: 1500
+    description: "Delete event"
+
+# Variable definitions for template replacement
+variables:
+  random_event_types:
+    - "user_action"
+    - "page_view"
+    - "click"
+    - "form_submission"
+    - "search"
+    - "download"
+    - "purchase"
+    - "registration"
+    - "login"
+    - "logout"
+    - "error"
+    - "performance_metric"
+
+  random_actions:
+    - "click"
+    - "view"
+    - "scroll"
+    - "hover"
+    - "submit"
+    - "search"
+    - "download"
+    - "upload"
+    - "share"
+    - "bookmark"
+
+  random_pages:
+    - "/"
+    - "/dashboard"
+    - "/profile"
+    - "/settings"
+    - "/analytics"
+    - "/events"
+    - "/reports"
+    - "/admin"
+    - "/help"
+    - "/contact"
+
+  random_elements:
+    - "button_submit"
+    - "link_navigation"
+    - "form_contact"
+    - "menu_main"
+    - "card_product"
+    - "table_data"
+    - "input_search"
+    - "modal_dialog"
+    - "chart_analytics"
+    - "list_items"
+
+  random_browsers:
+    - "Chrome/120.0.0.0"
+    - "Firefox/119.0"
+    - "Safari/17.1"
+    - "Edge/119.0.0.0"
+
+  random_platforms:
+    - "Windows"
+    - "macOS"
+    - "Linux"
+    - "iOS"
+    - "Android"
+
+  random_resolutions:
+    - "1920x1080"
+    - "1366x768"
+    - "1536x864"
+    - "1440x900"
+    - "2560x1440"
+    - "1024x768"
+    - "3840x2160"
+
+  random_connection_types:
+    - "4g"
+    - "3g"
+    - "wifi"
+    - "ethernet"
+    - "5g"
+
+# Performance thresholds
+thresholds:
+  response_time_p95: 500ms
+  response_time_p99: 1000ms
+  error_rate_max: 1%
+  timeout_rate_max: 0.5%
+  throughput_min: 1000rps

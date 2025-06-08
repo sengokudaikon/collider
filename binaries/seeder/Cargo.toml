@@ -1,0 +1,25 @@
+[package]
+name = "seeder"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "seeder"
+path = "src/main.rs"
+
+[dependencies]
+async-trait = { workspace = true }
+tokio = { workspace = true }
+anyhow = "1.0"
+tracing = { workspace = true }
+tracing-subscriber = "0.3"
+
+# CLI and TUI dependencies
+clap = { version = "4.4", features = ["derive"] }
+ratatui = "0.26"
+crossterm = "0.27"
+
+# Local dependencies
+sql-connection = { path = "../../libs/persistence/sql_connection" }
+database-traits = { path = "../../libs/persistence/database_traits" }
+seeders = { path = "../../libs/seeders" }

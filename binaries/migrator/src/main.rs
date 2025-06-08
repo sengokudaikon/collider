@@ -9,11 +9,7 @@ use sql_connection::{
 use test_utils::SqlMigrator;
 use tracing::{Level, info};
 
-mod migrator {
-    pub mod tui;
-}
-
-use migrator::tui;
+mod tui;
 
 #[derive(Parser)]
 #[command(name = "migrator")]

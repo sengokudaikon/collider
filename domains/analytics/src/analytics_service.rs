@@ -397,10 +397,8 @@ mod tests {
             analytics_service.process_event(&event).await.unwrap();
         }
 
-        
         sleep(TokioDuration::from_millis(200)).await;
 
-        
         let filters = Some(AggregationFilters {
             event_types: Some(vec!["type_1".to_string()]),
             user_ids: None,
@@ -412,13 +410,11 @@ mod tests {
             .await
             .unwrap();
 
-        
         assert!(metrics.total_events >= 1);
     }
 
     #[tokio::test]
     async fn test_analytics_unique_user_tracking() {
-        
         if std::env::var("DATABASE_URL").is_err() {
             println!(
                 "Skipping integration test - DATABASE_URL not set. Run with \
@@ -434,7 +430,6 @@ mod tests {
             event_dao,
         ) = setup_test_analytics().await.unwrap();
 
-        
         let mut user_ids = Vec::new();
         for i in 0..3 {
             let user_id = Uuid::now_v7();
@@ -448,7 +443,6 @@ mod tests {
             user_ids.push(user_id);
         }
 
-        
         for (i, user_id) in user_ids.iter().enumerate() {
             for j in 0..2 {
                 let request = CreateEventRequest {
@@ -464,7 +458,6 @@ mod tests {
             }
         }
 
-        
         sleep(TokioDuration::from_millis(300)).await;
 
         let metrics = analytics_service
@@ -472,17 +465,13 @@ mod tests {
             .await
             .unwrap();
 
-        
         assert!(metrics.total_events >= 6);
 
-        
-        
         assert!(metrics.unique_users >= 2 && metrics.unique_users <= 4);
     }
 
     #[tokio::test]
     async fn test_analytics_materialized_views() {
-        
         if std::env::var("DATABASE_URL").is_err() {
             println!(
                 "Skipping integration test - DATABASE_URL not set. Run with \
@@ -498,12 +487,10 @@ mod tests {
             _event_dao,
         ) = setup_test_analytics().await.unwrap();
 
-        
         let now = Utc::now();
         let start = now - Duration::hours(24);
         let end = now;
 
-        
         let summaries = analytics_service
             .get_hourly_summaries(start, end, Some(vec![1]))
             .await;
@@ -521,7 +508,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_analytics_background_refresh() {
-        
         if std::env::var("DATABASE_URL").is_err() {
             println!(
                 "Skipping integration test - DATABASE_URL not set. Run with \
@@ -537,11 +523,8 @@ mod tests {
             _event_dao,
         ) = setup_test_analytics().await.unwrap();
 
-        
         let result = analytics_service.refresh_materialized_views().await;
 
-        
-        
         assert!(result.is_ok() || result.is_err());
     }
 }

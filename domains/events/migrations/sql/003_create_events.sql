@@ -13,8 +13,17 @@ CREATE INDEX IF NOT EXISTS idx_events_user_type_timestamp ON events (user_id, ev
 CREATE INDEX IF NOT EXISTS idx_events_timestamp_btree ON events (timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_events_metadata_gin ON events USING GIN (metadata);
 
-ALTER TABLE events
-    SET (fillfactor = 90);
-ALTER TABLE events
-    ADD CONSTRAINT check_metadata_size
-        CHECK (octet_length(metadata::text) <= 65536); -- 64KB limit
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'check_metadata_size' 
+        AND conrelid = 'events'::regclass
+    ) THEN
+        ALTER TABLE events
+            ADD CONSTRAINT check_metadata_size
+                CHECK (octet_length(metadata::text) <= 65536); -- 64KB limit
+    END IF;
+END $$;
+
+ALTER TABLE events SET (fillfactor = 90);

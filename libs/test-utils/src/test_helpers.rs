@@ -7,28 +7,33 @@ use crate::postgres::TestPostgresContainer;
 pub async fn create_test_event_type(
     container: &TestPostgresContainer,
 ) -> Result<i32> {
-    container
-        .execute_sql(
-            "INSERT INTO event_types (id, name) VALUES (1, 'test_event')",
-        )
-        .await?;
-    Ok(1)
+    let sqlx_pool = container.connection.get_postgres_connection_pool();
+    let row = sqlx::query_as::<_, (i32,)>(
+        "INSERT INTO event_types (name) VALUES ('test_event') ON CONFLICT \
+         (name) DO UPDATE SET name = EXCLUDED.name RETURNING id",
+    )
+    .fetch_one(sqlx_pool)
+    .await?;
+    Ok(row.0)
 }
 
 pub async fn create_test_event_types(
     container: &TestPostgresContainer,
 ) -> Result<(i32, i32)> {
-    container
-        .execute_sql(
-            "INSERT INTO event_types (id, name) VALUES (1, 'login_event')",
-        )
-        .await?;
-    container
-        .execute_sql(
-            "INSERT INTO event_types (id, name) VALUES (2, 'logout_event')",
-        )
-        .await?;
-    Ok((1, 2))
+    let sqlx_pool = container.connection.get_postgres_connection_pool();
+    let login_row = sqlx::query_as::<_, (i32,)>(
+        "INSERT INTO event_types (name) VALUES ('login_event') ON CONFLICT \
+         (name) DO UPDATE SET name = EXCLUDED.name RETURNING id",
+    )
+    .fetch_one(sqlx_pool)
+    .await?;
+    let logout_row = sqlx::query_as::<_, (i32,)>(
+        "INSERT INTO event_types (name) VALUES ('logout_event') ON CONFLICT \
+         (name) DO UPDATE SET name = EXCLUDED.name RETURNING id",
+    )
+    .fetch_one(sqlx_pool)
+    .await?;
+    Ok((login_row.0, logout_row.0))
 }
 
 pub async fn create_test_user(
@@ -36,8 +41,8 @@ pub async fn create_test_user(
 ) -> Result<Uuid> {
     let user_id = Uuid::now_v7();
     let query = format!(
-        "INSERT INTO users (id, name, email, created_at, updated_at) VALUES \
-         ('{}', 'Test User', 'test@example.com', NOW(), NOW())",
+        "INSERT INTO users (id, name, created_at) VALUES ('{}', 'Test \
+         User', NOW())",
         user_id
     );
     container.execute_sql(&query).await?;
@@ -49,11 +54,8 @@ pub async fn create_test_user_with_name(
 ) -> Result<Uuid> {
     let user_id = Uuid::now_v7();
     let query = format!(
-        "INSERT INTO users (id, name, email, created_at, updated_at) VALUES \
-         ('{}', '{}', '{}@example.com', NOW(), NOW())",
-        user_id,
-        name,
-        name.to_lowercase().replace(" ", "")
+        "INSERT INTO users (id, name, created_at) VALUES ('{}', '{}', NOW())",
+        user_id, name
     );
     container.execute_sql(&query).await?;
     Ok(user_id)
@@ -103,13 +105,24 @@ mod tests {
     #[tokio::test]
     async fn test_create_test_event_type() {
         let container = TestPostgresContainer::new().await.unwrap();
+
+        // Clean any existing data
+        let _ = clean_test_data(&container).await;
+
         let event_type_id = create_test_event_type(&container).await.unwrap();
-        assert_eq!(event_type_id, 1);
+        assert!(event_type_id > 0);
+
+        // Clean up after test
+        let _ = clean_test_data(&container).await;
     }
 
     #[tokio::test]
     async fn test_create_test_user() {
         let container = TestPostgresContainer::new().await.unwrap();
+
+        // Clean any existing data
+        let _ = clean_test_data(&container).await;
+
         let user_id = create_test_user(&container).await.unwrap();
         let result = container
             .execute_sql(&format!(
@@ -118,11 +131,17 @@ mod tests {
             ))
             .await;
         assert!(result.is_ok());
+
+        // Clean up after test
+        let _ = clean_test_data(&container).await;
     }
 
     #[tokio::test]
     async fn test_create_test_event() {
         let container = TestPostgresContainer::new().await.unwrap();
+
+        // Clean any existing data
+        let _ = clean_test_data(&container).await;
 
         let event_type_id = create_test_event_type(&container).await.unwrap();
         let user_id = create_test_user(&container).await.unwrap();
@@ -142,5 +161,8 @@ mod tests {
             ))
             .await;
         assert!(result.is_ok());
+
+        // Clean up after test
+        let _ = clean_test_data(&container).await;
     }
 }

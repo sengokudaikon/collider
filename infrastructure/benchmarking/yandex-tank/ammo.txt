@@ -1,0 +1,69 @@
+# Yandex Tank ammunition file
+# Format: [size] [tag]
+# [uri]
+# [headers]
+# [body]
+
+474 create_event
+POST /api/events HTTP/1.1
+Host: localhost:8080
+User-Agent: YandexTank/LoadTest
+Content-Type: application/json
+Connection: close
+
+{
+  "data": {
+    "event_type": "user_action",
+    "timestamp": "2025-06-08T10:30:00Z",
+    "user_id": "tank_user_001",
+    "session_id": "tank_session_001",
+    "action": "click",
+    "element": "button_submit",
+    "page": "/dashboard",
+    "metadata": {
+      "browser": "Chrome",
+      "version": "120.0.0.0",
+      "platform": "Linux",
+      "screen_resolution": "1920x1080",
+      "load_test": true
+    }
+  }
+}
+
+0 health_check
+GET /health HTTP/1.1
+Host: localhost:8080
+User-Agent: YandexTank/LoadTest
+Connection: close
+
+0 events_count
+GET /api/events/count HTTP/1.1
+Host: localhost:8080
+User-Agent: YandexTank/LoadTest
+Connection: close
+
+312 user_analytics
+GET /api/users/tank_user_001/analytics HTTP/1.1
+Host: localhost:8080
+User-Agent: YandexTank/LoadTest
+Connection: close
+
+586 create_user
+POST /api/users HTTP/1.1
+Host: localhost:8080
+User-Agent: YandexTank/LoadTest
+Content-Type: application/json
+Connection: close
+
+{
+  "data": {
+    "id": "tank_user_002",
+    "name": "Tank Test User",
+    "email": "tank@loadtest.example",
+    "created_at": "2025-06-08T10:30:00Z",
+    "metadata": {
+      "test_run": true,
+      "load_test_id": "yandex_tank_run_001"
+    }
+  }
+}

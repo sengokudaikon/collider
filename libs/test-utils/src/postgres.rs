@@ -14,7 +14,6 @@ pub struct TestPostgresContainer {
 
 impl TestPostgresContainer {
     pub async fn new() -> Result<Self> {
-        
         Self::new_with_connection_string(
             "postgres://postgres:postgres@localhost:5433/test_db",
         )

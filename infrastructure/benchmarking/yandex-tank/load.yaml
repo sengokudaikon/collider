@@ -1,0 +1,51 @@
+phantom:
+  address: localhost:8080 # Target address
+  uris:
+    - /health
+    - /api/events
+    - /api/events/count
+  headers:
+    - "Content-Type: application/json"
+    - "User-Agent: YandexTank/1.0"
+  
+  # Load profile: progressive ramp-up from 100 to 10000 RPS
+  load_profile:
+    load_type: rps  # requests per second
+    schedule: line(100, 500, 30s) line(500, 1000, 30s) line(1000, 5000, 60s) line(5000, 10000, 60s) const(10000, 300s)
+  
+  # HTTP client settings
+  ssl: false
+  timeout: 30s
+  connection_timeout: 10s
+  max_connections: 1000
+  
+  # Ammo (payloads)
+  ammo_file: ammo.txt
+  ammo_type: phantom
+
+console:
+  enabled: true
+  short_only: false
+
+telegraf:
+  enabled: false
+
+# Results monitoring and output
+monitoring:
+  enabled: true
+  config: monitoring.xml
+
+autostop:
+  enabled: true
+  autostop:
+    - "instances(5000,10s)"  # Stop if 5000+ instances for 10s
+    - "quantile(99,100ms,30s)"  # Stop if 99th percentile > 100ms for 30s
+    - "http(5xx,10%,30s)"  # Stop if 5xx errors > 10% for 30s
+    - "steady_cumulative(100s)"  # Stop after 100s of steady state
+
+overload:
+  enabled: true
+  package: yandextank.plugins.DataUploader
+  token_file: token.txt
+  
+core: {}
