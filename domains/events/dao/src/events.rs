@@ -136,6 +136,13 @@ impl GenericDao for EventDao {
 
     async fn delete(&self, id: Self::ID) -> Result<(), Self::Error> {
         let ctx = self.db.get_transaction().await?;
+        
+        // Check if event exists first
+        let _event = EventEntity::find_by_id(id)
+            .one(&ctx)
+            .await?
+            .ok_or(EventDaoError::NotFound)?;
+        
         EventEntity::delete_by_id(id).exec(&ctx).await?;
         ctx.submit().await?;
         Ok(())

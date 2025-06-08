@@ -94,7 +94,96 @@ clean-test:
     just test-env-down
 
 # ==== Development Environment ====
-# Run backend in development mode
+
+# Docker Compose Local Development
+# Start full development environment
+dev-up:
+    @echo "Starting full development environment..."
+    docker compose up -d
+    @echo "Development environment started!"
+    @echo "Services available at:"
+    @echo "  Application: http://localhost:8080"
+    @echo "  PostgreSQL: localhost:5432"
+    @echo "  Dragonfly (Redis): localhost:6379"
+    @echo "  Prometheus: http://localhost:9090"
+    @echo "  Grafana: http://localhost:3000 (admin/admin)"
+    @echo "  Jaeger: http://localhost:16686"
+
+# Start with full monitoring stack (includes nginx)
+dev-up-full:
+    @echo "Starting full development environment with nginx..."
+    docker compose --profile full up -d
+    @echo "Full environment started! App available at http://localhost (port 80)"
+
+# Start only core services (app, db, cache)
+dev-up-core:
+    @echo "Starting core services only..."
+    docker compose up -d postgres dragonfly app
+    @echo "Core services started: app (8080), postgres (5432), dragonfly (6379)"
+
+# Stop development environment
+dev-down:
+    docker compose down
+
+# Stop and remove volumes (full cleanup)
+dev-down-clean:
+    docker compose down -v
+    docker system prune -f
+
+# View logs for all services
+dev-logs:
+    docker compose logs -f
+
+# View logs for specific service
+dev-logs-app:
+    docker compose logs -f app
+
+dev-logs-db:
+    docker compose logs -f postgres
+
+# Check health of all services
+dev-health:
+    @echo "Checking service health..."
+    docker compose ps
+    @echo ""
+    @echo "Service endpoints:"
+    @curl -s http://localhost:8080/health || echo "❌ App not healthy"
+    @docker exec collider_postgres_dev pg_isready -U postgres -d events && echo "✅ PostgreSQL healthy" || echo "❌ PostgreSQL not healthy"
+    @docker exec collider_dragonfly_dev redis-cli ping && echo "✅ Dragonfly healthy" || echo "❌ Dragonfly not healthy"
+
+# Rebuild and restart app container
+dev-rebuild:
+    docker compose up -d --build app
+
+# Setup development environment (copy env, run migrations, seed data)
+dev-setup: dev-up
+    @echo "Setting up development environment..."
+    @if [ ! -f .env ]; then cp .env.example .env && echo "📄 Created .env from template"; fi
+    @echo "⏳ Waiting for services to be ready..."
+    @sleep 10
+    @echo "🔄 Running database migrations..."
+    DATABASE_URL="postgres://postgres:postgres@localhost:5432/events" cargo run --bin migrator -- up
+    @echo "🌱 Seeding database with sample data..."
+    DATABASE_URL="postgres://postgres:postgres@localhost:5432/events" cargo run --bin seeder -- all --min-users 100 --max-users 1000 --target-events 10000
+    @echo "✅ Development environment ready!"
+
+# Run database migrations against dev environment
+dev-migrate:
+    DATABASE_URL="postgres://postgres:postgres@localhost:5432/events" cargo run --bin migrator -- up
+
+# Seed development database
+dev-seed:
+    DATABASE_URL="postgres://postgres:postgres@localhost:5432/events" cargo run --bin seeder -- all --min-users 100 --max-users 1000 --target-events 10000
+
+# Connect to development database
+dev-db:
+    docker exec -it collider_postgres_dev psql -U postgres -d events
+
+# Connect to development cache
+dev-cache:
+    docker exec -it collider_dragonfly_dev redis-cli
+
+# Run backend in development mode (native, not containerized)
 dev:
     cd server && cargo run
 

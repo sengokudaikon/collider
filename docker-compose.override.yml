@@ -1,0 +1,27 @@
+# Override file for different development modes
+# Use: docker-compose -f docker-compose.yml -f docker-compose.override.yml up
+
+services:
+  # Development overrides for faster iteration
+  app:
+    build:
+      target: builder  # Stop at builder stage for faster rebuilds
+    volumes:
+      - .:/app:delegated  # Use delegated for better performance on macOS
+      - /app/target  # Anonymous volume to avoid conflicts
+    environment:
+      RUST_LOG: trace  # More verbose logging for development
+    command: ["cargo", "watch", "-x", "run", "--bin", "collider"]
+
+  # Reduced resource limits for local development
+  postgres:
+    command: >
+      postgres 
+      -c log_statement=all 
+      -c log_destination=stderr
+      -c max_connections=50
+      -c shared_buffers=128MB
+      -c effective_cache_size=256MB
+
+  dragonfly:
+    command: dragonfly --logtostderr --maxmemory=512mb --cache_mode=true --proactor_threads=1
