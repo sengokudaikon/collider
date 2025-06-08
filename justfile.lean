@@ -125,7 +125,7 @@ dev-setup: dev-up
     @echo "🔄 Running database migrations..."
     DATABASE_URL="postgres://postgres:postgres@localhost:5432/events" cargo run --bin migrator -- up
     @echo "🌱 Seeding database with sample data..."
-    DATABASE_URL="postgres://postgres:postgres@localhost:5432/events" cargo run --bin seeder -- all --min-users 100 --max-users 1000 --target-events 10000
+    DATABASE_URL="postgres://postgres:postgres@localhost:5432/events" cargo run --bin seeder -- all --min-users 100 --max-users 1000 --target-events 10000000
     @echo "✅ Development environment ready!"
 
 # Run all quality checks

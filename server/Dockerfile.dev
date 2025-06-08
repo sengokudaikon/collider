@@ -1,23 +1,26 @@
-FROM rust:1.87-alpine
+# Use a specific version for reproducibility
+FROM rust:1.78-alpine AS base
 
-# Install dependencies for development
+# Install system dependencies required for building and running
 RUN apk add --no-cache \
+    build-base \
     pkgconfig \
     openssl-dev \
     postgresql-dev \
-    postgresql-client \
+    libpq-dev \
     musl-dev
 
-# Install cargo-watch for hot reloading and sccache for faster compilation
-RUN cargo install cargo-watch sccache
-
-# Set working directory
+# Set up the working directory
 WORKDIR /app
 
-# Copy workspace Cargo files first
-COPY Cargo.toml Cargo.lock ./
+# Install cargo-watch for hot-reloading
+RUN cargo install cargo-watch
 
-# Copy all workspace member Cargo.toml files to cache dependencies
+# --- Builder Stage ---
+FROM base AS builder
+
+# Copy only the necessary files to cache dependencies
+COPY Cargo.toml Cargo.lock ./
 COPY server/Cargo.toml ./server/
 COPY domains/user/models/Cargo.toml ./domains/user/models/
 COPY domains/user/dao/Cargo.toml ./domains/user/dao/
@@ -40,44 +43,40 @@ COPY libs/seeders/Cargo.toml ./libs/seeders/
 COPY binaries/migrator/Cargo.toml ./binaries/migrator/
 COPY binaries/seeder/Cargo.toml ./binaries/seeder/
 
-# Create dummy source files for workspace members to cache dependencies
+# Create dummy main.rs files to allow dependency caching
 RUN mkdir -p server/src && echo "fn main() {}" > server/src/main.rs
-RUN mkdir -p domains/user/models/src && echo "" > domains/user/models/src/lib.rs
-RUN mkdir -p domains/user/dao/src && echo "" > domains/user/dao/src/lib.rs
-RUN mkdir -p domains/user/commands/src && echo "" > domains/user/commands/src/lib.rs
-RUN mkdir -p domains/user/queries/src && echo "" > domains/user/queries/src/lib.rs
-RUN mkdir -p domains/user/http/src && echo "" > domains/user/http/src/lib.rs
-RUN mkdir -p domains/events/models/src && echo "" > domains/events/models/src/lib.rs
-RUN mkdir -p domains/events/dao/src && echo "" > domains/events/dao/src/lib.rs
-RUN mkdir -p domains/events/commands/src && echo "" > domains/events/commands/src/lib.rs
-RUN mkdir -p domains/events/queries/src && echo "" > domains/events/queries/src/lib.rs
-RUN mkdir -p domains/events/http/src && echo "" > domains/events/http/src/lib.rs
-RUN mkdir -p domains/analytics/src && echo "" > domains/analytics/src/lib.rs
-RUN mkdir -p domains/analytics/http/src && echo "" > domains/analytics/http/src/lib.rs
-RUN mkdir -p libs/persistence/database_traits/src && echo "" > libs/persistence/database_traits/src/lib.rs
-RUN mkdir -p libs/persistence/sql_connection/src && echo "" > libs/persistence/sql_connection/src/lib.rs
-RUN mkdir -p libs/persistence/redis_connection/src && echo "" > libs/persistence/redis_connection/src/lib.rs
-RUN mkdir -p libs/domain/src && echo "" > libs/domain/src/lib.rs
-RUN mkdir -p libs/test-utils/src && echo "" > libs/test-utils/src/lib.rs
-RUN mkdir -p libs/seeders/src && echo "" > libs/seeders/src/lib.rs
+RUN mkdir -p domains/user/models/src && echo "pub fn lib() {}" > domains/user/models/src/lib.rs
+RUN mkdir -p domains/user/dao/src && echo "pub fn lib() {}" > domains/user/dao/src/lib.rs
+RUN mkdir -p domains/user/commands/src && echo "pub fn lib() {}" > domains/user/commands/src/lib.rs
+RUN mkdir -p domains/user/queries/src && echo "pub fn lib() {}" > domains/user/queries/src/lib.rs
+RUN mkdir -p domains/user/http/src && echo "pub fn lib() {}" > domains/user/http/src/lib.rs
+RUN mkdir -p domains/events/models/src && echo "pub fn lib() {}" > domains/events/models/src/lib.rs
+RUN mkdir -p domains/events/dao/src && echo "pub fn lib() {}" > domains/events/dao/src/lib.rs
+RUN mkdir -p domains/events/commands/src && echo "pub fn lib() {}" > domains/events/commands/src/lib.rs
+RUN mkdir -p domains/events/queries/src && echo "pub fn lib() {}" > domains/events/queries/src/lib.rs
+RUN mkdir -p domains/events/http/src && echo "pub fn lib() {}" > domains/events/http/src/lib.rs
+RUN mkdir -p domains/analytics/src && echo "pub fn lib() {}" > domains/analytics/src/lib.rs
+RUN mkdir -p domains/analytics/http/src && echo "pub fn lib() {}" > domains/analytics/http/src/lib.rs
+RUN mkdir -p libs/persistence/database_traits/src && echo "pub fn lib() {}" > libs/persistence/database_traits/src/lib.rs
+RUN mkdir -p libs/persistence/sql_connection/src && echo "pub fn lib() {}" > libs/persistence/sql_connection/src/lib.rs
+RUN mkdir -p libs/persistence/redis_connection/src && echo "pub fn lib() {}" > libs/persistence/redis_connection/src/lib.rs
+RUN mkdir -p libs/domain/src && echo "pub fn lib() {}" > libs/domain/src/lib.rs
+RUN mkdir -p libs/test-utils/src && echo "pub fn lib() {}" > libs/test-utils/src/lib.rs
+RUN mkdir -p libs/seeders/src && echo "pub fn lib() {}" > libs/seeders/src/lib.rs
 RUN mkdir -p binaries/migrator/src && echo "fn main() {}" > binaries/migrator/src/main.rs
 RUN mkdir -p binaries/seeder/src && echo "fn main() {}" > binaries/seeder/src/main.rs
 
-# Configure sccache for faster development builds
-ENV RUSTC_WRAPPER=sccache
-ENV SCCACHE_DIR=/app/.sccache
+# Build dependencies
+RUN cargo build --workspace --bins --exclude benchmarks
 
-# Build dependencies (this layer will be cached) - exclude benchmarks  
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/app/target \
-    --mount=type=cache,target=/app/.sccache \
-    cargo build --workspace --exclude benchmarks -j $(nproc)
+# --- Development Stage ---
+FROM builder AS development
 
-# Copy source code
+# Copy the rest of the source code
 COPY . .
 
-# Expose port
+# Expose the application port
 EXPOSE 8080
 
-# Development command with hot reloading
+# Set the entrypoint to run the application with hot-reloading
 CMD ["cargo", "watch", "-x", "run", "--bin", "collider"]

@@ -4,8 +4,6 @@
 services:
   # Development overrides for faster iteration
   app:
-    build:
-      target: builder  # Stop at builder stage for faster rebuilds
     volumes:
       - .:/app:delegated  # Use delegated for better performance on macOS
       - /app/target  # Anonymous volume to avoid conflicts
