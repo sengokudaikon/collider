@@ -191,9 +191,9 @@ async fn list_users(
 
 #[instrument(skip_all)]
 async fn get_user_by_name(
-    State(services): State<UserServices>, Path(username): Path<String>,
+    State(services): State<UserServices>, Path(name): Path<String>,
 ) -> Result<Json<UserResponse>, AppError> {
-    let query = user_queries::GetUserByNameQuery { username };
+    let query = user_queries::GetUserByNameQuery { name };
     let user = services
         .get_user_by_name
         .execute(query)

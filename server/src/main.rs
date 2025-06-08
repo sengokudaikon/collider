@@ -32,7 +32,7 @@ async fn main() -> anyhow::Result<()> {
 
     let db_config = PostgresDbConfig {
         uri: std::env::var("DATABASE_URL").unwrap_or_else(|_| {
-            "postgresql://postgres:password@localhost/collider".to_string()
+            "postgresql://postgres:postgres@localhost/postgres".to_string()
         }),
         max_conn: Some(100),
         min_conn: Some(20),

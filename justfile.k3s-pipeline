@@ -33,11 +33,11 @@ k3s-pipeline:
     docker compose -f docker-compose.test.yml run --rm wait-for-services
     
     echo "Setting up test database..."
-    DATABASE_URL="postgresql://postgres:postgres@localhost:5433/test_db" \
+    DATABASE_URL="postgresql://postgres:postgres@localhost:5433/postgres" \
     cargo run --bin migrator -- up
     
     echo "Running comprehensive tests with coverage..."
-    DATABASE_URL="postgres://postgres:postgres@localhost:5433/test_db" \
+    DATABASE_URL="postgres://postgres:postgres@localhost:5433/postgres" \
     REDIS_URL="redis://localhost:6380" \
     cargo tarpaulin --all --out Html --out Json --output-dir "$RESULTS_DIR" --timeout 180
     
@@ -71,7 +71,7 @@ k3s-pipeline:
         kubectl port-forward -n collider svc/postgres 5432:5432 &
         PF_PID=$!
         sleep 5
-        DATABASE_URL="postgres://postgres:gcp-local-password@localhost:5432/events" \
+        DATABASE_URL="postgres://postgres:gcp-local-password@localhost:5432/postgres" \
         cargo run --bin migrator -- up
         kill $PF_PID 2>/dev/null || true
     }
@@ -81,7 +81,7 @@ k3s-pipeline:
     PF_PID=$!
     sleep 5
     
-    DATABASE_URL="postgres://postgres:gcp-local-password@localhost:5432/events" \
+    DATABASE_URL="postgres://postgres:gcp-local-password@localhost:5432/postgres" \
     cargo run --bin seeder -- all --min-users 5000 --max-users 10000 --target-events 1000000
     
     kill $PF_PID 2>/dev/null || true
@@ -218,7 +218,7 @@ quick-k3s-pipeline:
     docker compose -f docker-compose.test.yml up -d
     docker compose -f docker-compose.test.yml run --rm wait-for-services
     
-    DATABASE_URL="postgres://postgres:postgres@localhost:5433/test_db" \
+    DATABASE_URL="postgres://postgres:postgres@localhost:5433/postgres" \
     REDIS_URL="redis://localhost:6380" \
     cargo test --all | tee "$RESULTS_DIR/test_output.log"
     
@@ -271,7 +271,7 @@ k3s-benchmark-pipeline:
     PF_PID=$!
     sleep 5
     
-    DATABASE_URL="postgres://postgres:gcp-local-password@localhost:5432/events" \
+    DATABASE_URL="postgres://postgres:gcp-local-password@localhost:5432/postgres" \
     cargo run --bin seeder -- all --min-users 10000 --max-users 20000 --target-events 2000000
     
     kill $PF_PID 2>/dev/null || true

@@ -263,8 +263,8 @@ mod tests {
     ) -> anyhow::Result<Uuid> {
         let user_id = Uuid::now_v7();
         let query = format!(
-            "INSERT INTO users (id, name, created_at, updated_at) VALUES \
-             ('{}', 'Test User', NOW(), NOW())",
+            "INSERT INTO users (id, name, created_at) VALUES \
+             ('{}', 'Test User', NOW())",
             user_id
         );
         container.execute_sql(&query).await?;

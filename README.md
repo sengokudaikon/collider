@@ -56,7 +56,7 @@ Services will be available at:
    createdb collider
    
    # Set environment variables
-   export DATABASE_URL="postgresql://user:password@localhost/collider"
+   export DATABASE_URL="postgresql://postgres:postgres@localhost/postgres"
    export REDIS_HOST="127.0.0.1"
    export REDIS_PORT="6379"
    ```

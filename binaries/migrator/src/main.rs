@@ -46,7 +46,7 @@ async fn main() -> Result<()> {
 
     let database_url = cli.database_url.unwrap_or_else(|| {
         env::var("DATABASE_URL").unwrap_or_else(|_| {
-            "postgresql://postgres:password@localhost:5432/collider"
+            "postgresql://postgres:postgres@localhost:5432/postgres"
                 .to_string()
         })
     });

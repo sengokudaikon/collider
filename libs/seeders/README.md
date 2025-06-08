@@ -15,7 +15,7 @@ This library provides a comprehensive seeding system for generating test data in
 
 ```bash
 # Use environment variables to configure seeding
-export DATABASE_URL="postgresql://user:password@localhost:5432/collider"
+export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/postgres"
 export MIN_USERS=10000
 export MAX_USERS=100000
 export MIN_EVENT_TYPES=50
@@ -31,7 +31,7 @@ cargo run --bin seed_database
 
 | Environment Variable | Default | Description |
 |---------------------|---------|-------------|
-| `DATABASE_URL` | `postgresql://user:password@localhost:5432/collider` | PostgreSQL connection string |
+| `DATABASE_URL` | `postgresql://postgres:postgres@localhost:5432/postgres` | PostgreSQL connection string |
 | `MIN_USERS` | `10000` | Minimum number of users to generate |
 | `MAX_USERS` | `100000` | Maximum number of users to generate |
 | `MIN_EVENT_TYPES` | `50` | Minimum number of event types to generate |

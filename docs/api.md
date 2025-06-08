@@ -64,10 +64,8 @@ curl "http://localhost:8080/api/users?include_metrics=true&limit=10"
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440000",
-  "username": "john_doe",
-  "full_name": "John Doe",
-  "created_at": "2024-01-15T10:30:00Z",
-  "updated_at": "2024-01-15T10:30:00Z"
+  "name": "John Doe",
+  "created_at": "2024-01-15T10:30:00Z"
 }
 ```
 
@@ -166,8 +164,7 @@ curl "http://localhost:8080/api/events?user_id=550e8400-e29b-41d4-a716-446655440
     "action": "click",
     "element": "button"
   },
-  "created_at": "2024-01-15T10:30:00Z",
-  "updated_at": "2024-01-15T10:30:00Z"
+  "created_at": "2024-01-15T10:30:00Z"
 }
 ```
 

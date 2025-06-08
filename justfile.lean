@@ -51,14 +51,14 @@ test-unit:
 
 # Run all tests (requires test environment)
 test: test-env
-    DATABASE_URL="postgres://postgres:postgres@localhost:5433/test_db" \
+    DATABASE_URL="postgres://postgres:postgres@localhost:5433/postgres" \
     REDIS_URL="redis://localhost:6380" \
     cargo test --all
     just test-env-down
 
 # Run tests with coverage
 coverage: test-env
-    DATABASE_URL="postgres://postgres:postgres@localhost:5433/test_db" \
+    DATABASE_URL="postgres://postgres:postgres@localhost:5433/postgres" \
     REDIS_URL="redis://localhost:6380" \
     cargo tarpaulin --all --out Html --output-dir coverage --timeout 180
     just test-env-down
@@ -123,9 +123,9 @@ dev-setup: dev-up
     @echo "⏳ Waiting for services to be ready..."
     @sleep 10
     @echo "🔄 Running database migrations..."
-    DATABASE_URL="postgres://postgres:postgres@localhost:5432/events" cargo run --bin migrator -- up
+    DATABASE_URL="postgres://postgres:postgres@localhost:5432/postgres" cargo run --bin migrator -- up
     @echo "🌱 Seeding database with sample data..."
-    DATABASE_URL="postgres://postgres:postgres@localhost:5432/events" cargo run --bin seeder -- all --min-users 100 --max-users 1000 --target-events 10000000
+    DATABASE_URL="postgres://postgres:postgres@localhost:5432/postgres" cargo run --bin seeder -- all --min-users 100 --max-users 1000 --target-events 10000000
     @echo "✅ Development environment ready!"
 
 # Run all quality checks

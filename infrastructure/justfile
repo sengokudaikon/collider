@@ -84,7 +84,7 @@ cluster-endpoints:
     @echo "Application:  http://localhost:30080"
     @echo "              curl -s http://localhost:30080/health"
     @echo "Database:     localhost:30432"
-    @echo "              psql postgres://postgres:gcp-local-password@localhost:30432/events"
+    @echo "              psql postgres://postgres:gcp-local-password@localhost:30432/postgres"
     @echo "Cache:        localhost:30379"
     @echo "              redis-cli -h localhost -p 30379"
     @echo "Prometheus:   http://localhost:30090"

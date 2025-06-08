@@ -57,4 +57,4 @@ The TUI provides:
 
 ### Environment Variables
 
-- `DATABASE_URL`: PostgreSQL connection string (default: `postgresql://postgres:password@localhost:5432/collider`)
+- `DATABASE_URL`: PostgreSQL connection string (default: `postgresql://postgres:postgres@localhost:5432/postgres`)

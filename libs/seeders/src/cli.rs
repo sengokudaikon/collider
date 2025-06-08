@@ -65,7 +65,7 @@ pub enum Commands {
 impl Cli {
     pub fn get_database_url(&self) -> String {
         self.database_url.clone().unwrap_or_else(|| {
-            "postgresql://user:password@localhost:5432/collider".to_string()
+            "postgresql://postgres:postgres@localhost:5432/postgres".to_string()
         })
     }
 }
