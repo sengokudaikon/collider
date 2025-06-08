@@ -1,5 +1,5 @@
 # Use a specific version for reproducibility
-FROM rust:1.78-alpine AS base
+FROM rust:1.87-alpine AS base
 
 # Install system dependencies required for building and running
 RUN apk add --no-cache \

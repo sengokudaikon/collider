@@ -1,5 +1,5 @@
 # Multi-stage Dockerfile for benchmarking
-FROM rust:1.75-bullseye as builder
+FROM rust:1.87-alpine as builder
 
 WORKDIR /app
 COPY . .
