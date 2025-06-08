@@ -1,3 +1,5 @@
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -6,57 +8,100 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { UserButton } from "@clerk/clerk-react";
 import { Loader } from "lucide-react";
 import useSWR from "swr";
 
 export interface UserSchema {
-  first_name: string;
-  last_name: string;
+  id: string;
   username: string;
-  email_addresses: { email_address: string; id: string }[];
-  profile_image_url: string;
+  events: Array<{ id: string }>;
+  metrics?: {
+    total_events: number;
+    events_last_24h: number;
+    events_last_7d: number;
+    events_last_30d: number;
+    most_frequent_event_type: string | null;
+    event_type_counts: Array<{
+      event_type: string;
+      count: number;
+    }>;
+  };
 }
 
 export default function UsersTable() {
-  const { isLoading, data } = useSWR("/api/users", (url) => fetch(url).then(res => res.json()));
+  const { isLoading, data, error } = useSWR<UserSchema[]>("/api/users", (url: string) =>
+    fetch(url).then((res) => res.json())
+  );
+
+  if (error) {
+    return (
+      <div className="text-center py-8">
+        <p className="text-red-600">Failed to load users</p>
+      </div>
+    );
+  }
 
   return (
-    <>
-      <div className="fixed top-6 right-6">
-        <UserButton afterSignOutUrl="/" />
-      </div>
-      {isLoading && <Loader className="w-4 h-4 animate-spin" />}
-      {!isLoading && (
+    <div className="w-full">
+      {isLoading && (
+        <div className="flex justify-center py-8">
+          <Loader className="w-6 h-6 animate-spin" />
+        </div>
+      )}
+      {!isLoading && data && (
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Avatar</TableHead>
-              <TableHead>First Name</TableHead>
-              <TableHead>Last Name</TableHead>
-              <TableHead>Username</TableHead>
-              <TableHead>Email</TableHead>
+              <TableHead>User</TableHead>
+              <TableHead>Events</TableHead>
+              <TableHead>Activity</TableHead>
+              <TableHead>Top Event Type</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {data.map((user: UserSchema, i: number) => (
-              <TableRow key={i}>
+            {data.map((user: UserSchema) => (
+              <TableRow key={user.id}>
                 <TableCell>
-                  <Avatar>
-                    <AvatarImage src={user?.profile_image_url} />
-                    <AvatarFallback>{user?.username}</AvatarFallback>
-                  </Avatar>
+                  <div className="flex items-center space-x-3">
+                    <Avatar>
+                      <AvatarImage src={`https://avatar.vercel.sh/${user.username}`} />
+                      <AvatarFallback>{user.username.slice(0, 2).toUpperCase()}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <div className="font-medium">{user.username}</div>
+                      <div className="text-sm text-gray-500">ID: {user.id.slice(0, 8)}...</div>
+                    </div>
+                  </div>
                 </TableCell>
-                <TableCell>{user?.first_name}</TableCell>
-                <TableCell>{user?.last_name}</TableCell>
-                <TableCell>{user?.username}</TableCell>
-                <TableCell>{user?.email_addresses?.[0].email_address}</TableCell>
+                <TableCell>
+                  <div className="font-medium">{user.metrics?.total_events || 0}</div>
+                  <div className="text-sm text-gray-500">total events</div>
+                </TableCell>
+                <TableCell>
+                  <div className="text-sm">
+                    <div>24h: {user.metrics?.events_last_24h || 0}</div>
+                    <div className="text-gray-500">7d: {user.metrics?.events_last_7d || 0}</div>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  {user.metrics?.most_frequent_event_type ? (
+                    <Badge variant="outline" className="text-xs">
+                      {user.metrics.most_frequent_event_type}
+                    </Badge>
+                  ) : (
+                    <span className="text-gray-400 text-sm">None</span>
+                  )}
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       )}
-    </>
+      {!isLoading && data && data.length === 0 && (
+        <div className="text-center py-8">
+          <p className="text-gray-500">No users found</p>
+        </div>
+      )}
+    </div>
   );
 }

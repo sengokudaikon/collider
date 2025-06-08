@@ -1,12 +1,13 @@
 FROM rust:1.87-alpine as builder
 
-# Install build dependencies including sccache for faster compilation
+# Install build dependencies including static SSL libraries for sccache
 RUN apk add --no-cache \
     pkgconfig \
     openssl-dev \
+    openssl-libs-static \
     postgresql-dev \
     musl-dev \
-    && cargo install sccache
+    && cargo install cargo-watch sccache
 
 WORKDIR /app
 

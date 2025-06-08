@@ -1,16 +1,31 @@
-import { SignIn, SignedIn, SignedOut } from "@clerk/clerk-react";
-import UsersTable from "./components/users-table";
+import { Route, BrowserRouter as Router, Routes } from "react-router-dom";
+import Header from "./components/layout/Header";
+import Sidebar from "./components/layout/Sidebar";
+import AnalyticsPage from "./pages/AnalyticsPage";
+import BenchmarksPage from "./pages/BenchmarksPage";
+import Dashboard from "./pages/Dashboard";
+import EventsPage from "./pages/EventsPage";
+import UsersPage from "./pages/UsersPage";
 
 function App() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-between p-24">
-      <SignedOut>
-        <SignIn />
-      </SignedOut>
-      <SignedIn>
-        <UsersTable />
-      </SignedIn>
-    </main>
+    <Router>
+      <div className="flex h-screen bg-gray-50">
+        <Sidebar />
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <Header />
+          <main className="flex-1 overflow-y-auto p-6">
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/users" element={<UsersPage />} />
+              <Route path="/events" element={<EventsPage />} />
+              <Route path="/analytics" element={<AnalyticsPage />} />
+              <Route path="/benchmarks" element={<BenchmarksPage />} />
+            </Routes>
+          </main>
+        </div>
+      </div>
+    </Router>
   );
 }
 

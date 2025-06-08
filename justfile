@@ -57,6 +57,10 @@ test-unit:
 test:
     just -f justfile.lean test
 
+# Run tests with coverage
+coverage:
+    just -f justfile.lean coverage
+
 # ==== Database (delegate to justfile.lean) ====
 
 # Run migrations

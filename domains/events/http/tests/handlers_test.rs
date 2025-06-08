@@ -145,8 +145,8 @@ async fn test_update_event_endpoint() {
 
     container
         .execute_sql(
-            "INSERT INTO event_types (id, name, description) VALUES (2, \
-             'updated_event', 'Updated event type')",
+            "INSERT INTO event_types (id, name) VALUES (2, \
+             'updated_event')",
         )
         .await
         .unwrap();
@@ -255,8 +255,8 @@ async fn test_list_events_with_filters() {
 
     let user_id_2 = Uuid::now_v7();
     let query = format!(
-        "INSERT INTO users (id, name, email, created_at, updated_at) VALUES \
-         ('{}', 'User 2', 'user2@example.com', NOW(), NOW())",
+        "INSERT INTO users (id, name, created_at) VALUES \
+         ('{}', 'User 2', NOW())",
         user_id_2
     );
     container.execute_sql(&query).await.unwrap();

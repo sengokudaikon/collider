@@ -56,6 +56,14 @@ test: test-env
     cargo test --all
     just test-env-down
 
+# Run tests with coverage
+coverage: test-env
+    DATABASE_URL="postgres://postgres:postgres@localhost:5433/test_db" \
+    REDIS_URL="redis://localhost:6380" \
+    cargo tarpaulin --all --out Html --output-dir coverage --timeout 180
+    just test-env-down
+    @echo "✅ Coverage analysis completed!"
+
 # ==== Database ====
 
 # Run migrations
@@ -137,6 +145,7 @@ help:
     @echo "Testing:"
     @echo "  just test             # Run all tests"
     @echo "  just test-unit        # Unit tests only"
+    @echo "  just coverage         # Tests with coverage"
     @echo ""
     @echo "Quality:"
     @echo "  just quality          # All checks"
