@@ -1,6 +1,6 @@
-use std::time::Duration;
+use std::{hint::black_box, time::Duration};
 
-use criterion::{black_box, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion};
 use tokio::runtime::Runtime;
 
 pub fn benchmark_http_requests(c: &mut Criterion) {
@@ -114,9 +114,13 @@ pub fn benchmark_http_requests(c: &mut Criterion) {
     group.bench_function("bulk_delete_events", |b| {
         b.to_async(&rt).iter(|| {
             async {
-                let before_date = chrono::Utc::now() - chrono::Duration::hours(1);
+                let before_date =
+                    chrono::Utc::now() - chrono::Duration::hours(1);
                 let response = client
-                    .delete(&format!("http://localhost:8080/api/events?before={}", before_date.to_rfc3339()))
+                    .delete(&format!(
+                        "http://localhost:8080/api/events?before={}",
+                        before_date.to_rfc3339()
+                    ))
                     .send()
                     .await
                     .unwrap();

@@ -8,8 +8,8 @@ RUN apk add --no-cache \
     postgresql-client \
     musl-dev
 
-# Install cargo-watch for hot reloading
-RUN cargo install cargo-watch
+# Install cargo-watch for hot reloading and sccache for faster compilation
+RUN cargo install cargo-watch sccache
 
 # Set working directory
 WORKDIR /app
@@ -63,10 +63,15 @@ RUN mkdir -p libs/seeders/src && echo "" > libs/seeders/src/lib.rs
 RUN mkdir -p binaries/migrator/src && echo "fn main() {}" > binaries/migrator/src/main.rs
 RUN mkdir -p binaries/seeder/src && echo "fn main() {}" > binaries/seeder/src/main.rs
 
-# Build dependencies (this layer will be cached)
+# Configure sccache for faster development builds
+ENV RUSTC_WRAPPER=sccache
+ENV SCCACHE_DIR=/app/.sccache
+
+# Build dependencies (this layer will be cached) - exclude benchmarks  
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/app/target \
-    cargo build --workspace
+    --mount=type=cache,target=/app/.sccache \
+    cargo build --workspace --exclude benchmarks -j $(nproc)
 
 # Copy source code
 COPY . .

@@ -2,8 +2,8 @@ use std::time::Duration;
 
 use criterion::{criterion_group, criterion_main, Criterion};
 
-mod criterion_bench;
 mod cli_bench;
+mod criterion_bench;
 
 fn bench_http(c: &mut Criterion) {
     criterion_bench::benchmark_http_requests(c);

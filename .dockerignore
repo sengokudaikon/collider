@@ -1,0 +1,56 @@
+# Exclude benchmark files and directories
+benchmarks/
+infrastructure/benchmarking/
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+docs/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+
+# Build artifacts (will be mounted as volumes)
+target/
+.cargo/
+
+# Environment files (use secrets management instead)
+.env*
+!.env.example
+
+# Test files
+tests/integration/
+
+# Coverage and profiling
+coverage/
+*.profraw
+
+# Node.js frontend (if needed, should be built separately)
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+
+# Kubernetes and deployment configs (not needed in runtime container)
+charts/
+infrastructure/terraform/
+*.yml
+*.yaml
+docker-compose*.yml
+
+# Scripts (not needed in runtime container)
+scripts/

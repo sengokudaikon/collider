@@ -1,0 +1,350 @@
+#!/usr/bin/env just --justfile
+
+# Mega pipeline justfile for comprehensive testing and benchmarking workflows
+# Usage: just -f justfile.pipeline <recipe>
+
+# Default recipe
+default:
+    @just --list
+
+# ==== Mega Pipeline ====
+
+# Complete workflow: docker test up → coverage tests → shutdown test → dev up → all benchmarks
+mega-pipeline:
+    #!/usr/bin/env bash
+    set -e
+    echo "🚀 Starting Mega Pipeline - Complete Test & Benchmark Workflow"
+    echo "============================================================="
+    
+    # Create results directory with timestamp
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    RESULTS_DIR="pipeline_results/mega_pipeline_$TIMESTAMP"
+    mkdir -p "$RESULTS_DIR"
+    
+    echo "📁 Results will be saved to: $RESULTS_DIR"
+    
+    # Phase 1: Test Environment + Coverage
+    echo ""
+    echo "🧪 Phase 1: Test Environment + Coverage Testing"
+    echo "==============================================="
+    
+    echo "Starting test environment..."
+    docker compose -f docker-compose.test.yml up -d
+    docker compose -f docker-compose.test.yml run --rm wait-for-services
+    
+    echo "Setting up test database..."
+    DATABASE_URL="postgresql://postgres:postgres@localhost:5433/test_db" \
+    cargo run --bin migrator -- up
+    
+    echo "Running comprehensive tests with coverage..."
+    DATABASE_URL="postgres://postgres:postgres@localhost:5433/test_db" \
+    REDIS_URL="redis://localhost:6380" \
+    cargo tarpaulin --all --out Html --out Json --output-dir "$RESULTS_DIR" --timeout 180
+    
+    echo "Shutting down test environment..."
+    docker compose -f docker-compose.test.yml down -v
+    
+    # Phase 2: Development Environment Setup
+    echo ""
+    echo "🏗️  Phase 2: Development Environment Setup"
+    echo "=========================================="
+    
+    echo "Starting development environment..."
+    docker compose up -d
+    
+    echo "Waiting for services to be ready..."
+    sleep 15
+    
+    echo "Setting up development database..."
+    DATABASE_URL="postgres://postgres:postgres@localhost:5432/events" \
+    cargo run --bin migrator -- up
+    
+    DATABASE_URL="postgres://postgres:postgres@localhost:5432/events" \
+    cargo run --bin seeder -- all --min-users 1000 --max-users 5000 --target-events 100000
+    
+    # Wait for app to be ready
+    echo "Waiting for application to be ready..."
+    until curl -f http://localhost:8080/health &>/dev/null; do
+        echo "  Waiting for app..."
+        sleep 5
+    done
+    echo "✅ Application ready!"
+    
+    # Phase 3: Comprehensive Benchmarking
+    echo ""
+    echo "📊 Phase 3: Comprehensive Benchmarking"
+    echo "======================================"
+    
+    # Start monitoring in background
+    {
+        echo "Starting performance monitoring..."
+        while true; do
+            echo "=== $(date) ===" >> "$RESULTS_DIR/system_monitor.log"
+            docker stats --no-stream >> "$RESULTS_DIR/system_monitor.log"
+            echo "" >> "$RESULTS_DIR/system_monitor.log"
+            sleep 10
+        done
+    } &
+    MONITOR_PID=$!
+    
+    # Run all benchmarks with output capture
+    {
+        echo "🔬 Running Criterion benchmarks..."
+        cargo bench --package collider-benchmarks 2>&1
+        
+        echo ""
+        echo "🚀 Running K6 load tests..."
+        docker run --rm --network collider \
+            -v $(pwd)/infrastructure/benchmarking/k6:/scripts \
+            grafana/k6:latest run /scripts/load-test.js 2>&1 || echo "K6 test completed with warnings"
+        
+        echo ""
+        echo "🦆 Running Goose load tests..."
+        cd infrastructure/benchmarking
+        timeout 300s cargo run --bin goose_load_test 2>&1 || echo "Goose test completed/timed out"
+        cd ../..
+        
+        echo ""
+        echo "⚡ Running Vegeta tests..."
+        cd infrastructure/benchmarking
+        timeout 120s ./run_load_test.sh localhost:8080 2>&1 || echo "Vegeta test completed/timed out"
+        cd ../..
+        
+    } | tee "$RESULTS_DIR/benchmark_output.log"
+    
+    # Stop monitoring
+    kill $MONITOR_PID 2>/dev/null || true
+    
+    # Phase 4: Performance Analysis
+    echo ""
+    echo "📈 Phase 4: Performance Analysis"
+    echo "==============================="
+    
+    # Collect final metrics
+    echo "Collecting final application metrics..."
+    curl -s http://localhost:8080/metrics > "$RESULTS_DIR/final_metrics.txt" 2>/dev/null || echo "Metrics not available"
+    
+    # Container stats
+    echo "Collecting container statistics..."
+    docker stats --no-stream > "$RESULTS_DIR/final_docker_stats.txt"
+    
+    # Binary analysis
+    echo "Analyzing binary size..."
+    cargo bloat --release --crates > "$RESULTS_DIR/binary_analysis.txt" 2>/dev/null || true
+    
+    echo ""
+    echo "✅ Mega Pipeline Complete!"
+    echo "========================="
+    echo "📁 Results directory: $RESULTS_DIR"
+    echo "📊 Coverage report: $RESULTS_DIR/tarpaulin-report.html"
+    echo "📈 Benchmark output: $RESULTS_DIR/benchmark_output.log"
+    echo "📋 System monitoring: $RESULTS_DIR/system_monitor.log"
+    echo ""
+    echo "🔧 Development environment is still running at:"
+    echo "   Application: http://localhost:8080"
+    echo "   Prometheus: http://localhost:9090"
+    echo "   Grafana: http://localhost:3000"
+    echo ""
+    echo "Use 'just -f justfile.pipeline stop-dev' to shut down"
+
+# Stop development environment
+stop-dev:
+    docker compose down
+    @echo "✅ Development environment stopped"
+
+# Quick pipeline (reduced scope for faster execution)
+quick-pipeline:
+    #!/usr/bin/env bash
+    set -e
+    echo "⚡ Quick Pipeline - Fast Test & Benchmark Workflow"
+    echo "================================================="
+    
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    RESULTS_DIR="pipeline_results/quick_pipeline_$TIMESTAMP"
+    mkdir -p "$RESULTS_DIR"
+    
+    # Quick tests
+    echo "🧪 Running quick tests..."
+    docker compose -f docker-compose.test.yml up -d
+    docker compose -f docker-compose.test.yml run --rm wait-for-services
+    
+    DATABASE_URL="postgres://postgres:postgres@localhost:5433/test_db" \
+    REDIS_URL="redis://localhost:6380" \
+    cargo test --all | tee "$RESULTS_DIR/test_output.log"
+    
+    docker compose -f docker-compose.test.yml down -v
+    
+    # Quick dev setup
+    echo "🏗️  Starting dev environment..."
+    docker compose up -d
+    sleep 10
+    
+    # Quick benchmarks
+    echo "📊 Running quick benchmarks..."
+    {
+        cargo bench --package collider-benchmarks -- --sample-size 10 --measurement-time 5 2>&1
+    } | tee "$RESULTS_DIR/quick_benchmark.log"
+    
+    echo "✅ Quick Pipeline Complete! Results in: $RESULTS_DIR"
+
+# Coverage-only pipeline
+coverage-pipeline:
+    #!/usr/bin/env bash
+    set -e
+    echo "🧪 Coverage Pipeline - Comprehensive Test Coverage"
+    echo "================================================="
+    
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    RESULTS_DIR="pipeline_results/coverage_$TIMESTAMP"
+    mkdir -p "$RESULTS_DIR"
+    
+    # Start test environment
+    docker compose -f docker-compose.test.yml up -d
+    docker compose -f docker-compose.test.yml run --rm wait-for-services
+    
+    # Setup database
+    DATABASE_URL="postgresql://postgres:postgres@localhost:5433/test_db" \
+    cargo run --bin migrator -- up
+    
+    # Run comprehensive coverage
+    DATABASE_URL="postgres://postgres:postgres@localhost:5433/test_db" \
+    REDIS_URL="redis://localhost:6380" \
+    cargo tarpaulin --all --out Html --out Json --out Lcov --output-dir "$RESULTS_DIR" --timeout 300 --fail-under 75
+    
+    # Cleanup
+    docker compose -f docker-compose.test.yml down -v
+    
+    echo "✅ Coverage analysis complete!"
+    echo "📊 HTML Report: $RESULTS_DIR/tarpaulin-report.html"
+    echo "📋 JSON Report: $RESULTS_DIR/tarpaulin-report.json"
+
+# Benchmark-only pipeline
+benchmark-pipeline:
+    #!/usr/bin/env bash
+    set -e
+    echo "📊 Benchmark Pipeline - Comprehensive Performance Testing"
+    echo "========================================================"
+    
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    RESULTS_DIR="pipeline_results/benchmarks_$TIMESTAMP"
+    mkdir -p "$RESULTS_DIR"
+    
+    # Start dev environment
+    docker compose up -d
+    sleep 15
+    
+    # Setup with more data for realistic benchmarks
+    DATABASE_URL="postgres://postgres:postgres@localhost:5432/events" \
+    cargo run --bin migrator -- up
+    
+    DATABASE_URL="postgres://postgres:postgres@localhost:5432/events" \
+    cargo run --bin seeder -- all --min-users 5000 --max-users 10000 --target-events 1000000
+    
+    # Wait for app
+    until curl -f http://localhost:8080/health &>/dev/null; do
+        sleep 5
+    done
+    
+    # Comprehensive benchmarks
+    {
+        echo "=== Criterion Micro-benchmarks ==="
+        cargo bench --package collider-benchmarks
+        
+        echo ""
+        echo "=== K6 Load Testing ==="
+        docker run --rm --network collider \
+            -v $(pwd)/infrastructure/benchmarking/k6:/scripts \
+            grafana/k6:latest run /scripts/scenarios/endurance-test.js
+        
+        echo ""
+        echo "=== Goose Rust Load Testing ==="
+        cd infrastructure/benchmarking
+        timeout 600s cargo run --bin goose_load_test
+        cd ../..
+        
+        echo ""
+        echo "=== Performance Profiling ==="
+        cargo bloat --release --crates
+        
+    } | tee "$RESULTS_DIR/comprehensive_benchmarks.log"
+    
+    # Collect metrics
+    curl -s http://localhost:8080/metrics > "$RESULTS_DIR/app_metrics.txt" || true
+    docker stats --no-stream > "$RESULTS_DIR/container_stats.txt"
+    
+    echo "✅ Comprehensive benchmarking complete!"
+    echo "📁 Results: $RESULTS_DIR"
+
+# Performance regression testing pipeline
+regression-pipeline baseline_dir:
+    #!/usr/bin/env bash
+    set -e
+    echo "🔍 Regression Pipeline - Performance Regression Detection"
+    echo "========================================================"
+    
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    RESULTS_DIR="pipeline_results/regression_$TIMESTAMP"
+    mkdir -p "$RESULTS_DIR"
+    
+    # Run current benchmarks
+    just -f justfile.pipeline benchmark-pipeline
+    
+    # Compare with baseline (basic comparison)
+    if [ -d "{{baseline_dir}}" ]; then
+        echo "📊 Comparing with baseline: {{baseline_dir}}"
+        
+        echo "=== Benchmark Comparison ===" > "$RESULTS_DIR/regression_analysis.txt"
+        echo "Baseline: {{baseline_dir}}" >> "$RESULTS_DIR/regression_analysis.txt"
+        echo "Current: pipeline_results/benchmarks_*" >> "$RESULTS_DIR/regression_analysis.txt"
+        echo "" >> "$RESULTS_DIR/regression_analysis.txt"
+        
+        # Simple file size comparison as proxy for performance
+        echo "File size comparison (rough performance indicator):" >> "$RESULTS_DIR/regression_analysis.txt"
+        du -sh {{baseline_dir}}/* >> "$RESULTS_DIR/regression_analysis.txt" || true
+        du -sh pipeline_results/benchmarks_*/comprehensive_benchmarks.log >> "$RESULTS_DIR/regression_analysis.txt" || true
+        
+        echo "✅ Regression analysis complete!"
+        echo "📋 Analysis: $RESULTS_DIR/regression_analysis.txt"
+    else
+        echo "⚠️  Baseline directory not found: {{baseline_dir}}"
+        echo "Current results can be used as baseline for future comparisons"
+    fi
+
+# Clean all pipeline results
+clean:
+    rm -rf pipeline_results/
+    rm -rf target/criterion/
+    rm -rf coverage/
+    @echo "✅ All pipeline results cleaned"
+
+# Show pipeline results
+results:
+    @echo "📊 Pipeline Results"
+    @echo "=================="
+    @find pipeline_results -name "*.log" -o -name "*.html" -o -name "*.json" 2>/dev/null | head -20 || echo "No results found"
+    @echo ""
+    @echo "Latest results:"
+    @ls -la pipeline_results/ 2>/dev/null | tail -10 || echo "No pipeline results directory"
+
+# Help for pipeline commands
+help:
+    @echo "🚀 Collider Pipeline Commands"
+    @echo "============================"
+    @echo ""
+    @echo "Main Pipelines:"
+    @echo "  just -f justfile.pipeline mega-pipeline      # Complete workflow (2-3 hours)"
+    @echo "  just -f justfile.pipeline quick-pipeline     # Fast workflow (10-15 min)"
+    @echo ""
+    @echo "Specialized Pipelines:"
+    @echo "  just -f justfile.pipeline coverage-pipeline  # Coverage testing only"
+    @echo "  just -f justfile.pipeline benchmark-pipeline # Benchmarking only"
+    @echo "  just -f justfile.pipeline regression-pipeline DIR # Compare with baseline"
+    @echo ""
+    @echo "Utilities:"
+    @echo "  just -f justfile.pipeline stop-dev           # Stop development environment"
+    @echo "  just -f justfile.pipeline results            # Show available results"
+    @echo "  just -f justfile.pipeline clean              # Clean all results"
+    @echo ""
+    @echo "Examples:"
+    @echo "  just -f justfile.pipeline mega-pipeline"
+    @echo "  just -f justfile.pipeline regression-pipeline pipeline_results/benchmarks_20240101_120000"

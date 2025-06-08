@@ -1,6 +1,6 @@
-use std::time::Duration;
+use std::{hint::black_box, time::Duration};
 
-use criterion::{black_box, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion};
 use tokio::runtime::Runtime;
 
 pub fn benchmark_seeder_performance(c: &mut Criterion) {
@@ -18,7 +18,8 @@ pub fn benchmark_seeder_performance(c: &mut Criterion) {
             |b, &batch_size| {
                 b.to_async(&rt).iter(|| {
                     async move {
-                        // Simulate seeder CLI performance with different batch sizes
+                        // Simulate seeder CLI performance with different
+                        // batch sizes
                         let result = simulate_user_seeding(batch_size).await;
                         black_box(result);
                     }
@@ -46,8 +47,10 @@ pub fn benchmark_seeder_performance(c: &mut Criterion) {
             |b, &batch_size| {
                 b.to_async(&rt).iter(|| {
                     async move {
-                        // Simulate event type seeding with different batch sizes
-                        let result = simulate_event_type_seeding(batch_size).await;
+                        // Simulate event type seeding with different batch
+                        // sizes
+                        let result =
+                            simulate_event_type_seeding(batch_size).await;
                         black_box(result);
                     }
                 });
@@ -86,7 +89,8 @@ pub fn benchmark_database_insertion_rates(c: &mut Criterion) {
                         let start = std::time::Instant::now();
                         simulate_bulk_event_insertion(target_count).await;
                         let duration = start.elapsed();
-                        let events_per_second = target_count as f64 / duration.as_secs_f64();
+                        let events_per_second =
+                            target_count as f64 / duration.as_secs_f64();
                         black_box(events_per_second);
                     }
                 });
@@ -102,7 +106,8 @@ pub fn benchmark_database_insertion_rates(c: &mut Criterion) {
                         let start = std::time::Instant::now();
                         simulate_bulk_user_insertion(target_count).await;
                         let duration = start.elapsed();
-                        let users_per_second = target_count as f64 / duration.as_secs_f64();
+                        let users_per_second =
+                            target_count as f64 / duration.as_secs_f64();
                         black_box(users_per_second);
                     }
                 });
@@ -184,9 +189,11 @@ async fn simulate_large_scale_seeding(scale: u32) {
 
 fn get_memory_usage() -> u64 {
     // Simulate memory usage measurement (in KB)
-    // In a real implementation, this would use system APIs or process monitoring
+    // In a real implementation, this would use system APIs or process
+    // monitoring
     use std::process;
-    
-    // Simple simulation - return a number based on process ID to have some variance
+
+    // Simple simulation - return a number based on process ID to have some
+    // variance
     (process::id() as u64 % 1000) + 50000
 }
