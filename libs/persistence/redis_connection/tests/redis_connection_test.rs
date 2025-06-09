@@ -1,7 +1,7 @@
 use deadpool_redis::redis::AsyncCommands;
 use redis_connection::{
     config::{DbConnectConfig, RedisDbConfig},
-    connection::{RedisConnect, RedisConnectionManager},
+    connection::RedisConnectionManager,
 };
 use test_utils::redis::TestRedisContainer;
 

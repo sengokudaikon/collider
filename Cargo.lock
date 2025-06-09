@@ -3576,20 +3576,13 @@ name = "test-utils"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-trait",
- "clap",
- "crossterm 0.28.1",
- "database-traits",
  "deadpool-redis",
- "ratatui 0.28.1",
+ "redis-connection",
  "sea-orm",
- "sea-orm-migration",
  "serde",
  "sql-connection",
  "sqlx",
  "tokio",
- "tracing",
- "tracing-subscriber",
  "uuid",
 ]
 

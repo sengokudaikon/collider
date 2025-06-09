@@ -206,32 +206,3 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-
-async fn handle_user_action_example(
-    processor: &EventProcessor, user_id: Uuid, action: &str,
-    metadata: serde_json::Value,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let event_type_id = match action {
-        "login" => 1,
-        "logout" => 2,
-        "page_view" => 3,
-        "button_click" => 4,
-        "form_submit" => 5,
-        _ => 999,
-    };
-
-    let event = processor
-        .create_event(CreateEventRequest {
-            user_id,
-            event_type_id,
-            metadata: Some(metadata),
-        })
-        .await?;
-
-    println!(
-        "Tracked {} action for user {} (event_id: {})",
-        action, user_id, event.id
-    );
-
-    Ok(())
-}

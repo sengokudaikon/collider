@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use deadpool_redis::{Config, Pool, Runtime};
+use redis_connection::connection::RedisConnectionManager;
 use tokio::time::sleep;
 
 pub struct TestRedisContainer {
@@ -50,6 +51,9 @@ impl TestRedisContainer {
                 Err(e) => return Err(e.into()),
             }
         }
+
+        // Initialize the static Redis pool for tests
+        RedisConnectionManager::init_static(pool.clone());
 
         Ok(Self {
             pool,
