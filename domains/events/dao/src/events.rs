@@ -1,18 +1,16 @@
 use async_trait::async_trait;
-use chrono::Utc;
 use database_traits::{
     dao::GenericDao,
     transaction::{GetDatabaseTransaction, TransactionOps},
 };
-use events_models::{
-    CreateEventRequest, EventActiveModel, EventColumn, EventEntity,
-    EventModel, EventResponse, UpdateEventRequest,
-};
+use events_models::{EventActiveModel, EventColumn, EventEntity, EventModel};
 use sea_orm::{sea_query::IntoCondition, *};
 use sql_connection::SqlConnect;
 use thiserror::Error;
 use tracing::instrument;
 use uuid::Uuid;
+
+use crate::events;
 
 #[derive(Debug, Error)]
 pub enum EventDaoError {
@@ -34,13 +32,13 @@ impl EventDao {
 #[async_trait]
 impl GenericDao for EventDao {
     type ActiveModel = EventActiveModel;
-    type CreateRequest = CreateEventRequest;
+    type CreateRequest = EventActiveModel;
     type Entity = EventEntity;
     type Error = EventDaoError;
     type ID = Uuid;
     type Model = EventModel;
-    type Response = EventResponse;
-    type UpdateRequest = UpdateEventRequest;
+    type Response = EventModel;
+    type UpdateRequest = EventActiveModel;
 
     #[instrument(skip_all)]
     async fn query_one(
@@ -55,7 +53,7 @@ impl GenericDao for EventDao {
             model.ok_or(EventDaoError::NotFound)?
         };
 
-        Ok(model.into())
+        Ok(model)
     }
 
     #[instrument(skip_all)]
@@ -70,7 +68,7 @@ impl GenericDao for EventDao {
             .order_by_desc(EventColumn::Timestamp)
             .all(db)
             .await?;
-        Ok(models.into_iter().map(Into::into).collect())
+        Ok(models)
     }
 
     async fn find_by_id(
@@ -95,18 +93,9 @@ impl GenericDao for EventDao {
     ) -> Result<Self::Response, Self::Error> {
         let ctx = self.db.get_transaction().await?;
 
-        let now = Utc::now();
-        let event_model = EventActiveModel {
-            id: Set(Uuid::now_v7()),
-            user_id: Set(req.user_id),
-            event_type_id: Set(req.event_type_id),
-            timestamp: Set(now),
-            metadata: Set(req.metadata),
-        };
-
-        let result = event_model.insert(&ctx).await?;
+        let result = req.insert(&ctx).await?;
         ctx.submit().await?;
-        Ok(result.into())
+        Ok(result)
     }
 
     async fn update(
@@ -114,24 +103,14 @@ impl GenericDao for EventDao {
     ) -> Result<Self::Response, Self::Error> {
         let ctx = self.db.get_transaction().await?;
 
-        let event = EventEntity::find_by_id(id)
+        let _existing = events::EventEntity::find_by_id(id)
             .one(&ctx)
             .await?
             .ok_or(EventDaoError::NotFound)?;
 
-        let mut event_active: EventActiveModel = event.into();
-
-        if let Some(event_type_id) = req.event_type_id {
-            event_active.event_type_id = Set(event_type_id);
-        }
-
-        if let Some(metadata) = req.metadata {
-            event_active.metadata = Set(Some(metadata));
-        }
-
-        let updated_event = event_active.update(&ctx).await?;
+        let updated_event = req.update(&ctx).await?;
         ctx.submit().await?;
-        Ok(updated_event.into())
+        Ok(updated_event)
     }
 
     async fn delete(&self, id: Self::ID) -> Result<(), Self::Error> {
@@ -154,7 +133,7 @@ impl EventDao {
     pub async fn find_with_filters(
         &self, user_id: Option<Uuid>, event_type_id: Option<i32>,
         limit: Option<u64>, offset: Option<u64>,
-    ) -> Result<Vec<EventResponse>, EventDaoError> {
+    ) -> Result<Vec<EventModel>, EventDaoError> {
         let ctx = self.db.get_transaction().await?;
 
         let mut query = EventEntity::find();
@@ -180,7 +159,7 @@ impl EventDao {
         let models = query.all(&ctx).await?;
         ctx.submit().await?;
 
-        Ok(models.into_iter().map(Into::into).collect())
+        Ok(models)
     }
 
     #[instrument(skip_all)]
@@ -201,7 +180,7 @@ impl EventDao {
     #[instrument(skip_all)]
     pub async fn find_by_user_id(
         &self, user_id: Uuid, limit: Option<u64>,
-    ) -> Result<Vec<EventResponse>, EventDaoError> {
+    ) -> Result<Vec<EventModel>, EventDaoError> {
         let ctx = self.db.get_transaction().await?;
 
         let mut query = EventEntity::find()
@@ -215,6 +194,6 @@ impl EventDao {
         let models = query.all(&ctx).await?;
         ctx.submit().await?;
 
-        Ok(models.into_iter().map(Into::into).collect())
+        Ok(models)
     }
 }

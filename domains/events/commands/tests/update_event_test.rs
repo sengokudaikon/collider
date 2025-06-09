@@ -1,7 +1,9 @@
+use chrono::Utc;
 use database_traits::dao::GenericDao;
 use events_commands::{UpdateEventCommand, UpdateEventHandler};
 use events_dao::EventDao;
-use events_models::CreateEventRequest;
+use events_models::EventActiveModel;
+use sea_orm::ActiveValue::Set;
 use test_utils::{postgres::TestPostgresContainer, *};
 use uuid::Uuid;
 
@@ -23,10 +25,12 @@ async fn test_update_event_metadata_only() {
         create_test_event_types(&container).await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
 
-    let create_request = CreateEventRequest {
-        user_id,
-        event_type_id,
-        metadata: Some(serde_json::json!({"original": "data"})),
+    let create_request = EventActiveModel {
+        id: Set(Uuid::now_v7()),
+        user_id: Set(user_id),
+        event_type_id: Set(event_type_id),
+        timestamp: Set(Utc::now()),
+        metadata: Set(Some(serde_json::json!({"original": "data"}))),
     };
     let created_event = dao.create(create_request).await.unwrap();
 
@@ -53,10 +57,12 @@ async fn test_update_event_type_only() {
         create_test_event_types(&container).await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
 
-    let create_request = CreateEventRequest {
-        user_id,
-        event_type_id: original_type,
-        metadata: Some(serde_json::json!({"key": "value"})),
+    let create_request = EventActiveModel {
+        id: Set(Uuid::now_v7()),
+        user_id: Set(user_id),
+        event_type_id: Set(original_type),
+        timestamp: Set(Utc::now()),
+        metadata: Set(Some(serde_json::json!({"key": "value"}))),
     };
     let created_event = dao.create(create_request).await.unwrap();
 
@@ -83,10 +89,12 @@ async fn test_update_event_both_fields() {
         create_test_event_types(&container).await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
 
-    let create_request = CreateEventRequest {
-        user_id,
-        event_type_id: original_type,
-        metadata: Some(serde_json::json!({"original": "data"})),
+    let create_request = EventActiveModel {
+        id: Set(Uuid::now_v7()),
+        user_id: Set(user_id),
+        event_type_id: Set(original_type),
+        timestamp: Set(Utc::now()),
+        metadata: Set(Some(serde_json::json!({"original": "data"}))),
     };
     let created_event = dao.create(create_request).await.unwrap();
 
@@ -115,10 +123,12 @@ async fn test_update_event_clear_metadata() {
         create_test_event_types(&container).await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
 
-    let create_request = CreateEventRequest {
-        user_id,
-        event_type_id,
-        metadata: Some(serde_json::json!({"original": "data"})),
+    let create_request = EventActiveModel {
+        id: Set(Uuid::now_v7()),
+        user_id: Set(user_id),
+        event_type_id: Set(event_type_id),
+        timestamp: Set(Utc::now()),
+        metadata: Set(Some(serde_json::json!({"original": "data"}))),
     };
     let created_event = dao.create(create_request).await.unwrap();
 
@@ -160,10 +170,12 @@ async fn test_update_event_invalid_event_type() {
         create_test_event_types(&container).await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
 
-    let create_request = CreateEventRequest {
-        user_id,
-        event_type_id,
-        metadata: None,
+    let create_request = EventActiveModel {
+        id: Set(Uuid::now_v7()),
+        user_id: Set(user_id),
+        event_type_id: Set(event_type_id),
+        timestamp: Set(Utc::now()),
+        metadata: Set(None),
     };
     let created_event = dao.create(create_request).await.unwrap();
 

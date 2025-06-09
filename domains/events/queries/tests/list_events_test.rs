@@ -1,12 +1,20 @@
+use chrono::Utc;
 use database_traits::dao::GenericDao;
 use events_dao::EventDao;
-use events_models::CreateEventRequest;
+use events_models::EventActiveModel;
 use events_queries::{ListEventsQuery, ListEventsQueryHandler};
-use test_utils::{postgres::TestPostgresContainer, *};
+use sea_orm::ActiveValue::Set;
+use test_utils::{
+    postgres::TestPostgresContainer, redis::TestRedisContainer, *,
+};
+use uuid::Uuid;
 
 async fn setup_test_db()
 -> anyhow::Result<(TestPostgresContainer, ListEventsQueryHandler, EventDao)> {
     let container = TestPostgresContainer::new_with_unique_db().await?;
+
+    // Initialize Redis for caching
+    let _redis_container = TestRedisContainer::new_with_unique_db().await?;
 
     let sql_connect = create_sql_connect(&container);
     let handler = ListEventsQueryHandler::new(sql_connect.clone());
@@ -30,10 +38,12 @@ async fn test_list_all_events() {
     ];
 
     for (user_id, event_type_id, metadata) in events_data {
-        let create_request = CreateEventRequest {
-            user_id,
-            event_type_id,
-            metadata: Some(metadata),
+        let create_request = EventActiveModel {
+            id: Set(Uuid::now_v7()),
+            user_id: Set(user_id),
+            event_type_id: Set(event_type_id),
+            timestamp: Set(Utc::now()),
+            metadata: Set(Some(metadata)),
         };
         dao.create(create_request).await.unwrap();
     }
@@ -56,20 +66,26 @@ async fn test_list_events_by_user() {
         create_test_event_types(&container).await.unwrap();
     let (user_1, user_2) = create_test_users(&container).await.unwrap();
 
-    let create_request_1 = CreateEventRequest {
-        user_id: user_1,
-        event_type_id: login_type,
-        metadata: Some(serde_json::json!({"user": "1"})),
+    let create_request_1 = EventActiveModel {
+        id: Set(Uuid::now_v7()),
+        user_id: Set(user_1),
+        event_type_id: Set(login_type),
+        timestamp: Set(Utc::now()),
+        metadata: Set(Some(serde_json::json!({"user": "1"}))),
     };
-    let create_request_2 = CreateEventRequest {
-        user_id: user_2,
-        event_type_id: purchase_type,
-        metadata: Some(serde_json::json!({"user": "2"})),
+    let create_request_2 = EventActiveModel {
+        id: Set(Uuid::now_v7()),
+        user_id: Set(user_2),
+        event_type_id: Set(purchase_type),
+        timestamp: Set(Utc::now()),
+        metadata: Set(Some(serde_json::json!({"user": "2"}))),
     };
-    let create_request_3 = CreateEventRequest {
-        user_id: user_1,
-        event_type_id: purchase_type,
-        metadata: Some(serde_json::json!({"user": "1_again"})),
+    let create_request_3 = EventActiveModel {
+        id: Set(Uuid::now_v7()),
+        user_id: Set(user_1),
+        event_type_id: Set(purchase_type),
+        timestamp: Set(Utc::now()),
+        metadata: Set(Some(serde_json::json!({"user": "1_again"}))),
     };
 
     dao.create(create_request_1).await.unwrap();
@@ -107,10 +123,12 @@ async fn test_list_events_by_event_type() {
     ];
 
     for (user_id, event_type_id, tag) in events {
-        let create_request = CreateEventRequest {
-            user_id,
-            event_type_id,
-            metadata: Some(serde_json::json!({"tag": tag})),
+        let create_request = EventActiveModel {
+            id: Set(Uuid::now_v7()),
+            user_id: Set(user_id),
+            event_type_id: Set(event_type_id),
+            timestamp: Set(Utc::now()),
+            metadata: Set(Some(serde_json::json!({"tag": tag}))),
         };
         dao.create(create_request).await.unwrap();
     }
@@ -136,10 +154,12 @@ async fn test_list_events_with_pagination() {
     let (user_1, _) = create_test_users(&container).await.unwrap();
 
     for i in 0..10 {
-        let create_request = CreateEventRequest {
-            user_id: user_1,
-            event_type_id: login_type,
-            metadata: Some(serde_json::json!({"sequence": i})),
+        let create_request = EventActiveModel {
+            id: Set(Uuid::now_v7()),
+            user_id: Set(user_1),
+            event_type_id: Set(login_type),
+            timestamp: Set(Utc::now()),
+            metadata: Set(Some(serde_json::json!({"sequence": i}))),
         };
         dao.create(create_request).await.unwrap();
     }
@@ -188,10 +208,12 @@ async fn test_list_events_with_combined_filters() {
     ];
 
     for (user_id, event_type_id, tag) in events {
-        let create_request = CreateEventRequest {
-            user_id,
-            event_type_id,
-            metadata: Some(serde_json::json!({"tag": tag})),
+        let create_request = EventActiveModel {
+            id: Set(Uuid::now_v7()),
+            user_id: Set(user_id),
+            event_type_id: Set(event_type_id),
+            timestamp: Set(Utc::now()),
+            metadata: Set(Some(serde_json::json!({"tag": tag}))),
         };
         dao.create(create_request).await.unwrap();
     }
@@ -234,10 +256,12 @@ async fn test_list_events_edge_cases() {
     let (login_type, _) = create_test_event_types(&container).await.unwrap();
     let (user_1, _) = create_test_users(&container).await.unwrap();
 
-    let create_request = CreateEventRequest {
-        user_id: user_1,
-        event_type_id: login_type,
-        metadata: Some(serde_json::json!({"test": "single"})),
+    let create_request = EventActiveModel {
+        id: Set(Uuid::now_v7()),
+        user_id: Set(user_1),
+        event_type_id: Set(login_type),
+        timestamp: Set(Utc::now()),
+        metadata: Set(Some(serde_json::json!({"test": "single"}))),
     };
     dao.create(create_request).await.unwrap();
 

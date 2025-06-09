@@ -145,7 +145,11 @@ impl MaterializedViewManager for PostgresMaterializedViewManager {
 
         query.push_str(" ORDER BY hour DESC, total_events DESC");
 
-        let stmt = Statement::from_string(DatabaseBackend::Postgres, query);
+        let stmt = Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            query,
+            params,
+        );
         let rows = db.query_all(stmt).await?;
 
         let mut summaries = Vec::new();
@@ -184,7 +188,11 @@ impl MaterializedViewManager for PostgresMaterializedViewManager {
 
         query.push_str(" ORDER BY date DESC, total_events DESC");
 
-        let stmt = Statement::from_string(DatabaseBackend::Postgres, query);
+        let stmt = Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            query,
+            params,
+        );
         let rows = db.query_all(stmt).await?;
 
         let mut activities = Vec::new();
@@ -221,7 +229,11 @@ impl MaterializedViewManager for PostgresMaterializedViewManager {
             params.push(l.into());
         }
 
-        let stmt = Statement::from_string(DatabaseBackend::Postgres, query);
+        let stmt = Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            query,
+            params,
+        );
         let rows = db.query_all(stmt).await?;
 
         let mut popular = Vec::new();

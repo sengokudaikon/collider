@@ -1,6 +1,8 @@
+use chrono::Utc;
 use database_traits::dao::GenericDao;
 use events_dao::{EventDao, EventTypeDao};
-use events_models::{CreateEventRequest, EventResponse};
+use events_models::{EventActiveModel, EventModel};
+use sea_orm::ActiveValue::Set;
 use serde::{Deserialize, Serialize};
 use sql_connection::SqlConnect;
 use thiserror::Error;
@@ -62,13 +64,15 @@ impl CreateEventHandler {
             .find_by_name(&command.event_type)
             .await?;
 
-        let create_request = CreateEventRequest {
-            user_id: command.user_id,
-            event_type_id: event_type.id,
-            metadata: command.metadata,
+        let active_model = EventActiveModel {
+            id: Set(Uuid::now_v7()),
+            user_id: Set(command.user_id),
+            event_type_id: Set(event_type.id),
+            timestamp: Set(command.timestamp.unwrap_or_else(Utc::now)),
+            metadata: Set(command.metadata),
         };
 
-        let saved_event = self.event_dao.create(create_request).await?;
+        let saved_event = self.event_dao.create(active_model).await?;
 
         Ok(CreateEventResult {
             event: CreateEventResponse {
@@ -82,8 +86,8 @@ impl CreateEventHandler {
     }
 }
 
-impl From<EventResponse> for CreateEventResponse {
-    fn from(event: EventResponse) -> Self {
+impl From<EventModel> for CreateEventResponse {
+    fn from(event: EventModel) -> Self {
         Self {
             id: event.id,
             user_id: event.user_id,

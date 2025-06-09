@@ -1110,6 +1110,7 @@ dependencies = [
  "events-dao",
  "events-models",
  "events-queries",
+ "sea-orm",
  "serde",
  "serde_json",
  "sql-connection",
@@ -1138,10 +1139,12 @@ name = "events-queries"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "database-traits",
  "events-dao",
  "events-models",
  "redis-connection",
+ "sea-orm",
  "serde",
  "serde_json",
  "sql-connection",

@@ -3,19 +3,27 @@ use axum::{
     http::{Method, Request, StatusCode},
     routing::Router,
 };
+use chrono::Utc;
 use database_traits::dao::GenericDao;
 use events_commands::CreateEventCommand;
 use events_dao::EventDao;
 use events_http::{EventHandlers, EventServices};
-use events_models::CreateEventRequest;
+use events_models::EventActiveModel;
+use sea_orm::ActiveValue::Set;
 use serde_json::json;
-use test_utils::{postgres::TestPostgresContainer, *};
+use test_utils::{
+    postgres::TestPostgresContainer, redis::TestRedisContainer, *,
+};
 use tower::ServiceExt;
 use uuid::Uuid;
 
 async fn setup_test_app()
 -> anyhow::Result<(TestPostgresContainer, Router, EventDao)> {
     let container = TestPostgresContainer::new_with_unique_db().await?;
+
+    // Initialize Redis for caching (this also calls
+    // RedisConnectionManager::init_static)
+    let _redis_container = TestRedisContainer::new_with_unique_db().await?;
 
     let sql_connect = create_sql_connect(&container);
     let services = EventServices::new(sql_connect.clone());
@@ -92,12 +100,14 @@ async fn test_get_event_endpoint() {
     let event_type_id = create_test_event_type(&container).await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
 
-    let create_request = CreateEventRequest {
-        user_id,
-        event_type_id,
-        metadata: Some(json!({"test": "data"})),
+    let active_model = EventActiveModel {
+        id: Set(Uuid::now_v7()),
+        user_id: Set(user_id),
+        event_type_id: Set(event_type_id),
+        timestamp: Set(Utc::now()),
+        metadata: Set(Some(json!({"test": "data"}))),
     };
-    let created_event = dao.create(create_request).await.unwrap();
+    let created_event = dao.create(active_model).await.unwrap();
 
     let request = Request::builder()
         .method(Method::GET)
@@ -150,12 +160,14 @@ async fn test_update_event_endpoint() {
         .await
         .unwrap();
 
-    let create_request = CreateEventRequest {
-        user_id,
-        event_type_id,
-        metadata: Some(json!({"original": "data"})),
+    let active_model = EventActiveModel {
+        id: Set(Uuid::now_v7()),
+        user_id: Set(user_id),
+        event_type_id: Set(event_type_id),
+        timestamp: Set(Utc::now()),
+        metadata: Set(Some(json!({"original": "data"}))),
     };
-    let created_event = dao.create(create_request).await.unwrap();
+    let created_event = dao.create(active_model).await.unwrap();
 
     let update_data = json!({
         "event_type_id": 2,
@@ -190,10 +202,12 @@ async fn test_delete_event_endpoint() {
     let event_type_id = create_test_event_type(&container).await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
 
-    let create_request = CreateEventRequest {
-        user_id,
-        event_type_id,
-        metadata: Some(json!({"to_delete": "yes"})),
+    let create_request = EventActiveModel {
+        id: Set(Uuid::now_v7()),
+        user_id: Set(user_id),
+        event_type_id: Set(event_type_id),
+        timestamp: Set(Utc::now()),
+        metadata: Set(Some(json!({"to_delete": "yes"}))),
     };
     let created_event = dao.create(create_request).await.unwrap();
 
@@ -218,10 +232,12 @@ async fn test_list_events_endpoint() {
     let user_id = create_test_user(&container).await.unwrap();
 
     for i in 0..3 {
-        let create_request = CreateEventRequest {
-            user_id,
-            event_type_id,
-            metadata: Some(json!({"sequence": i})),
+        let create_request = EventActiveModel {
+            id: Set(Uuid::now_v7()),
+            user_id: Set(user_id),
+            event_type_id: Set(event_type_id),
+            timestamp: Set(Utc::now()),
+            metadata: Set(Some(json!({"sequence": i}))),
         };
         dao.create(create_request).await.unwrap();
     }
@@ -260,15 +276,19 @@ async fn test_list_events_with_filters() {
     );
     container.execute_sql(&query).await.unwrap();
 
-    let create_request_1 = CreateEventRequest {
-        user_id: user_id_1,
-        event_type_id,
-        metadata: Some(json!({"user": "1"})),
+    let create_request_1 = EventActiveModel {
+        id: Set(Uuid::now_v7()),
+        user_id: Set(user_id_1),
+        event_type_id: Set(event_type_id),
+        timestamp: Set(Utc::now()),
+        metadata: Set(Some(json!({"user": "1"}))),
     };
-    let create_request_2 = CreateEventRequest {
-        user_id: user_id_2,
-        event_type_id,
-        metadata: Some(json!({"user": "2"})),
+    let create_request_2 = EventActiveModel {
+        id: Set(Uuid::now_v7()),
+        user_id: Set(user_id_2),
+        event_type_id: Set(event_type_id),
+        timestamp: Set(Utc::now()),
+        metadata: Set(Some(json!({"user": "2"}))),
     };
     dao.create(create_request_1).await.unwrap();
     dao.create(create_request_2).await.unwrap();
@@ -302,10 +322,12 @@ async fn test_list_events_with_pagination() {
     let user_id = create_test_user(&container).await.unwrap();
 
     for i in 0..5 {
-        let create_request = CreateEventRequest {
-            user_id,
-            event_type_id,
-            metadata: Some(json!({"sequence": i})),
+        let create_request = EventActiveModel {
+            id: Set(Uuid::now_v7()),
+            user_id: Set(user_id),
+            event_type_id: Set(event_type_id),
+            timestamp: Set(Utc::now()),
+            metadata: Set(Some(json!({"sequence": i}))),
         };
         dao.create(create_request).await.unwrap();
     }

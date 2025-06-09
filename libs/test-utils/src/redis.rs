@@ -1,8 +1,13 @@
-use std::time::Duration;
+use std::{
+    sync::atomic::{AtomicU32, Ordering},
+    time::Duration,
+};
 
 use deadpool_redis::{Config, Pool, Runtime};
 use redis_connection::connection::RedisConnectionManager;
 use tokio::time::sleep;
+
+static REDIS_DB_COUNTER: AtomicU32 = AtomicU32::new(1);
 
 pub struct TestRedisContainer {
     pub pool: Pool,
@@ -12,6 +17,13 @@ pub struct TestRedisContainer {
 impl TestRedisContainer {
     pub async fn new() -> anyhow::Result<Self> {
         Self::new_with_connection_string("redis://localhost:6380").await
+    }
+
+    pub async fn new_with_unique_db() -> anyhow::Result<Self> {
+        let db_number = REDIS_DB_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let connection_string =
+            format!("redis://localhost:6380/{}", db_number);
+        Self::new_with_connection_string(&connection_string).await
     }
 
     pub async fn new_with_connection_string(

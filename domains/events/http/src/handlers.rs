@@ -112,7 +112,7 @@ async fn get_event(
         .execute(query)
         .await
         .map_err(AppError::from_error)?;
-    Ok(Json(event))
+    Ok(Json(event.into()))
 }
 
 #[instrument(skip_all)]
@@ -139,7 +139,7 @@ async fn list_events(
         .execute(query)
         .await
         .map_err(AppError::from_error)?;
-    Ok(Json(events))
+    Ok(Json(events.into_iter().map(Into::into).collect()))
 }
 
 #[derive(Debug, Deserialize)]

@@ -148,7 +148,7 @@ async fn get_stats(
 #[instrument(skip_all)]
 async fn get_user_events(
     Path(user_id): Path<Uuid>, Query(params): Query<UserEventsQuery>,
-) -> Result<Json<Vec<events_models::EventResponse>>, AppError> {
+) -> Result<Json<Vec<events_models::EventModel>>, AppError> {
     use events_dao::EventDao;
 
     let db = SqlConnect::from_global();

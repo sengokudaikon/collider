@@ -5,7 +5,7 @@ use std::{
 };
 
 use events_dao::EventDao;
-use events_models::EventResponse;
+use events_models::EventModel;
 use redis_connection::{
     connection::RedisConnectionManager, json::Json, type_bind::RedisTypeBind,
 };
@@ -50,7 +50,7 @@ impl ListEventsQueryHandler {
     #[instrument(skip(self))]
     pub async fn execute(
         &self, query: ListEventsQuery,
-    ) -> Result<Vec<EventResponse>, ListEventsError> {
+    ) -> Result<Vec<EventModel>, ListEventsError> {
         // Create a hash of the query parameters for cache key
         let mut hasher = DefaultHasher::new();
         query.user_id.hash(&mut hasher);

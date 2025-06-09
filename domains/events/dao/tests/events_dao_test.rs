@@ -1,6 +1,7 @@
 use chrono::Utc;
 use events_dao::{EventDao, EventDaoError};
-use events_models::{CreateEventRequest, UpdateEventRequest};
+use events_models::EventActiveModel;
+use sea_orm::ActiveValue::Set;
 use sql_connection::database_traits::dao::GenericDao;
 use test_utils::{
     clean_test_data, create_sql_connect, create_test_event_type,
@@ -28,13 +29,15 @@ async fn test_create_event_success() {
     let event_type_id = create_test_event_type(&container).await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
 
-    let create_request = CreateEventRequest {
-        user_id,
-        event_type_id,
-        metadata: Some(serde_json::json!({"key": "value"})),
+    let active_model = EventActiveModel {
+        id: Set(Uuid::now_v7()),
+        user_id: Set(user_id),
+        event_type_id: Set(event_type_id),
+        timestamp: Set(Utc::now()),
+        metadata: Set(Some(serde_json::json!({"key": "value"}))),
     };
 
-    let result = event_dao.create(create_request).await.unwrap();
+    let result = event_dao.create(active_model).await.unwrap();
 
     assert_eq!(result.user_id, user_id);
     assert_eq!(result.event_type_id, event_type_id);
@@ -48,13 +51,15 @@ async fn test_find_by_id_success() {
     let event_type_id = create_test_event_type(&container).await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
 
-    let create_request = CreateEventRequest {
-        user_id,
-        event_type_id,
-        metadata: Some(serde_json::json!({"test": "data"})),
+    let active_model = EventActiveModel {
+        id: Set(Uuid::now_v7()),
+        user_id: Set(user_id),
+        event_type_id: Set(event_type_id),
+        timestamp: Set(Utc::now()),
+        metadata: Set(Some(serde_json::json!({"test": "data"}))),
     };
 
-    let created_event = event_dao.create(create_request).await.unwrap();
+    let created_event = event_dao.create(active_model).await.unwrap();
     let found_event = event_dao.find_by_id(created_event.id).await.unwrap();
 
     assert_eq!(found_event.id, created_event.id);
@@ -84,21 +89,26 @@ async fn test_update_event_success() {
             .await
             .unwrap();
 
-    let create_request = CreateEventRequest {
-        user_id,
-        event_type_id,
-        metadata: Some(serde_json::json!({"original": "data"})),
+    let active_model = EventActiveModel {
+        id: Set(Uuid::now_v7()),
+        user_id: Set(user_id),
+        event_type_id: Set(event_type_id),
+        timestamp: Set(Utc::now()),
+        metadata: Set(Some(serde_json::json!({"original": "data"}))),
     };
 
-    let created_event = event_dao.create(create_request).await.unwrap();
+    let created_event = event_dao.create(active_model).await.unwrap();
 
-    let update_request = UpdateEventRequest {
-        event_type_id: Some(updated_event_type_id),
-        metadata: Some(serde_json::json!({"updated": "data"})),
+    let update_active_model = EventActiveModel {
+        id: Set(created_event.id),
+        user_id: Set(created_event.user_id),
+        event_type_id: Set(updated_event_type_id),
+        timestamp: Set(created_event.timestamp),
+        metadata: Set(Some(serde_json::json!({"updated": "data"}))),
     };
 
     let updated_event = event_dao
-        .update(created_event.id, update_request)
+        .update(created_event.id, update_active_model)
         .await
         .unwrap();
 
@@ -116,13 +126,15 @@ async fn test_delete_event_success() {
     let event_type_id = create_test_event_type(&container).await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
 
-    let create_request = CreateEventRequest {
-        user_id,
-        event_type_id,
-        metadata: None,
+    let active_model = EventActiveModel {
+        id: Set(Uuid::now_v7()),
+        user_id: Set(user_id),
+        event_type_id: Set(event_type_id),
+        timestamp: Set(Utc::now()),
+        metadata: Set(None),
     };
 
-    let created_event = event_dao.create(create_request).await.unwrap();
+    let created_event = event_dao.create(active_model).await.unwrap();
 
     event_dao.delete(created_event.id).await.unwrap();
 
@@ -141,14 +153,16 @@ async fn test_find_with_filters_by_user() {
         .unwrap();
 
     for user_id in [user_id_1, user_id_2] {
-        let create_request = CreateEventRequest {
-            user_id,
-            event_type_id,
-            metadata: Some(
+        let active_model = EventActiveModel {
+            id: Set(Uuid::now_v7()),
+            user_id: Set(user_id),
+            event_type_id: Set(event_type_id),
+            timestamp: Set(Utc::now()),
+            metadata: Set(Some(
                 serde_json::json!({"user_id": user_id.to_string()}),
-            ),
+            )),
         };
-        event_dao.create(create_request).await.unwrap();
+        event_dao.create(active_model).await.unwrap();
     }
 
     let events = event_dao
@@ -173,14 +187,16 @@ async fn test_find_with_filters_by_event_type() {
     let user_id = create_test_user(&container).await.unwrap();
 
     for event_type_id in [event_type_id_1, event_type_id_2] {
-        let create_request = CreateEventRequest {
-            user_id,
-            event_type_id,
-            metadata: Some(
+        let active_model = EventActiveModel {
+            id: Set(Uuid::now_v7()),
+            user_id: Set(user_id),
+            event_type_id: Set(event_type_id),
+            timestamp: Set(Utc::now()),
+            metadata: Set(Some(
                 serde_json::json!({"event_type_id": event_type_id}),
-            ),
+            )),
         };
-        event_dao.create(create_request).await.unwrap();
+        event_dao.create(active_model).await.unwrap();
     }
 
     let events = event_dao
@@ -199,12 +215,14 @@ async fn test_find_with_pagination() {
     let user_id = create_test_user(&container).await.unwrap();
 
     for i in 0..5 {
-        let create_request = CreateEventRequest {
-            user_id,
-            event_type_id,
-            metadata: Some(serde_json::json!({"sequence": i})),
+        let active_model = EventActiveModel {
+            id: Set(Uuid::now_v7()),
+            user_id: Set(user_id),
+            event_type_id: Set(event_type_id),
+            timestamp: Set(Utc::now()),
+            metadata: Set(Some(serde_json::json!({"sequence": i}))),
         };
-        event_dao.create(create_request).await.unwrap();
+        event_dao.create(active_model).await.unwrap();
     }
 
     let events = event_dao
@@ -233,12 +251,14 @@ async fn test_all_events() {
     let user_id = create_test_user(&container).await.unwrap();
 
     for i in 0..3 {
-        let create_request = CreateEventRequest {
-            user_id,
-            event_type_id,
-            metadata: Some(serde_json::json!({"index": i})),
+        let active_model = EventActiveModel {
+            id: Set(Uuid::now_v7()),
+            user_id: Set(user_id),
+            event_type_id: Set(event_type_id),
+            timestamp: Set(Utc::now()),
+            metadata: Set(Some(serde_json::json!({"index": i}))),
         };
-        event_dao.create(create_request).await.unwrap();
+        event_dao.create(active_model).await.unwrap();
     }
 
     let all_events = event_dao.all().await.unwrap();

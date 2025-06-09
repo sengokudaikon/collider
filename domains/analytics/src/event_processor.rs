@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use events_dao::EventDao;
-use events_models::{CreateEventRequest, EventResponse};
+use events_models::{EventActiveModel, EventModel};
 use sql_connection::database_traits::dao::GenericDao;
 use thiserror::Error;
 use tokio::sync::mpsc;
@@ -22,7 +22,7 @@ pub enum EventProcessorError {
 pub struct EventProcessor {
     event_dao: EventDao,
     analytics: Arc<dyn EventsAnalytics>,
-    event_sender: mpsc::UnboundedSender<EventResponse>,
+    event_sender: mpsc::UnboundedSender<EventModel>,
 }
 
 impl EventProcessor {
@@ -45,11 +45,11 @@ impl EventProcessor {
         }
     }
 
-    #[instrument(skip(self, request))]
+    #[instrument(skip(self, active_model))]
     pub async fn create_event(
-        &self, request: CreateEventRequest,
-    ) -> Result<EventResponse, EventProcessorError> {
-        let event = self.event_dao.create(request).await?;
+        &self, active_model: EventActiveModel,
+    ) -> Result<EventModel, EventProcessorError> {
+        let event = self.event_dao.create(active_model).await?;
 
         if self.event_sender.send(event.clone()).is_err() {
             warn!(
@@ -69,7 +69,7 @@ impl EventProcessor {
 
     async fn process_analytics_events(
         analytics: Arc<dyn EventsAnalytics>,
-        mut receiver: mpsc::UnboundedReceiver<EventResponse>,
+        mut receiver: mpsc::UnboundedReceiver<EventModel>,
     ) {
         while let Some(event) = receiver.recv().await {
             if let Err(e) = analytics.process_event(&event).await {
@@ -83,17 +83,17 @@ impl EventProcessor {
         info!("Analytics event processor shutting down");
     }
 
-    #[instrument(skip(self, requests))]
+    #[instrument(skip(self, active_models))]
     pub async fn create_events_batch(
-        &self, requests: Vec<CreateEventRequest>,
-    ) -> Result<Vec<EventResponse>, EventProcessorError> {
-        let mut results = Vec::with_capacity(requests.len());
+        &self, active_models: Vec<EventActiveModel>,
+    ) -> Result<Vec<EventModel>, EventProcessorError> {
+        let mut results = Vec::with_capacity(active_models.len());
 
-        for chunk in requests.chunks(100) {
+        for chunk in active_models.chunks(100) {
             let mut chunk_results = Vec::new();
 
-            for request in chunk {
-                match self.create_event(request.clone()).await {
+            for active_model in chunk {
+                match self.create_event(active_model.clone()).await {
                     Ok(event) => chunk_results.push(event),
                     Err(e) => {
                         error!("Failed to create event in batch: {}", e);
@@ -155,6 +155,7 @@ mod tests {
 
     use async_trait::async_trait;
     use chrono::Utc;
+    use sea_orm::Set;
     use test_utils::{
         create_sql_connect, postgres::TestPostgresContainer,
         redis::TestRedisContainer,
@@ -169,7 +170,7 @@ mod tests {
     };
 
     struct MockAnalytics {
-        processed_events: std::sync::Mutex<Vec<EventResponse>>,
+        processed_events: std::sync::Mutex<Vec<EventModel>>,
     }
 
     impl MockAnalytics {
@@ -179,7 +180,7 @@ mod tests {
             }
         }
 
-        fn get_processed_events(&self) -> Vec<EventResponse> {
+        fn get_processed_events(&self) -> Vec<EventModel> {
             self.processed_events.lock().unwrap().clone()
         }
     }
@@ -187,7 +188,7 @@ mod tests {
     #[async_trait]
     impl EventsAnalytics for MockAnalytics {
         async fn process_event(
-            &self, event: &EventResponse,
+            &self, event: &EventModel,
         ) -> Result<(), AnalyticsError> {
             self.processed_events.lock().unwrap().push(event.clone());
             Ok(())
@@ -296,13 +297,15 @@ mod tests {
         let processor =
             EventProcessor::new(event_dao, mock_analytics.clone());
 
-        let request = CreateEventRequest {
-            user_id,
-            event_type_id: 1,
-            metadata: Some(serde_json::json!({"test": "data"})),
+        let active_model = EventActiveModel {
+            id: Set(Uuid::now_v7()),
+            user_id: Set(user_id),
+            event_type_id: Set(1),
+            timestamp: Set(chrono::Utc::now()),
+            metadata: Set(Some(serde_json::json!({"test": "data"}))),
         };
 
-        let result = processor.create_event(request).await.unwrap();
+        let result = processor.create_event(active_model).await.unwrap();
 
         assert_eq!(result.user_id, user_id);
         assert_eq!(result.event_type_id, 1);
@@ -332,25 +335,32 @@ mod tests {
         let processor =
             EventProcessor::new(event_dao, mock_analytics.clone());
 
-        let requests = vec![
-            CreateEventRequest {
-                user_id,
-                event_type_id: 1,
-                metadata: Some(serde_json::json!({"batch": 1})),
+        let active_models = vec![
+            EventActiveModel {
+                id: Set(Uuid::now_v7()),
+                user_id: Set(user_id),
+                event_type_id: Set(1),
+                timestamp: Set(chrono::Utc::now()),
+                metadata: Set(Some(serde_json::json!({"batch": 1}))),
             },
-            CreateEventRequest {
-                user_id,
-                event_type_id: 1,
-                metadata: Some(serde_json::json!({"batch": 2})),
+            EventActiveModel {
+                id: Set(Uuid::now_v7()),
+                user_id: Set(user_id),
+                event_type_id: Set(1),
+                timestamp: Set(chrono::Utc::now()),
+                metadata: Set(Some(serde_json::json!({"batch": 2}))),
             },
-            CreateEventRequest {
-                user_id,
-                event_type_id: 1,
-                metadata: Some(serde_json::json!({"batch": 3})),
+            EventActiveModel {
+                id: Set(Uuid::now_v7()),
+                user_id: Set(user_id),
+                event_type_id: Set(1),
+                timestamp: Set(chrono::Utc::now()),
+                metadata: Set(Some(serde_json::json!({"batch": 3}))),
             },
         ];
 
-        let results = processor.create_events_batch(requests).await.unwrap();
+        let results =
+            processor.create_events_batch(active_models).await.unwrap();
 
         assert_eq!(results.len(), 3);
         for (i, result) in results.iter().enumerate() {
@@ -378,7 +388,8 @@ mod tests {
 
         let postgres_container =
             TestPostgresContainer::new_with_unique_db().await.unwrap();
-        let _redis_container = TestRedisContainer::new().await.unwrap();
+        let _redis_container =
+            TestRedisContainer::new_with_unique_db().await.unwrap();
 
         postgres_container
             .execute_sql(
@@ -399,15 +410,17 @@ mod tests {
         let processor =
             EventProcessor::new(event_dao, real_analytics.clone());
 
-        let request = CreateEventRequest {
-            user_id,
-            event_type_id: 1,
-            metadata: Some(
+        let active_model = EventActiveModel {
+            id: Set(Uuid::now_v7()),
+            user_id: Set(user_id),
+            event_type_id: Set(1),
+            timestamp: Set(chrono::Utc::now()),
+            metadata: Set(Some(
                 serde_json::json!({"page": "login", "source": "web"}),
-            ),
+            )),
         };
 
-        let result = processor.create_event(request).await.unwrap();
+        let result = processor.create_event(active_model).await.unwrap();
 
         assert_eq!(result.user_id, user_id);
         assert_eq!(result.event_type_id, 1);

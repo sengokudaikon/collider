@@ -57,8 +57,15 @@ async fn test_database_connection_query_all() {
 
     container
         .execute_sql(
-            "CREATE TABLE test_table (id SERIAL PRIMARY KEY, value INTEGER)",
+            "CREATE TABLE IF NOT EXISTS test_table (id SERIAL PRIMARY KEY, \
+             value INTEGER)",
         )
+        .await
+        .unwrap();
+
+    // Clear any existing data
+    container
+        .execute_sql("TRUNCATE TABLE test_table")
         .await
         .unwrap();
 
@@ -92,8 +99,15 @@ async fn test_transaction_commit() {
 
     container
         .execute_sql(
-            "CREATE TABLE tx_test (id SERIAL PRIMARY KEY, value INTEGER)",
+            "CREATE TABLE IF NOT EXISTS tx_test (id SERIAL PRIMARY KEY, \
+             value INTEGER)",
         )
+        .await
+        .unwrap();
+
+    // Clear any existing data
+    container
+        .execute_sql("TRUNCATE TABLE tx_test")
         .await
         .unwrap();
 
@@ -129,9 +143,15 @@ async fn test_transaction_rollback() {
 
     container
         .execute_sql(
-            "CREATE TABLE tx_rollback_test (id SERIAL PRIMARY KEY, value \
-             INTEGER)",
+            "CREATE TABLE IF NOT EXISTS tx_rollback_test (id SERIAL PRIMARY \
+             KEY, value INTEGER)",
         )
+        .await
+        .unwrap();
+
+    // Clear any existing data
+    container
+        .execute_sql("TRUNCATE TABLE tx_rollback_test")
         .await
         .unwrap();
 
@@ -219,12 +239,18 @@ async fn test_table_operations() {
 
     container
         .execute_sql(
-            "CREATE TABLE operations_test (
+            "CREATE TABLE IF NOT EXISTS operations_test (
                 id SERIAL PRIMARY KEY, 
                 name VARCHAR(100) NOT NULL,
                 created_at TIMESTAMP DEFAULT NOW()
             )",
         )
+        .await
+        .unwrap();
+
+    // Clear any existing data
+    container
+        .execute_sql("TRUNCATE TABLE operations_test")
         .await
         .unwrap();
 

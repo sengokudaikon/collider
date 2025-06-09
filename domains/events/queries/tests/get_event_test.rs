@@ -1,13 +1,20 @@
+use chrono::Utc;
 use database_traits::dao::GenericDao;
 use events_dao::EventDao;
-use events_models::CreateEventRequest;
+use events_models::EventActiveModel;
 use events_queries::{GetEventError, GetEventQuery, GetEventQueryHandler};
-use test_utils::{postgres::TestPostgresContainer, *};
+use sea_orm::ActiveValue::Set;
+use test_utils::{
+    postgres::TestPostgresContainer, redis::TestRedisContainer, *,
+};
 use uuid::Uuid;
 
 async fn setup_test_db()
 -> anyhow::Result<(TestPostgresContainer, GetEventQueryHandler, EventDao)> {
     let container = TestPostgresContainer::new_with_unique_db().await?;
+
+    // Initialize Redis for caching
+    let _redis_container = TestRedisContainer::new_with_unique_db().await?;
 
     let sql_connect = create_sql_connect(&container);
     let handler = GetEventQueryHandler::new(sql_connect.clone());
@@ -22,10 +29,12 @@ async fn test_get_event_success() {
     let event_type_id = create_test_event_type(&container).await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
 
-    let create_request = CreateEventRequest {
-        user_id,
-        event_type_id,
-        metadata: Some(serde_json::json!({"test": "data"})),
+    let create_request = EventActiveModel {
+        id: Set(Uuid::now_v7()),
+        user_id: Set(user_id),
+        event_type_id: Set(event_type_id),
+        timestamp: Set(Utc::now()),
+        metadata: Set(Some(serde_json::json!({"test": "data"}))),
     };
     let created_event = dao.create(create_request).await.unwrap();
 
@@ -84,10 +93,12 @@ async fn test_get_event_with_complex_metadata() {
         }
     });
 
-    let create_request = CreateEventRequest {
-        user_id,
-        event_type_id,
-        metadata: Some(complex_metadata.clone()),
+    let create_request = EventActiveModel {
+        id: Set(Uuid::now_v7()),
+        user_id: Set(user_id),
+        event_type_id: Set(event_type_id),
+        timestamp: Set(Utc::now()),
+        metadata: Set(Some(complex_metadata.clone())),
     };
     let created_event = dao.create(create_request).await.unwrap();
 
@@ -105,10 +116,12 @@ async fn test_get_event_without_metadata() {
     let event_type_id = create_test_event_type(&container).await.unwrap();
     let user_id = create_test_user(&container).await.unwrap();
 
-    let create_request = CreateEventRequest {
-        user_id,
-        event_type_id,
-        metadata: None,
+    let create_request = EventActiveModel {
+        id: Set(Uuid::now_v7()),
+        user_id: Set(user_id),
+        event_type_id: Set(event_type_id),
+        timestamp: Set(Utc::now()),
+        metadata: Set(None),
     };
     let created_event = dao.create(create_request).await.unwrap();
 
@@ -135,10 +148,12 @@ async fn test_get_multiple_different_events() {
 
     let mut created_event_ids = Vec::new();
     for metadata in events.iter() {
-        let create_request = CreateEventRequest {
-            user_id,
-            event_type_id,
-            metadata: Some(metadata.clone()),
+        let create_request = EventActiveModel {
+            id: Set(Uuid::now_v7()),
+            user_id: Set(user_id),
+            event_type_id: Set(event_type_id),
+            timestamp: Set(Utc::now()),
+            metadata: Set(Some(metadata.clone())),
         };
         let created_event = dao.create(create_request).await.unwrap();
         created_event_ids.push(created_event.id);

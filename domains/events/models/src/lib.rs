@@ -8,6 +8,5 @@ pub use event_types::{
 };
 pub use events::{
     ActiveModel as EventActiveModel, Column as EventColumn,
-    CreateEventRequest, Entity as EventEntity, EventResponse,
-    Model as EventModel, UpdateEventRequest,
+    Entity as EventEntity, Model as EventModel,
 };

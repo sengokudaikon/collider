@@ -42,37 +42,3 @@ impl Related<super::event_types::Entity> for Entity {
 }
 
 impl ActiveModelBehavior for ActiveModel {}
-
-#[derive(Debug, Clone, Serialize, Deserialize, TypedBuilder)]
-pub struct CreateEventRequest {
-    pub user_id: Uuid,
-    pub event_type_id: i32,
-    pub metadata: Option<serde_json::Value>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, TypedBuilder)]
-pub struct UpdateEventRequest {
-    pub event_type_id: Option<i32>,
-    pub metadata: Option<serde_json::Value>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EventResponse {
-    pub id: Uuid,
-    pub user_id: Uuid,
-    pub event_type_id: i32,
-    pub timestamp: DateTime<Utc>,
-    pub metadata: Option<serde_json::Value>,
-}
-
-impl From<Model> for EventResponse {
-    fn from(event: Model) -> Self {
-        Self {
-            id: event.id,
-            user_id: event.user_id,
-            event_type_id: event.event_type_id,
-            timestamp: event.timestamp,
-            metadata: event.metadata,
-        }
-    }
-}

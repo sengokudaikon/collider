@@ -6,8 +6,9 @@ use analytics::{
 };
 use chrono::{Duration, Utc};
 use events_dao::EventDao;
-use events_models::CreateEventRequest;
+use events_models::EventActiveModel;
 use redis_connection::{config::RedisDbConfig, connect_redis_db};
+use sea_orm::ActiveValue::Set;
 use sql_connection::{
     SqlConnect, config::PostgresDbConfig, connect_postgres_db,
 };
@@ -51,27 +52,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let user_id = Uuid::new_v4();
 
     let events = vec![
-        CreateEventRequest {
-            user_id,
-            event_type_id: 1,
-            metadata: Some(serde_json::json!({"ip": "192.168.1.1"})),
+        EventActiveModel {
+            id: Set(Uuid::now_v7()),
+            user_id: Set(user_id),
+            event_type_id: Set(1),
+            timestamp: Set(Utc::now()),
+            metadata: Set(Some(serde_json::json!({"ip": "192.168.1.1"}))),
         },
-        CreateEventRequest {
-            user_id,
-            event_type_id: 2,
-            metadata: Some(serde_json::json!({"page": "/dashboard"})),
+        EventActiveModel {
+            id: Set(Uuid::now_v7()),
+            user_id: Set(user_id),
+            event_type_id: Set(2),
+            timestamp: Set(Utc::now()),
+            metadata: Set(Some(serde_json::json!({"page": "/dashboard"}))),
         },
-        CreateEventRequest {
-            user_id,
-            event_type_id: 3,
-            metadata: Some(
+        EventActiveModel {
+            id: Set(Uuid::now_v7()),
+            user_id: Set(user_id),
+            event_type_id: Set(3),
+            timestamp: Set(Utc::now()),
+            metadata: Set(Some(
                 serde_json::json!({"button": "save", "form": "profile"}),
-            ),
+            )),
         },
     ];
 
-    for event_req in events {
-        processor.create_event(event_req).await?;
+    for active_model in events {
+        processor.create_event(active_model).await?;
     }
 
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -166,15 +173,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("\n=== Batch Processing ===");
 
-    let batch_events: Vec<CreateEventRequest> = (0..1000)
+    let batch_events: Vec<EventActiveModel> = (0..1000)
         .map(|i| {
-            CreateEventRequest {
-                user_id: Uuid::new_v4(),
-                event_type_id: (i % 5) + 1,
-                metadata: Some(serde_json::json!({
+            EventActiveModel {
+                id: Set(Uuid::now_v7()),
+                user_id: Set(Uuid::new_v4()),
+                event_type_id: Set((i % 5) + 1),
+                timestamp: Set(Utc::now()),
+                metadata: Set(Some(serde_json::json!({
                     "batch_id": i / 100,
                     "sequence": i
-                })),
+                }))),
             }
         })
         .collect();

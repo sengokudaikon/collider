@@ -1,6 +1,7 @@
 use database_traits::dao::GenericDao;
 use events_dao::EventDao;
-use events_models::{EventResponse, UpdateEventRequest};
+use events_models::{EventActiveModel, EventModel};
+use sea_orm::ActiveValue::Set;
 use serde::{Deserialize, Serialize};
 use sql_connection::SqlConnect;
 use thiserror::Error;
@@ -17,6 +18,7 @@ pub enum UpdateEventError {
 
 #[derive(Debug, Deserialize)]
 pub struct UpdateEventCommand {
+    #[serde(skip)]
     pub event_id: Uuid,
     pub event_type_id: Option<i32>,
     pub metadata: Option<serde_json::Value>,
@@ -52,14 +54,33 @@ impl UpdateEventHandler {
     pub async fn execute(
         &self, command: UpdateEventCommand,
     ) -> Result<UpdateEventResult, UpdateEventError> {
-        let update_request = UpdateEventRequest {
-            event_type_id: command.event_type_id,
-            metadata: command.metadata,
+        // Find the existing event to get current values
+        let existing_event =
+            self.event_dao.find_by_id(command.event_id).await?;
+
+        // Create ActiveModel with updates
+        let active_model = EventActiveModel {
+            id: Set(existing_event.id),
+            user_id: Set(existing_event.user_id),
+            event_type_id: if let Some(event_type_id) = command.event_type_id
+            {
+                Set(event_type_id)
+            }
+            else {
+                Set(existing_event.event_type_id)
+            },
+            timestamp: Set(existing_event.timestamp),
+            metadata: if command.metadata.is_some() {
+                Set(command.metadata)
+            }
+            else {
+                Set(existing_event.metadata)
+            },
         };
 
         let updated_event = self
             .event_dao
-            .update(command.event_id, update_request)
+            .update(command.event_id, active_model)
             .await?;
 
         Ok(UpdateEventResult {
@@ -74,8 +95,8 @@ impl UpdateEventHandler {
     }
 }
 
-impl From<EventResponse> for UpdateEventResponse {
-    fn from(event: EventResponse) -> Self {
+impl From<EventModel> for UpdateEventResponse {
+    fn from(event: EventModel) -> Self {
         Self {
             id: event.id,
             user_id: event.user_id,
