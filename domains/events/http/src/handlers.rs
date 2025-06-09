@@ -1,9 +1,9 @@
 use axum::{
+    Router,
     extract::{Path, Query, State},
     http::StatusCode,
     response::Json,
     routing::{delete, get, post, put},
-    Router,
 };
 use chrono::{DateTime, Utc};
 use domain::AppError;
@@ -124,14 +124,7 @@ async fn list_events(
     let offset = params
         .offset
         .or_else(|| {
-            params.page.map(|p| {
-                if p > 0 {
-                    (p - 1) * limit
-                }
-                else {
-                    0
-                }
-            })
+            params.page.map(|p| if p > 0 { (p - 1) * limit } else { 0 })
         })
         .unwrap_or(0);
 

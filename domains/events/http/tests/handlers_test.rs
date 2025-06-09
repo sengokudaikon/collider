@@ -13,8 +13,8 @@ use test_utils::{postgres::TestPostgresContainer, *};
 use tower::ServiceExt;
 use uuid::Uuid;
 
-async fn setup_test_app(
-) -> anyhow::Result<(TestPostgresContainer, Router, EventDao)> {
+async fn setup_test_app()
+-> anyhow::Result<(TestPostgresContainer, Router, EventDao)> {
     let container = TestPostgresContainer::new().await?;
 
     let sql_connect = create_sql_connect(&container);
@@ -145,8 +145,7 @@ async fn test_update_event_endpoint() {
 
     container
         .execute_sql(
-            "INSERT INTO event_types (id, name) VALUES (2, \
-             'updated_event')",
+            "INSERT INTO event_types (id, name) VALUES (2, 'updated_event')",
         )
         .await
         .unwrap();
@@ -255,8 +254,8 @@ async fn test_list_events_with_filters() {
 
     let user_id_2 = Uuid::now_v7();
     let query = format!(
-        "INSERT INTO users (id, name, created_at) VALUES \
-         ('{}', 'User 2', NOW())",
+        "INSERT INTO users (id, name, created_at) VALUES ('{}', 'User 2', \
+         NOW())",
         user_id_2
     );
     container.execute_sql(&query).await.unwrap();

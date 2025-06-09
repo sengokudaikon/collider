@@ -11,6 +11,7 @@ events-dao = { path = "../dao" }
 # Infrastructure
 database-traits.workspace = true
 sql-connection.workspace = true
+redis-connection.workspace = true
 serde_json.workspace = true
 # Core dependencies
 uuid = { workspace = true }

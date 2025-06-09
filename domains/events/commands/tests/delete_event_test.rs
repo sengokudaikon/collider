@@ -5,8 +5,8 @@ use events_models::CreateEventRequest;
 use test_utils::{postgres::TestPostgresContainer, *};
 use uuid::Uuid;
 
-async fn setup_test_db(
-) -> anyhow::Result<(TestPostgresContainer, DeleteEventHandler, EventDao)> {
+async fn setup_test_db()
+-> anyhow::Result<(TestPostgresContainer, DeleteEventHandler, EventDao)> {
     let container = TestPostgresContainer::new().await?;
 
     let sql_connect = create_sql_connect(&container);
@@ -44,7 +44,7 @@ async fn test_delete_event_success() {
 
 #[tokio::test]
 async fn test_delete_event_not_found() {
-    let (container, handler, _) = setup_test_db().await.unwrap();
+    let (_container, handler, _) = setup_test_db().await.unwrap();
     let non_existent_id = Uuid::now_v7();
 
     let command = DeleteEventCommand {

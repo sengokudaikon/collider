@@ -1,17 +1,11 @@
-use std::time::Duration as StdDuration;
-
 use analytics::{TimeBucket, aggregations::RedisEventAggregator};
 use chrono::{DateTime, Duration, Utc};
 use redis::AsyncCommands;
-use redis_connection::{
-    connection::RedisConnectionManager, json::Json, type_bind::RedisTypeBind,
-};
+use redis_connection::connection::RedisConnectionManager;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::instrument;
 use uuid::Uuid;
-
-use crate::cache_keys::*;
 
 #[derive(Debug, Error)]
 pub enum UserAnalyticsError {
@@ -55,22 +49,6 @@ impl UserAnalyticsService {
     pub async fn get_user_metrics(
         &self, user_id: Uuid,
     ) -> Result<UserEventMetrics, UserAnalyticsError> {
-        let redis = RedisConnectionManager::from_static();
-        let mut conn = redis.get_connection().await?;
-
-        // Try to get from cache first
-        let cache_key = UserMetricsCacheKey;
-        let mut cache = cache_key.bind_with(&mut *conn, &user_id);
-
-        if let Ok(Some(metrics)) = cache.try_get().await {
-            tracing::debug!("Cache hit for user {} metrics", user_id);
-            return Ok(metrics.inner());
-        }
-
-        tracing::debug!(
-            "Cache miss for user {} metrics, computing...",
-            user_id
-        );
         let now = Utc::now();
 
         let events_last_24h = self
@@ -98,25 +76,14 @@ impl UserAnalyticsService {
             .max_by_key(|etc| etc.count)
             .map(|etc| etc.event_type.clone());
 
-        let metrics = UserEventMetrics {
+        Ok(UserEventMetrics {
             total_events,
             events_last_24h,
             events_last_7d,
             events_last_30d,
             most_frequent_event_type,
             event_type_counts,
-        };
-
-        // Cache the result for only 30 seconds since metrics update in
-        // real-time
-        let _ = cache
-            .set_with_expire::<()>(
-                Json(metrics.clone()).serde().unwrap(),
-                StdDuration::from_secs(30),
-            )
-            .await;
-
-        Ok(metrics)
+        })
     }
 
     #[instrument(skip(self))]
@@ -151,36 +118,9 @@ impl UserAnalyticsService {
     ) -> Result<u64, UserAnalyticsError> {
         let redis = RedisConnectionManager::from_static();
         let mut conn = redis
-            .get_connection()
+            .get_mut_connection()
             .await
             .map_err(UserAnalyticsError::from)?;
-
-        // Create cache key based on period
-        let period = format!("{}-{}", start.timestamp(), end.timestamp());
-        let bucket_type = if end - start <= Duration::days(1) {
-            "hour"
-        }
-        else if end - start <= Duration::days(7) {
-            "day"
-        }
-        else {
-            "week"
-        };
-
-        let cache_key = UserEventCountCacheKey;
-        let mut cache = cache_key.bind_with_args(
-            &mut conn,
-            (&user_id, &period.to_string(), &bucket_type.to_string()),
-        );
-
-        if let Ok(Some(count)) = cache.try_get().await {
-            tracing::debug!(
-                "Cache hit for user {} event count period {}",
-                user_id,
-                period
-            );
-            return Ok(count.inner());
-        }
 
         let bucket = if end - start <= Duration::days(1) {
             TimeBucket::Hour
@@ -191,13 +131,6 @@ impl UserAnalyticsService {
         else {
             TimeBucket::Week
         };
-
-        // Use separate connection for direct Redis operations to avoid
-        // borrowing conflicts
-        let mut direct_conn = redis
-            .get_connection()
-            .await
-            .map_err(UserAnalyticsError::from)?;
 
         let mut total = 0u64;
         let mut current = start;
@@ -210,8 +143,7 @@ impl UserAnalyticsService {
             );
             let key = format!("{}:total", bucket_key);
 
-            // Use direct Redis operation since we're in a loop
-            let count: u64 = direct_conn.get(&key).await.unwrap_or(0);
+            let count: u64 = conn.get(&key).await.unwrap_or(0);
             total += count;
 
             current += match bucket {
@@ -222,15 +154,6 @@ impl UserAnalyticsService {
             };
         }
 
-        // Cache the result for only 1 minute since event counts update in
-        // real-time
-        let _ = cache
-            .set_with_expire::<()>(
-                Json(total).serde().unwrap(),
-                StdDuration::from_secs(60),
-            )
-            .await;
-
         Ok(total)
     }
 
@@ -238,42 +161,19 @@ impl UserAnalyticsService {
         &self, user_id: Uuid,
     ) -> Result<u64, UserAnalyticsError> {
         let redis = RedisConnectionManager::from_static();
-        let mut cache_conn = redis
-            .get_connection()
-            .await
-            .map_err(UserAnalyticsError::from)?;
-
-        // Try cache first
-        let cache_key = UserTotalEventsCacheKey;
-        let mut cache = cache_key.bind_with(&mut cache_conn, &user_id);
-
-        if let Ok(Some(total)) = cache.try_get().await {
-            tracing::debug!("Cache hit for user {} total events", user_id);
-            return Ok(total.inner());
-        }
-
-        // Use separate connection for direct Redis operations
-        let mut direct_conn = redis
-            .get_connection()
+        let mut conn = redis
+            .get_mut_connection()
             .await
             .map_err(UserAnalyticsError::from)?;
 
         let pattern = format!("events:month:*:users:{}:total", user_id);
-        let keys: Vec<String> = direct_conn.keys(&pattern).await?;
+        let keys: Vec<String> = conn.keys(&pattern).await?;
 
         let mut total = 0u64;
         for key in keys {
-            let count: u64 = direct_conn.get(&key).await.unwrap_or(0);
+            let count: u64 = conn.get(&key).await.unwrap_or(0);
             total += count;
         }
-
-        // Cache for only 2 minutes since total events can update frequently
-        let _ = cache
-            .set_with_expire::<()>(
-                Json(total).serde().unwrap(),
-                StdDuration::from_secs(120),
-            )
-            .await;
 
         Ok(total)
     }
@@ -282,28 +182,8 @@ impl UserAnalyticsService {
         &self, user_id: Uuid, start: DateTime<Utc>, end: DateTime<Utc>,
     ) -> Result<Vec<EventTypeCount>, UserAnalyticsError> {
         let redis = RedisConnectionManager::from_static();
-        let mut cache_conn = redis
-            .get_connection()
-            .await
-            .map_err(UserAnalyticsError::from)?;
-
-        // Cache key with time range
-        let start_str = start.timestamp().to_string();
-        let end_str = end.timestamp().to_string();
-        let cache_key = UserEventTypesCacheKey;
-        let mut cache = cache_key.bind_with_args(
-            &mut cache_conn,
-            (&user_id, &start_str, &end_str),
-        );
-
-        if let Ok(Some(types)) = cache.try_get().await {
-            tracing::debug!("Cache hit for user {} event types", user_id);
-            return Ok(types.inner());
-        }
-
-        // Use separate connection for direct Redis operations
-        let mut direct_conn = redis
-            .get_connection()
+        let mut conn = redis
+            .get_mut_connection()
             .await
             .map_err(UserAnalyticsError::from)?;
 
@@ -317,11 +197,11 @@ impl UserAnalyticsService {
                 Some(user_id.to_string().as_str()),
             );
             let pattern = format!("{}:types:*", bucket_key);
-            let keys: Vec<String> = direct_conn.keys(&pattern).await?;
+            let keys: Vec<String> = conn.keys(&pattern).await?;
 
             for key in keys {
                 if let Some(event_type) = key.split(':').next_back() {
-                    let count: u64 = direct_conn.get(&key).await.unwrap_or(0);
+                    let count: u64 = conn.get(&key).await.unwrap_or(0);
                     *type_counts
                         .entry(event_type.to_string())
                         .or_insert(0) += count;
@@ -337,14 +217,6 @@ impl UserAnalyticsService {
             .collect();
 
         result.sort_by(|a, b| b.count.cmp(&a.count));
-
-        // Cache for only 1 minute since event types can change
-        let _ = cache
-            .set_with_expire::<()>(
-                Json(result.clone()).serde().unwrap(),
-                StdDuration::from_secs(60),
-            )
-            .await;
 
         Ok(result)
     }

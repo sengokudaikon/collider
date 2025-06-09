@@ -63,7 +63,7 @@ impl RedisEventAggregator {
         &self, target_key: &str, source_key: &str,
     ) -> Result<(), AggregationError> {
         let redis = RedisConnectionManager::from_static();
-        let mut conn = redis.get_mut_connection().await?;
+        let mut conn = redis.get_connection().await?;
         let _: () = conn.pfmerge(target_key, source_key).await?;
         Ok(())
     }
@@ -89,7 +89,7 @@ impl RedisEventAggregator {
         &self, key: &str, amount: i64,
     ) -> Result<(), AggregationError> {
         let redis = RedisConnectionManager::from_static();
-        let mut conn = redis.get_mut_connection().await?;
+        let mut conn = redis.get_connection().await?;
         let _: () = conn.incr(key, amount).await?;
         Ok(())
     }
@@ -98,7 +98,7 @@ impl RedisEventAggregator {
         &self, key: &str, value: &str,
     ) -> Result<(), AggregationError> {
         let redis = RedisConnectionManager::from_static();
-        let mut conn = redis.get_mut_connection().await?;
+        let mut conn = redis.get_connection().await?;
         let _: () = conn.pfadd(key, value).await?;
         Ok(())
     }
@@ -107,7 +107,7 @@ impl RedisEventAggregator {
         &self, key: &str, field: &str, value: &str,
     ) -> Result<(), AggregationError> {
         let redis = RedisConnectionManager::from_static();
-        let mut conn = redis.get_mut_connection().await?;
+        let mut conn = redis.get_connection().await?;
         let _: () = conn.hset(key, field, value).await?;
         Ok(())
     }
@@ -117,7 +117,7 @@ impl RedisEventAggregator {
         T: FromRedisValue,
     {
         let redis = RedisConnectionManager::from_static();
-        let mut conn = redis.get_mut_connection().await?;
+        let mut conn = redis.get_connection().await?;
         let result: T = conn.get(key).await?;
         Ok(result)
     }
@@ -126,7 +126,7 @@ impl RedisEventAggregator {
         &self, key: &str,
     ) -> Result<u64, AggregationError> {
         let redis = RedisConnectionManager::from_static();
-        let mut conn = redis.get_mut_connection().await?;
+        let mut conn = redis.get_connection().await?;
         let count: u64 = conn.pfcount(key).await?;
         Ok(count)
     }
@@ -135,7 +135,7 @@ impl RedisEventAggregator {
         &self, key: &str, field: &str,
     ) -> Result<String, AggregationError> {
         let redis = RedisConnectionManager::from_static();
-        let mut conn = redis.get_mut_connection().await?;
+        let mut conn = redis.get_connection().await?;
         let value: String = conn.hget(key, field).await?;
         Ok(value)
     }
@@ -144,7 +144,7 @@ impl RedisEventAggregator {
         &self, key: &str, seconds: i64,
     ) -> Result<(), AggregationError> {
         let redis = RedisConnectionManager::from_static();
-        let mut conn = redis.get_mut_connection().await?;
+        let mut conn = redis.get_connection().await?;
         let _: bool = conn.expire(key, seconds).await?;
         Ok(())
     }

@@ -4,9 +4,8 @@ use events_models::CreateEventRequest;
 use events_queries::{ListEventsQuery, ListEventsQueryHandler};
 use test_utils::{postgres::TestPostgresContainer, *};
 
-async fn setup_test_db(
-) -> anyhow::Result<(TestPostgresContainer, ListEventsQueryHandler, EventDao)>
-{
+async fn setup_test_db()
+-> anyhow::Result<(TestPostgresContainer, ListEventsQueryHandler, EventDao)> {
     let container = TestPostgresContainer::new_with_unique_db().await?;
 
     let sql_connect = create_sql_connect(&container);

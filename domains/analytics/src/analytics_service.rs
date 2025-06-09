@@ -223,7 +223,7 @@ mod tests {
         create_sql_connect, postgres::TestPostgresContainer,
         redis::TestRedisContainer,
     };
-    use tokio::time::{sleep, Duration as TokioDuration};
+    use tokio::time::{Duration as TokioDuration, sleep};
     use uuid::Uuid;
 
     use super::*;
@@ -263,8 +263,8 @@ mod tests {
     ) -> anyhow::Result<Uuid> {
         let user_id = Uuid::now_v7();
         let query = format!(
-            "INSERT INTO users (id, name, created_at) VALUES \
-             ('{}', 'Test User', NOW())",
+            "INSERT INTO users (id, name, created_at) VALUES ('{}', 'Test \
+             User', NOW())",
             user_id
         );
         container.execute_sql(&query).await?;

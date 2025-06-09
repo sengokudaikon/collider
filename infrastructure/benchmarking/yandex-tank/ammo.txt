@@ -12,21 +12,19 @@ Content-Type: application/json
 Connection: close
 
 {
-  "data": {
-    "event_type": "user_action",
-    "timestamp": "2025-06-08T10:30:00Z",
-    "user_id": "tank_user_001",
+  "user_id": "550e8400-e29b-41d4-a716-446655440001",
+  "event_type": "user_action",
+  "timestamp": "2025-06-08T10:30:00Z",
+  "metadata": {
     "session_id": "tank_session_001",
     "action": "click",
     "element": "button_submit",
     "page": "/dashboard",
-    "metadata": {
-      "browser": "Chrome",
-      "version": "120.0.0.0",
-      "platform": "Linux",
-      "screen_resolution": "1920x1080",
-      "load_test": true
-    }
+    "browser": "Chrome",
+    "version": "120.0.0.0",
+    "platform": "Linux",
+    "screen_resolution": "1920x1080",
+    "load_test": true
   }
 }
 
@@ -56,15 +54,7 @@ Content-Type: application/json
 Connection: close
 
 {
-  "data": {
-    "id": "tank_user_002",
-    "name": "Tank Test User",
-    "created_at": "2025-06-08T10:30:00Z",
-    "metadata": {
-      "test_run": true,
-      "load_test_id": "yandex_tank_run_001"
-    }
-  }
+  "name": "Tank Test User"
 }
 
 0 get_stats

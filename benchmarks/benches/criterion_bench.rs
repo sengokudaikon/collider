@@ -13,8 +13,10 @@ pub fn benchmark_http_requests(c: &mut Criterion) {
 
     // Health check benchmark - targeting docker-compose environment
     group.bench_function("health_check", |b| {
+        let client = client.clone();
         b.to_async(&rt).iter(|| {
-            async {
+            let client = client.clone();
+            async move {
                 let response = client
                     .get("http://localhost:8080/health")
                     .send()
@@ -27,8 +29,10 @@ pub fn benchmark_http_requests(c: &mut Criterion) {
 
     // Users endpoint benchmark
     group.bench_function("list_users", |b| {
+        let client = client.clone();
         b.to_async(&rt).iter(|| {
-            async {
+            let client = client.clone();
+            async move {
                 let response = client
                     .get("http://localhost:8080/api/users")
                     .send()
@@ -41,8 +45,10 @@ pub fn benchmark_http_requests(c: &mut Criterion) {
 
     // Events endpoint benchmark
     group.bench_function("list_events", |b| {
+        let client = client.clone();
         b.to_async(&rt).iter(|| {
-            async {
+            let client = client.clone();
+            async move {
                 let response = client
                     .get("http://localhost:8080/api/events")
                     .send()
@@ -67,7 +73,9 @@ pub fn benchmark_http_requests(c: &mut Criterion) {
     });
 
     group.bench_function("create_event", |b| {
+        let client = client.clone();
         b.to_async(&rt).iter(|| {
+            let client = client.clone();
             let payload = event_payload.clone();
             async move {
                 let response = client
@@ -83,8 +91,10 @@ pub fn benchmark_http_requests(c: &mut Criterion) {
 
     // User analytics endpoint benchmark - use valid UUID
     group.bench_function("user_analytics", |b| {
+        let client = client.clone();
         b.to_async(&rt).iter(|| {
-            async {
+            let client = client.clone();
+            async move {
                 let response = client
                     .get("http://localhost:8080/api/users/550e8400-e29b-41d4-a716-446655440000/analytics")
                     .send()

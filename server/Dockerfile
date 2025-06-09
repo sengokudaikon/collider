@@ -67,7 +67,7 @@ ENV RUSTFLAGS="-C target-cpu=native -C opt-level=3 -C link-arg=-s"
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/app/target \
     --mount=type=cache,target=/app/.sccache \
-    cargo build --release --workspace --exclude benchmarks -j $(nproc)
+    cargo build --release --workspace -j $(nproc)
 
 # Copy actual source code
 COPY server/src ./server/src
@@ -79,7 +79,7 @@ COPY binaries/ ./binaries/
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/app/target \
     --mount=type=cache,target=/app/.sccache \
-    cargo build --release --bin collider --exclude benchmarks && \
+    cargo build --release --bin collider && \
     cp /app/target/release/collider /usr/local/bin/collider
 
 # Runtime stage

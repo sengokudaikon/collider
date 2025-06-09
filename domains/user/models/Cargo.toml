@@ -7,3 +7,4 @@ edition = "2024"
 sea-orm.workspace = true
 uuid.workspace = true
 chrono.workspace = true
+serde.workspace = true

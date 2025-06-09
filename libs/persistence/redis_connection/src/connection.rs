@@ -29,7 +29,7 @@ impl RedisConnectionManager {
 
     pub fn init_static(pool: Pool) { REDIS_POOL.set(pool).ok(); }
 
-    pub async fn get_mut_connection(&self) -> Result<Connection, PoolError> {
+    pub async fn get_connection(&self) -> Result<Connection, PoolError> {
         self.pool.get().await
     }
 }

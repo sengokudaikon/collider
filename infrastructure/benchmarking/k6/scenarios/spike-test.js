@@ -30,16 +30,14 @@ export default function () {
     ['GET', `${BASE_URL}/health`],
     ['GET', `${BASE_URL}/api/events/count`],
     ['POST', `${BASE_URL}/api/events`, JSON.stringify({
-      data: {
-        event_type: 'spike_event',
-        user_id: `spike_user_${__VU}`,
+      event_type: 'spike_event',
+      user_id: '550e8400-e29b-41d4-a716-446655440000',
+      timestamp: new Date().toISOString(),
+      metadata: {
+        test_type: 'spike',
         action: 'spike_action',
-        timestamp: new Date().toISOString(),
-        metadata: {
-          test_type: 'spike',
-          vu: __VU,
-          iter: __ITER,
-        }
+        vu: __VU,
+        iter: __ITER,
       }
     }), { headers: { 'Content-Type': 'application/json' } }],
   ]);

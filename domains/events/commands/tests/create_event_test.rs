@@ -3,8 +3,8 @@ use events_commands::{CreateEventCommand, CreateEventHandler};
 use test_utils::{postgres::TestPostgresContainer, *};
 use uuid::Uuid;
 
-async fn setup_test_db(
-) -> anyhow::Result<(TestPostgresContainer, CreateEventHandler)> {
+async fn setup_test_db()
+-> anyhow::Result<(TestPostgresContainer, CreateEventHandler)> {
     let container = TestPostgresContainer::new().await?;
 
     let sql_connect = create_sql_connect(&container);

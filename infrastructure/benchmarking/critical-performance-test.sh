@@ -179,25 +179,23 @@ run_critical_phase() {
     # Create realistic payload for this phase
     cat > "$phase_results_dir/critical_payload.json" <<EOF
 {
-  "data": {
-    "event_type": "critical_load_test",
-    "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
-    "user_id": "critical_user_$(date +%s)",
+  "user_id": "550e8400-e29b-41d4-a716-$(date +%s | tail -c 13)",
+  "event_type": "critical_load_test",
+  "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+  "metadata": {
     "session_id": "critical_session_$(date +%s)",
     "action": "critical_action",
     "element": "critical_element",
     "page": "/critical/test",
-    "metadata": {
-      "test_phase": "$phase_name",
-      "target_rps": $target_rps,
-      "browser": "CriticalTestBot",
-      "version": "1.0.0",
-      "platform": "LoadTest",
-      "screen_resolution": "1920x1080",
-      "critical_test": true,
-      "phase_start": $phase_start,
-      "expected_duration": $duration
-    },
+    "test_phase": "$phase_name",
+    "target_rps": $target_rps,
+    "browser": "CriticalTestBot",
+    "version": "1.0.0",
+    "platform": "LoadTest",
+    "screen_resolution": "1920x1080",
+    "critical_test": true,
+    "phase_start": $phase_start,
+    "expected_duration": $duration,
     "performance_data": {
       "load_time": 0,
       "dom_ready": 0,

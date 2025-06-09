@@ -4,8 +4,8 @@ use bytes::Bytes;
 use deadpool_redis::redis::{
     AsyncCommands, FromRedisValue, RedisResult, ToRedisArgs, Value,
 };
+use flume::{Receiver, Sender};
 use moka::{future::Cache, notification::RemovalCause};
-use tokio::sync::mpsc::{self, Receiver, Sender};
 use tracing::instrument;
 
 use super::{
@@ -17,6 +17,22 @@ use super::{
 struct EvictionMessage {
     key: String,
     value: Bytes,
+}
+
+// Standalone eviction handler function
+async fn handle_evictions(rx: Receiver<EvictionMessage>) {
+    use crate::connection::RedisConnectionManager;
+
+    while let Ok(msg) = rx.recv_async().await {
+        // Get a fresh connection from the pool for eviction handling
+        if let Ok(redis) =
+            RedisConnectionManager::from_static().get_connection().await
+        {
+            let mut redis = redis;
+            // Store raw bytes back to Redis when evicted from memory
+            let _ = redis.set::<_, _, ()>(&msg.key, msg.value.as_ref()).await;
+        }
+    }
 }
 
 pub struct Tiered<'redis, R, T> {
@@ -39,10 +55,18 @@ impl<'redis, R, T> RedisTypeTrait<'redis, R> for Tiered<'redis, R, T> {
                 capacity: 10_000,
                 ttl_secs: 300,
             },
-            overflow_strategy: OverflowStrategy::Drop,
+            overflow_strategy: OverflowStrategy::MoveToRedis, /* Enable eviction to Redis */
         };
 
-        let (tx, _rx) = mpsc::channel(100);
+        let (tx, rx) = flume::unbounded();
+
+        // Start eviction handler if configured
+        if config.overflow_strategy == OverflowStrategy::MoveToRedis {
+            tokio::spawn(async move {
+                handle_evictions(rx).await;
+            });
+        }
+
         let memory = memory.unwrap_or_else(|| {
             let tx = tx.clone();
             Cache::builder()
@@ -77,23 +101,19 @@ impl<'redis, R, T> RedisTypeTrait<'redis, R> for Tiered<'redis, R, T> {
 
 impl<'redis, R, T> Tiered<'redis, R, T>
 where
-    R: deadpool_redis::redis::aio::ConnectionLike
-        + Send
-        + Sync
-        + Clone
-        + 'static,
+    R: deadpool_redis::redis::aio::ConnectionLike + Send + Sync + 'static,
     T: for<'a> RedisValue<'a> + Send + Sync + 'static,
-    for<'a> <T as RedisValue<'a>>::Output:
+    for<'a> <T as RedisValue<'a>>::Input:
         ToRedisArgs + Clone + Send + 'static,
+    for<'a> <T as RedisValue<'a>>::Output: Clone + Send + 'static,
 {
     pub fn with_config(mut self, config: TieredConfig) -> Self {
-        let (tx, rx) = mpsc::channel(100);
+        let (tx, rx) = flume::unbounded();
         let tx_clone = tx.clone();
 
         if config.overflow_strategy == OverflowStrategy::MoveToRedis {
-            let redis = self.redis.clone();
             tokio::spawn(async move {
-                Self::handle_evictions(redis, rx).await;
+                handle_evictions(rx).await;
             });
         }
 
@@ -118,21 +138,6 @@ where
         self
     }
 
-    async fn handle_evictions<'a>(
-        mut redis: R, mut rx: Receiver<EvictionMessage>,
-    ) where
-        T: for<'b> RedisValue<'b>,
-        for<'b> <T as RedisValue<'b>>::Output: FromRedisValue + ToRedisArgs,
-    {
-        while let Some(msg) = rx.recv().await {
-            if let Ok(value) = <T as RedisValue<'_>>::Output::from_redis_value(
-                &Value::BulkString(msg.value.to_vec()),
-            ) {
-                let _ = redis.set::<_, _, ()>(&msg.key, value).await;
-            }
-        }
-    }
-
     pub async fn exists<RV>(&mut self) -> RedisResult<RV>
     where
         RV: FromRedisValue,
@@ -154,12 +159,13 @@ where
 
         let value: T::Output = self.redis.get(&*self.key).await?;
 
-        let mut bytes = Vec::new();
-        value.clone().write_redis_args(&mut bytes);
-        let bytes: Vec<u8> = bytes.into_iter().flatten().collect();
-        self.memory
-            .insert(self.key.to_string(), Bytes::from(bytes))
-            .await;
+        // Store the raw Redis bytes in memory cache
+        if let Ok(raw_bytes) = self.redis.get::<_, Vec<u8>>(&*self.key).await
+        {
+            self.memory
+                .insert(self.key.to_string(), Bytes::from(raw_bytes))
+                .await;
+        }
 
         Ok(value)
     }
@@ -181,16 +187,7 @@ where
     {
         let result: RV = self.redis.set(&*self.key, value).await?;
 
-        if let Ok(stored_value) =
-            self.redis.get::<_, T::Output>(&*self.key).await
-        {
-            let mut bytes = Vec::new();
-            stored_value.write_redis_args(&mut bytes);
-            let bytes: Vec<u8> = bytes.into_iter().flatten().collect();
-            self.memory
-                .insert(self.key.to_string(), Bytes::from(bytes))
-                .await;
-        }
+        // Cache will be populated on next get from Redis
 
         Ok(result)
     }
@@ -206,16 +203,7 @@ where
             .set_ex(&*self.key, value, duration.as_secs() as _)
             .await?;
 
-        if let Ok(stored_value) =
-            self.redis.get::<_, T::Output>(&*self.key).await
-        {
-            let mut bytes = Vec::new();
-            stored_value.write_redis_args(&mut bytes);
-            let bytes: Vec<u8> = bytes.into_iter().flatten().collect();
-            self.memory
-                .insert(self.key.to_string(), Bytes::from(bytes))
-                .await;
-        }
+        // Cache will be populated on next get from Redis
 
         Ok(result)
     }
@@ -229,16 +217,7 @@ where
         let result = self.redis.set_nx(&*self.key, value).await;
 
         if let Ok(_val) = &result {
-            if let Ok(stored_value) =
-                self.redis.get::<_, T::Output>(&*self.key).await
-            {
-                let mut bytes = Vec::new();
-                stored_value.write_redis_args(&mut bytes);
-                let bytes: Vec<u8> = bytes.into_iter().flatten().collect();
-                self.memory
-                    .insert(self.key.to_string(), Bytes::from(bytes))
-                    .await;
-            }
+            // Cache will be populated on next get from Redis
         }
 
         result

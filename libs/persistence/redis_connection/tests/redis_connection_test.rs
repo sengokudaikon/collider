@@ -82,7 +82,7 @@ async fn test_redis_connection_manager() {
 async fn test_redis_connection_manager_mut() {
     let (_container, manager) = setup_test_redis().await.unwrap();
 
-    let mut conn = manager.get_mut_connection().await.unwrap();
+    let mut conn = manager.get_connection().await.unwrap();
 
     let _: () = conn.set("test_key", "test_value").await.unwrap();
     let value: String = conn.get("test_key").await.unwrap();
@@ -92,7 +92,7 @@ async fn test_redis_connection_manager_mut() {
 #[tokio::test]
 async fn test_redis_basic_operations() {
     let (_container, manager) = setup_test_redis().await.unwrap();
-    let mut conn = manager.get_mut_connection().await.unwrap();
+    let mut conn = manager.get_connection().await.unwrap();
 
     let _: () = conn.set("string_key", "hello world").await.unwrap();
     let value: String = conn.get("string_key").await.unwrap();
@@ -116,7 +116,7 @@ async fn test_redis_basic_operations() {
 #[tokio::test]
 async fn test_redis_hash_operations() {
     let (_container, manager) = setup_test_redis().await.unwrap();
-    let mut conn = manager.get_mut_connection().await.unwrap();
+    let mut conn = manager.get_connection().await.unwrap();
 
     let _: () = conn.hset("hash_key", "field1", "value1").await.unwrap();
     let _: () = conn.hset("hash_key", "field2", "value2").await.unwrap();
@@ -150,7 +150,7 @@ async fn test_redis_hash_operations() {
 #[tokio::test]
 async fn test_redis_list_operations() {
     let (_container, manager) = setup_test_redis().await.unwrap();
-    let mut conn = manager.get_mut_connection().await.unwrap();
+    let mut conn = manager.get_connection().await.unwrap();
 
     let _: () = conn.lpush("list_key", "item1").await.unwrap();
     let _: () = conn.lpush("list_key", "item2").await.unwrap();
@@ -172,7 +172,7 @@ async fn test_redis_list_operations() {
 #[tokio::test]
 async fn test_redis_set_operations() {
     let (_container, manager) = setup_test_redis().await.unwrap();
-    let mut conn = manager.get_mut_connection().await.unwrap();
+    let mut conn = manager.get_connection().await.unwrap();
 
     let _: () = conn.sadd("set_key", "member1").await.unwrap();
     let _: () = conn.sadd("set_key", "member2").await.unwrap();
@@ -203,7 +203,7 @@ async fn test_redis_set_operations() {
 #[tokio::test]
 async fn test_redis_expire_operations() {
     let (_container, manager) = setup_test_redis().await.unwrap();
-    let mut conn = manager.get_mut_connection().await.unwrap();
+    let mut conn = manager.get_connection().await.unwrap();
 
     let _: () = conn.set("temp_key", "temporary_value").await.unwrap();
     let _: () = conn.expire("temp_key", 60).await.unwrap();
@@ -219,7 +219,7 @@ async fn test_redis_expire_operations() {
 #[tokio::test]
 async fn test_redis_key_pattern_operations() {
     let (_container, manager) = setup_test_redis().await.unwrap();
-    let mut conn = manager.get_mut_connection().await.unwrap();
+    let mut conn = manager.get_connection().await.unwrap();
 
     let _: () = conn.set("pattern:1", "value1").await.unwrap();
     let _: () = conn.set("pattern:2", "value2").await.unwrap();
@@ -247,7 +247,7 @@ async fn test_concurrent_redis_operations() {
     let tasks = (0..10).map(|i| {
         let manager = manager.clone();
         tokio::spawn(async move {
-            let mut conn = manager.get_mut_connection().await.unwrap();
+            let mut conn = manager.get_connection().await.unwrap();
             let key = format!("concurrent:key:{}", i);
             let value = format!("value_{}", i);
 
@@ -261,7 +261,7 @@ async fn test_concurrent_redis_operations() {
         task.await.unwrap();
     }
 
-    let mut conn = manager.get_mut_connection().await.unwrap();
+    let mut conn = manager.get_connection().await.unwrap();
     let keys: Vec<String> = conn.keys("concurrent:key:*").await.unwrap();
     assert_eq!(keys.len(), 10);
 }
@@ -292,7 +292,7 @@ async fn test_redis_connect_trait() {
 #[tokio::test]
 async fn test_redis_memory_operations() {
     let (_container, manager) = setup_test_redis().await.unwrap();
-    let mut conn = manager.get_mut_connection().await.unwrap();
+    let mut conn = manager.get_connection().await.unwrap();
 
     let _: () = conn.set("memory_test", "some_data").await.unwrap();
     let value: String = conn.get("memory_test").await.unwrap();

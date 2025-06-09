@@ -22,12 +22,12 @@ fn benchmark_http_requests(c: &mut Criterion) {
         });
     });
     
-    // Event creation benchmark
+    // Event creation benchmark - use correct CreateEventCommand format
     let event_payload = serde_json::json!({
-        "data": {
-            "event_type": "user_action",
-            "timestamp": chrono::Utc::now().to_rfc3339(),
-            "user_id": "bench_user",
+        "user_id": "550e8400-e29b-41d4-a716-446655440000",
+        "event_type": "user_action",
+        "timestamp": chrono::Utc::now().to_rfc3339(),
+        "metadata": {
             "session_id": "bench_session",
             "action": "click",
             "element": "button_submit",

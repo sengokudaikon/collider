@@ -3,6 +3,9 @@ name = "collider-benchmarks"
 version = "0.1.0"
 edition = "2024"
 
+# This package is intentionally outside the main workspace
+[workspace]
+
 [dependencies]
 criterion = { version = "0.6.0", features = ["async_tokio", "html_reports"] }
 tokio = { version = "1", features = ["full"] }
