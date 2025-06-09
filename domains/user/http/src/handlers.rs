@@ -53,11 +53,11 @@ impl UserHandlers {
         Router::new()
             .route("/", get(list_users))
             .route("/", post(create_user))
-            .route("/:id", get(get_user))
-            .route("/:id", put(update_user))
-            .route("/:id", delete(delete_user))
-            .route("/by-name/:username", get(get_user_by_name))
-            .route("/:id/metrics", get(get_user_with_metrics))
+            .route("/{id}", get(get_user))
+            .route("/{id}", put(update_user))
+            .route("/{id}", delete(delete_user))
+            .route("/by-name/{username}", get(get_user_by_name))
+            .route("/{id}/metrics", get(get_user_with_metrics))
     }
 }
 

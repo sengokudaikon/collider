@@ -11,7 +11,7 @@ default:
 
 # Start development environment
 dev:
-    cd server && cargo run
+    cd server && DATABASE_URL="postgres://postgres:postgres@localhost:5432/postgres" REDIS_HOST="localhost" RUST_LOG=info cargo watch -x "run --bin collider"
 
 # Watch and rebuild on changes
 watch:
@@ -85,13 +85,21 @@ test-env:
 test-env-down:
     docker compose -f docker-compose.test.yml down -v
 
-# Start development environment
+# Start development infrastructure only (for local cargo development)
 dev-up:
     docker compose up -d
+
+# Start full development environment including app in Docker
+dev-up-full:
+    docker compose -f docker-compose.yml -f docker-compose.override.yml up -d
 
 # Stop development environment
 dev-down:
     docker compose down
+
+# Stop full development environment
+dev-down-full:
+    docker compose -f docker-compose.yml -f docker-compose.override.yml down
 
 # ==== Build ====
 
@@ -121,12 +129,26 @@ dev-setup: dev-up
     @echo "Setting up development environment..."
     @if [ ! -f .env ]; then cp .env.example .env && echo "📄 Created .env from template"; fi
     @echo "⏳ Waiting for services to be ready..."
-    @sleep 10
+    @sleep 5
     @echo "🔄 Running database migrations..."
-    DATABASE_URL="postgres://test_db:postgres@localhost:5432/test_db" cargo run --bin migrator -- up
+    DATABASE_URL="postgres://postgres:postgres@localhost:5432/postgres" cargo run --package migrator --bin migrator -- up
     @echo "🌱 Seeding database with sample data..."
-    DATABASE_URL="postgres://test_db:postgres@localhost:5432/test_db" cargo run --bin seeder -- all --min-users 100 --max-users 1000 --target-events 10000000
+    DATABASE_URL="postgres://postgres:postgres@localhost:5432/postgres" cargo run --package seeder --bin seeder -- all --min-users 100 --max-users 1000 --target-events 10000
     @echo "✅ Development environment ready!"
+    @just dev
+
+# Setup full development environment with app in Docker
+dev-setup-full: dev-up-full
+    @echo "Setting up full development environment with app in Docker..."
+    @if [ ! -f .env ]; then cp .env.example .env && echo "📄 Created .env from template"; fi
+    @echo "⏳ Waiting for services to be ready..."
+    @sleep 15
+    @echo "🔄 Running database migrations..."
+    docker compose -f docker-compose.yml -f docker-compose.override.yml exec app cargo run --bin migrator -- up
+    @echo "🌱 Seeding database with sample data..."
+    docker compose -f docker-compose.yml -f docker-compose.override.yml exec app cargo run --bin seeder -- all --min-users 100 --max-users 1000 --target-events 10000
+    @echo "✅ Full development environment ready!"
+    @echo "🌐 App running at http://localhost:8080"
 
 # Run all quality checks
 quality: format lint audit udeps geiger
@@ -140,7 +162,10 @@ help:
     @echo "Development:"
     @echo "  just dev              # Run server locally"
     @echo "  just watch            # Watch and rebuild"
-    @echo "  just dev-up           # Start docker env"
+    @echo "  just dev-up           # Start docker infrastructure only"
+    @echo "  just dev-up-full      # Start docker environment + app"
+    @echo "  just dev-setup        # Setup dev env + migrate + seed (local)"
+    @echo "  just dev-setup-full   # Setup dev env + migrate + seed (docker)"
     @echo ""
     @echo "Testing:"
     @echo "  just test             # Run all tests"

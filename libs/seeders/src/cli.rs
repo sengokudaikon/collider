@@ -8,7 +8,7 @@ pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
 
-    #[arg(short, long, env = "DATABASE_URL")]
+    #[arg(short, long)]
     pub database_url: Option<String>,
 
     #[arg(short, long)]
@@ -65,8 +65,10 @@ pub enum Commands {
 impl Cli {
     pub fn get_database_url(&self) -> String {
         self.database_url.clone().unwrap_or_else(|| {
-            "postgresql://postgres:postgres@localhost:5432/postgres"
-                .to_string()
+            std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+                "postgresql://postgres:postgres@localhost:5432/postgres"
+                    .to_string()
+            })
         })
     }
 }

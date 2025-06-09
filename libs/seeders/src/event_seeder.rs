@@ -7,6 +7,7 @@ use rand::{Rng, prelude::IndexedRandom, rng};
 use sea_orm::{EntityTrait, Set};
 use serde_json::json;
 use sql_connection::SqlConnect;
+use std::time::Instant;
 use tracing::{info, instrument, warn};
 use user_models as users;
 use uuid::Uuid;
@@ -168,12 +169,14 @@ impl EventSeeder {
     async fn generate_events(
         &self, user_ids: Vec<Uuid>, event_type_ids: Vec<i32>,
     ) -> Result<()> {
+        let generation_start = Instant::now();
         info!(
-            "Starting generation of {} events in batches of {}",
+            "📊 Starting generation of {} events in batches of {}",
             self.target_events, self.batch_size
         );
 
         let total_batches = self.target_events.div_ceil(self.batch_size);
+        let mut events_generated = 0;
 
         for batch_num in 0..total_batches {
             let batch_start = batch_num * self.batch_size;
@@ -185,6 +188,7 @@ impl EventSeeder {
                 break;
             }
 
+            let batch_start_time = Instant::now();
             match self
                 .generate_event_batch(
                     &user_ids,
@@ -194,10 +198,26 @@ impl EventSeeder {
                 )
                 .await
             {
-                Ok(_) => {}
+                Ok(_) => {
+                    events_generated += current_batch_size;
+                    let batch_time = batch_start_time.elapsed();
+                    let events_per_sec = current_batch_size as f64 / batch_time.as_secs_f64();
+                    
+                    // Log progress every 10 batches or for large batches
+                    if (batch_num + 1) % 10 == 0 || current_batch_size >= 10000 {
+                        let elapsed = generation_start.elapsed();
+                        let overall_rate = events_generated as f64 / elapsed.as_secs_f64();
+                        let progress = (events_generated as f64 / self.target_events as f64) * 100.0;
+                        
+                        info!(
+                            "📈 Batch {}/{}: {} events/sec (batch), {:.0} events/sec (overall), {:.1}% complete",
+                            batch_num + 1, total_batches, events_per_sec as u32, overall_rate, progress
+                        );
+                    }
+                }
                 Err(e) => {
                     warn!(
-                        "Failed to generate batch {}: {}",
+                        "❌ Failed to generate batch {}: {}",
                         batch_num + 1,
                         e
                     );
@@ -206,7 +226,15 @@ impl EventSeeder {
             }
         }
 
-        info!("Successfully generated {} events", self.target_events);
+        let total_time = generation_start.elapsed();
+        let overall_rate = self.target_events as f64 / total_time.as_secs_f64();
+        
+        info!(
+            "✅ Successfully generated {} events in {:.2}s ({:.0} events/sec)", 
+            self.target_events,
+            total_time.as_secs_f64(),
+            overall_rate
+        );
         Ok(())
     }
 }

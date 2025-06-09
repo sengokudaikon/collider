@@ -5,9 +5,10 @@ use chrono::{DateTime, Utc};
 use events_models::EventModel;
 use serde::{Deserialize, Serialize};
 use sql_connection::SqlConnect;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct EventResponse {
     pub id: Uuid,
     pub user_id: Uuid,

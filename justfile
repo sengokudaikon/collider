@@ -81,17 +81,29 @@ test-env:
 test-env-down:
     just -f justfile.lean test-env-down
 
-# Start development environment
+# Start development infrastructure only (for local cargo development)
 dev-up:
     just -f justfile.lean dev-up
+
+# Start full development environment including app in Docker
+dev-up-full:
+    just -f justfile.lean dev-up-full
 
 # Stop development environment
 dev-down:
     just -f justfile.lean dev-down
 
+# Stop full development environment
+dev-down-full:
+    just -f justfile.lean dev-down-full
+
 # Setup development environment (migrations + seeding)
 dev-setup:
     just -f justfile.lean dev-setup
+
+# Setup full development environment with app in Docker
+dev-setup-full:
+    just -f justfile.lean dev-setup-full
 
 # ==== Build (delegate to justfile.lean) ====
 
@@ -178,7 +190,10 @@ help:
     @echo "📋 Daily Development (→ justfile.lean):"
     @echo "  just dev              # Run server locally"
     @echo "  just watch            # Watch and rebuild"
-    @echo "  just dev-up           # Start docker dev environment"
+    @echo "  just dev-up           # Start docker dev infrastructure only"
+    @echo "  just dev-up-full      # Start docker dev environment + app"
+    @echo "  just dev-setup        # Setup dev env + migrate + seed (local)"
+    @echo "  just dev-setup-full   # Setup dev env + migrate + seed (docker)"
     @echo "  just test             # Run all tests"
     @echo "  just quality          # All quality checks"
     @echo ""

@@ -20,6 +20,7 @@ serde_json = { workspace = true }
 uuid = { workspace = true }
 tracing = { workspace = true }
 chrono.workspace = true
+utoipa = { workspace = true }
 
 [dev-dependencies]
 test-utils = { workspace = true }

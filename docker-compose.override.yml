@@ -1,25 +1,43 @@
-# Override file for different development modes
-# Use: docker-compose -f docker-compose.yml -f docker-compose.override.yml up
-
 services:
   # Development overrides for faster iteration
+#  app:
+#    volumes:
+#      - .:/app:delegated  # Use delegated for better performance on macOS
+#      - /app/target  # Anonymous volume to avoid conflicts
+#    environment:
+#      RUST_LOG: trace  # More verbose logging for development
+#    command: ["cargo", "watch", "-x", "run", "--bin", "collider"]
   app:
-    volumes:
-      - .:/app:delegated  # Use delegated for better performance on macOS
-      - /app/target  # Anonymous volume to avoid conflicts
+    image: collider-app-dev
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    container_name: collider_app_dev
     environment:
-      RUST_LOG: trace  # More verbose logging for development
-    command: ["cargo", "watch", "-x", "run", "--bin", "collider"]
-
-  # Reduced resource limits for local development
-  postgres:
-    command: >
-      postgres 
-      -c log_statement=all 
-      -c log_destination=stderr
-      -c max_connections=50
-      -c shared_buffers=128MB
-      -c effective_cache_size=256MB
-
-  dragonfly:
-    command: dragonfly --logtostderr --maxmemory=512mb --cache_mode=true --proactor_threads=1
+      ENVIRONMENT: development
+      PORT: 8080
+      RUST_LOG: debug
+      RUST_BACKTRACE: "1"
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/postgres
+      REDIS_URL: redis://dragonfly:6379
+      DRAGONFLY_URL: redis://dragonfly:6379
+      JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+    ports:
+      - "8080:8080"
+    volumes:
+      - .:/app
+      - cargo_registry:/usr/local/cargo/registry
+      - cargo_target:/app/target
+    networks:
+      - collider
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dragonfly:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s

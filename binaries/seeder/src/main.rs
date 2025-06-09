@@ -7,7 +7,9 @@ use seeders::{
 use sql_connection::{
     SqlConnect, config::PostgresDbConfig, connect_postgres_db,
 };
-use tracing::{Level, error, info};
+use std::time::Instant;
+use tokio::signal;
+use tracing::{Level, error, info, warn};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -15,7 +17,8 @@ async fn main() -> Result<()> {
 
     tracing_subscriber::fmt().with_max_level(Level::INFO).init();
 
-    info!("Starting database seeding process");
+    let start_time = Instant::now();
+    info!("🚀 Starting database seeding process");
 
     let config = PostgresDbConfig {
         uri: cli.get_database_url(),
@@ -24,55 +27,111 @@ async fn main() -> Result<()> {
         logger: false,
     };
 
+    let db_connection_start = Instant::now();
     connect_postgres_db(&config).await?;
-    info!("Connected to database successfully");
+    let db_connection_time = db_connection_start.elapsed();
+    info!("📚 Connected to database successfully in {:.2}ms", 
+          db_connection_time.as_secs_f64() * 1000.0);
 
     let db = SqlConnect::from_global();
 
-    match cli.command {
-        Commands::All {
-            min_users,
-            max_users,
-            min_event_types,
-            max_event_types,
-            target_events,
-            event_batch_size,
-        } => {
-            run_all_seeders(
-                db,
+    let seeding_start = Instant::now();
+    
+    // Set up graceful shutdown handling
+    let seeding_future = async {
+        match cli.command {
+            Commands::All {
                 min_users,
                 max_users,
                 min_event_types,
                 max_event_types,
                 target_events,
                 event_batch_size,
-                cli.quiet,
-            )
-            .await?;
+            } => {
+                run_all_seeders(
+                    db,
+                    min_users,
+                    max_users,
+                    min_event_types,
+                    max_event_types,
+                    target_events,
+                    event_batch_size,
+                    cli.quiet,
+                )
+                .await
+            }
+            Commands::Users {
+                min_users,
+                max_users,
+            } => {
+                run_user_seeder(db, min_users, max_users, cli.quiet).await
+            }
+            Commands::EventTypes {
+                min_types,
+                max_types,
+            } => {
+                run_event_type_seeder(db, min_types, max_types, cli.quiet).await
+            }
+            Commands::Events {
+                target_events,
+                batch_size,
+            } => {
+                run_event_seeder(db, target_events, batch_size, cli.quiet).await
+            }
         }
-        Commands::Users {
-            min_users,
-            max_users,
-        } => {
-            run_user_seeder(db, min_users, max_users, cli.quiet).await?;
+    };
+
+    // Set up signal handling for graceful shutdown
+    let shutdown_signal = async {
+        let ctrl_c = signal::ctrl_c();
+        
+        #[cfg(unix)]
+        let terminate = async {
+            signal::unix::signal(signal::unix::SignalKind::terminate())
+                .expect("failed to install signal handler")
+                .recv()
+                .await;
+        };
+
+        #[cfg(not(unix))]
+        let terminate = std::future::pending::<()>();
+
+        tokio::select! {
+            _ = ctrl_c => {
+                warn!("🛑 Received Ctrl+C signal, initiating graceful shutdown...");
+            },
+            _ = terminate => {
+                warn!("🛑 Received terminate signal, initiating graceful shutdown...");
+            },
         }
-        Commands::EventTypes {
-            min_types,
-            max_types,
-        } => {
-            run_event_type_seeder(db, min_types, max_types, cli.quiet)
-                .await?;
-        }
-        Commands::Events {
-            target_events,
-            batch_size,
-        } => {
-            run_event_seeder(db, target_events, batch_size, cli.quiet)
-                .await?;
-        }
+    };
+
+    // Add timeout for very large operations (2 hours)
+    let timeout_duration = std::time::Duration::from_secs(2 * 60 * 60);
+    
+    // Run seeding with signal handling and timeout
+    tokio::select! {
+        result = seeding_future => {
+            result?;
+        },
+        _ = shutdown_signal => {
+            warn!("⚠️  Seeding interrupted by signal. Data may be partially seeded.");
+            info!("💡 Tip: Use Ctrl+C to gracefully stop seeding");
+            return Ok(());
+        },
+        _ = tokio::time::sleep(timeout_duration) => {
+            error!("⏰ Seeding timed out after {} hours. Process may be hanging.", timeout_duration.as_secs() / 3600);
+            warn!("⚠️  Consider reducing batch size or target events for better performance.");
+            return Err(anyhow::anyhow!("Seeding operation timed out"));
+        },
     }
 
-    info!("Database seeding completed successfully!");
+    let seeding_time = seeding_start.elapsed();
+    
+    let total_time = start_time.elapsed();
+    info!("✅ Database seeding completed successfully!");
+    info!("⏱️  Seeding time: {:.2}s", seeding_time.as_secs_f64());
+    info!("⏱️  Total time: {:.2}s", total_time.as_secs_f64());
     Ok(())
 }
 
