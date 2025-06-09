@@ -95,3 +95,57 @@ impl GetUserByNameQueryHandler {
         Ok(user.into())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use test_utils::{redis::TestRedisContainer, *};
+
+    use super::*;
+
+    async fn setup_test_db() -> anyhow::Result<(
+        test_utils::postgres::TestPostgresContainer,
+        GetUserByNameQueryHandler,
+    )> {
+        let container =
+            test_utils::postgres::TestPostgresContainer::new().await?;
+        let redis_container = TestRedisContainer::new().await.unwrap();
+        redis_container.flush_db().await.unwrap();
+        let sql_connect = create_sql_connect(&container);
+        let handler = GetUserByNameQueryHandler::new(sql_connect);
+        Ok((container, handler))
+    }
+
+    #[tokio::test]
+    async fn test_get_user_by_name_success() {
+        let (container, handler) = setup_test_db().await.unwrap();
+        let user_id = create_test_user_with_name(&container, "Alice")
+            .await
+            .unwrap();
+
+        let query = GetUserByNameQuery {
+            name: "Alice".to_string(),
+        };
+        let result = handler.execute(query).await.unwrap();
+
+        assert_eq!(result.id, user_id);
+        assert_eq!(result.name, "Alice");
+    }
+
+    #[tokio::test]
+    async fn test_get_user_by_name_not_found() {
+        let (_container, handler) = setup_test_db().await.unwrap();
+
+        let query = GetUserByNameQuery {
+            name: "NonExistentUser".to_string(),
+        };
+        let result = handler.execute(query).await;
+
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            GetUserByNameError::NotFound(name) => {
+                assert_eq!(name, "NonExistentUser");
+            }
+            _ => panic!("Expected NotFound error"),
+        }
+    }
+}

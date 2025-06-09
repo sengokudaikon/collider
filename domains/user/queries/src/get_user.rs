@@ -82,3 +82,55 @@ impl GetUserQueryHandler {
         Ok(user)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use test_utils::{redis::TestRedisContainer, *};
+    use uuid::Uuid;
+
+    use super::*;
+
+    async fn setup_test_db() -> anyhow::Result<(
+        test_utils::postgres::TestPostgresContainer,
+        GetUserQueryHandler,
+    )> {
+        let container =
+            test_utils::postgres::TestPostgresContainer::new().await?;
+        let redis_container = TestRedisContainer::new().await.unwrap();
+        redis_container.flush_db().await.unwrap();
+        let sql_connect = create_sql_connect(&container);
+        let handler = GetUserQueryHandler::new(sql_connect);
+        Ok((container, handler))
+    }
+
+    #[tokio::test]
+    async fn test_get_user_success() {
+        let (container, handler) = setup_test_db().await.unwrap();
+        let user_id = create_test_user(&container).await.unwrap();
+
+        let query = GetUserQuery { user_id };
+        let result = handler.execute(query).await.unwrap();
+
+        assert_eq!(result.id, user_id);
+        assert_eq!(result.name, "Test User");
+    }
+
+    #[tokio::test]
+    async fn test_get_user_not_found() {
+        let (_container, handler) = setup_test_db().await.unwrap();
+        let non_existent_user_id = Uuid::now_v7();
+
+        let query = GetUserQuery {
+            user_id: non_existent_user_id,
+        };
+        let result = handler.execute(query).await;
+
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            GetUserError::NotFound { user_id } => {
+                assert_eq!(user_id, non_existent_user_id);
+            }
+            _ => panic!("Expected NotFound error"),
+        }
+    }
+}

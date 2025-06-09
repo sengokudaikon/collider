@@ -16,15 +16,6 @@ pub struct TestPostgresContainer {
 
 impl TestPostgresContainer {
     pub async fn new() -> Result<Self> {
-        Self::new_with_connection_string(
-            "postgres://postgres:postgres@localhost:5433/test_db",
-            false,
-            None,
-        )
-        .await
-    }
-
-    pub async fn new_with_unique_db() -> Result<Self> {
         let unique_db_name =
             format!("test_db_{}", uuid::Uuid::now_v7().simple());
         let base_connection =

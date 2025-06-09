@@ -100,3 +100,75 @@ impl UpdateUserHandler {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use test_utils::*;
+    use uuid::Uuid;
+
+    use super::*;
+
+    async fn setup_test_db() -> anyhow::Result<(
+        test_utils::postgres::TestPostgresContainer,
+        UpdateUserHandler,
+    )> {
+        let container =
+            test_utils::postgres::TestPostgresContainer::new().await?;
+        let sql_connect = create_sql_connect(&container);
+        let handler = UpdateUserHandler::new(sql_connect);
+        Ok((container, handler))
+    }
+
+    #[tokio::test]
+    async fn test_update_user_name_success() {
+        let (container, handler) = setup_test_db().await.unwrap();
+        let user_id = create_test_user(&container).await.unwrap();
+
+        let command = UpdateUserCommand {
+            user_id,
+            name: Some("Updated Name".to_string()),
+        };
+        let result = handler.execute(command).await.unwrap();
+
+        assert_eq!(result.user.id, user_id);
+        assert_eq!(result.user.name, "Updated Name");
+        assert_eq!(result.events.len(), 1);
+        assert_eq!(result.events[0].event_type, "user_name_updated");
+        assert_eq!(result.events[0].user_id, user_id);
+    }
+
+    #[tokio::test]
+    async fn test_update_user_no_changes() {
+        let (container, handler) = setup_test_db().await.unwrap();
+        let user_id = create_test_user(&container).await.unwrap();
+
+        let command = UpdateUserCommand {
+            user_id,
+            name: None,
+        };
+        let result = handler.execute(command).await.unwrap();
+
+        assert_eq!(result.user.id, user_id);
+        assert_eq!(result.events.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_update_user_not_found() {
+        let (_container, handler) = setup_test_db().await.unwrap();
+        let non_existent_user_id = Uuid::now_v7();
+
+        let command = UpdateUserCommand {
+            user_id: non_existent_user_id,
+            name: Some("New Name".to_string()),
+        };
+        let result = handler.execute(command).await;
+
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            UpdateUserError::NotFound { user_id } => {
+                assert_eq!(user_id, non_existent_user_id);
+            }
+            _ => panic!("Expected NotFound error"),
+        }
+    }
+}

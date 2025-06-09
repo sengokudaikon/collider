@@ -3988,13 +3988,16 @@ dependencies = [
 name = "user-commands"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "chrono",
  "database-traits",
  "sea-orm",
  "serde",
  "serde_json",
  "sql-connection",
+ "test-utils",
  "thiserror 2.0.12",
+ "tokio",
  "tracing",
  "user-dao",
  "user-models",
@@ -4059,14 +4062,18 @@ name = "user-queries"
 version = "0.1.0"
 dependencies = [
  "analytics",
+ "anyhow",
  "chrono",
  "database-traits",
  "futures",
  "redis",
  "redis-connection",
+ "sea-orm",
  "serde",
  "sql-connection",
+ "test-utils",
  "thiserror 2.0.12",
+ "tokio",
  "tracing",
  "user-dao",
  "user-models",

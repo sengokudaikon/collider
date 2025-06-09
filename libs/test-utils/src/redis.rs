@@ -16,10 +16,6 @@ pub struct TestRedisContainer {
 
 impl TestRedisContainer {
     pub async fn new() -> anyhow::Result<Self> {
-        Self::new_with_connection_string("redis://localhost:6380").await
-    }
-
-    pub async fn new_with_unique_db() -> anyhow::Result<Self> {
         let db_number = REDIS_DB_COUNTER.fetch_add(1, Ordering::SeqCst);
         let connection_string =
             format!("redis://localhost:6380/{}", db_number);

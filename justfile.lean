@@ -78,28 +78,28 @@ seed:
 
 # Start test environment
 test-env:
-    docker compose -f docker-compose.test.yml up -d
-    docker compose -f docker-compose.test.yml run --rm wait-for-services
+    docker-compose -f docker-compose.test.yml up -d
+    docker-compose -f docker-compose.test.yml run --rm wait-for-services
 
 # Stop test environment
 test-env-down:
-    docker compose -f docker-compose.test.yml down -v
+    docker-compose -f docker-compose.test.yml down -v
 
 # Start development infrastructure only (for local cargo development)
 dev-up:
-    docker compose up -d
+    docker-compose up -d
 
 # Start full development environment including app in Docker
 dev-up-full:
-    docker compose -f docker-compose.yml -f docker-compose.override.yml up -d
+    docker-compose -f docker-compose.yml -f docker-compose.override.yml up -d
 
 # Stop development environment
 dev-down:
-    docker compose down
+    docker-compose down
 
 # Stop full development environment
 dev-down-full:
-    docker compose -f docker-compose.yml -f docker-compose.override.yml down
+    docker-compose -f docker-compose.yml -f docker-compose.override.yml down
 
 # ==== Build ====
 
@@ -144,9 +144,9 @@ dev-setup-full: dev-up-full
     @echo "⏳ Waiting for services to be ready..."
     @sleep 15
     @echo "🔄 Running database migrations..."
-    docker compose -f docker-compose.yml -f docker-compose.override.yml exec app cargo run --bin migrator -- up
+    docker-compose -f docker-compose.yml -f docker-compose.override.yml exec app cargo run --bin migrator -- up
     @echo "🌱 Seeding database with sample data..."
-    docker compose -f docker-compose.yml -f docker-compose.override.yml exec app cargo run --bin seeder -- all --min-users 100 --max-users 1000 --target-events 10000
+    docker-compose -f docker-compose.yml -f docker-compose.override.yml exec app cargo run --bin seeder -- all --min-users 100 --max-users 1000 --target-events 10000
     @echo "✅ Full development environment ready!"
     @echo "🌐 App running at http://localhost:8080"
 

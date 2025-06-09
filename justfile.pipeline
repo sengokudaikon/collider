@@ -29,8 +29,8 @@ mega-pipeline:
     echo "==============================================="
     
     echo "Starting test environment..."
-    docker compose -f docker-compose.test.yml up -d
-    docker compose -f docker-compose.test.yml run --rm wait-for-services
+    docker-compose -f docker-compose.test.yml up -d
+    docker-compose -f docker-compose.test.yml run --rm wait-for-services
     
     echo "Setting up test database..."
     DATABASE_URL="postgresql://postgres:postgres@localhost:5433/test_db" \
@@ -42,7 +42,7 @@ mega-pipeline:
     cargo tarpaulin --all --out Html --out Json --output-dir "$RESULTS_DIR" --timeout 180
     
     echo "Shutting down test environment..."
-    docker compose -f docker-compose.test.yml down -v
+    docker-compose -f docker-compose.test.yml down -v
     
     # Phase 2: Development Environment Setup
     echo ""
@@ -50,7 +50,7 @@ mega-pipeline:
     echo "=========================================="
     
     echo "Starting development environment..."
-    docker compose up -d
+    docker-compose up -d
     
     echo "Waiting for services to be ready..."
     sleep 15
@@ -149,7 +149,7 @@ mega-pipeline:
 
 # Stop development environment
 stop-dev:
-    docker compose down
+    docker-compose down
     @echo "✅ Development environment stopped"
 
 # Quick pipeline (reduced scope for faster execution)
@@ -165,18 +165,18 @@ quick-pipeline:
     
     # Quick tests
     echo "🧪 Running quick tests..."
-    docker compose -f docker-compose.test.yml up -d
-    docker compose -f docker-compose.test.yml run --rm wait-for-services
+    docker-compose -f docker-compose.test.yml up -d
+    docker-compose -f docker-compose.test.yml run --rm wait-for-services
     
     DATABASE_URL="postgres://postgres:postgres@localhost:5433/test_db" \
     REDIS_URL="redis://localhost:6380" \
     cargo test --all | tee "$RESULTS_DIR/test_output.log"
     
-    docker compose -f docker-compose.test.yml down -v
+    docker-compose -f docker-compose.test.yml down -v
     
     # Quick dev setup
     echo "🏗️  Starting dev environment..."
-    docker compose up -d
+    docker-compose up -d
     sleep 10
     
     # Quick benchmarks
@@ -199,8 +199,8 @@ coverage-pipeline:
     mkdir -p "$RESULTS_DIR"
     
     # Start test environment
-    docker compose -f docker-compose.test.yml up -d
-    docker compose -f docker-compose.test.yml run --rm wait-for-services
+    docker-compose -f docker-compose.test.yml up -d
+    docker-compose -f docker-compose.test.yml run --rm wait-for-services
     
     # Setup database
     DATABASE_URL="postgresql://postgres:postgres@localhost:5433/test_db" \
@@ -212,7 +212,7 @@ coverage-pipeline:
     cargo tarpaulin --all --out Html --out Json --out Lcov --output-dir "$RESULTS_DIR" --timeout 300 --fail-under 75
     
     # Cleanup
-    docker compose -f docker-compose.test.yml down -v
+    docker-compose -f docker-compose.test.yml down -v
     
     echo "✅ Coverage analysis complete!"
     echo "📊 HTML Report: $RESULTS_DIR/tarpaulin-report.html"
@@ -230,7 +230,7 @@ benchmark-pipeline:
     mkdir -p "$RESULTS_DIR"
     
     # Start dev environment
-    docker compose up -d
+    docker-compose up -d
     sleep 15
     
     # Setup with more data for realistic benchmarks

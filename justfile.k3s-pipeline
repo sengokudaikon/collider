@@ -29,8 +29,8 @@ k3s-pipeline:
     echo "============================================="
     
     echo "Starting test environment..."
-    docker compose -f docker-compose.test.yml up -d
-    docker compose -f docker-compose.test.yml run --rm wait-for-services
+    docker-compose -f docker-compose.test.yml up -d
+    docker-compose -f docker-compose.test.yml run --rm wait-for-services
     
     echo "Setting up test database..."
     DATABASE_URL="postgresql://postgres:postgres@localhost:5433/postgres" \
@@ -42,7 +42,7 @@ k3s-pipeline:
     cargo tarpaulin --all --out Html --out Json --output-dir "$RESULTS_DIR" --timeout 180
     
     echo "Shutting down test environment..."
-    docker compose -f docker-compose.test.yml down -v
+    docker-compose -f docker-compose.test.yml down -v
     
     # Phase 2: K3S Cluster Setup
     echo ""
@@ -215,14 +215,14 @@ quick-k3s-pipeline:
     
     # Quick tests
     echo "🧪 Running quick tests..."
-    docker compose -f docker-compose.test.yml up -d
-    docker compose -f docker-compose.test.yml run --rm wait-for-services
+    docker-compose -f docker-compose.test.yml up -d
+    docker-compose -f docker-compose.test.yml run --rm wait-for-services
     
     DATABASE_URL="postgres://postgres:postgres@localhost:5433/postgres" \
     REDIS_URL="redis://localhost:6380" \
     cargo test --all | tee "$RESULTS_DIR/test_output.log"
     
-    docker compose -f docker-compose.test.yml down -v
+    docker-compose -f docker-compose.test.yml down -v
     
     # Quick K3S deployment
     echo "☸️  Deploying to K3S..."

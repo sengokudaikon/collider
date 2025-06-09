@@ -1,0 +1,12 @@
+[tool.tarpaulin.html]
+out = "Html"
+output-dir = "coverage"
+
+[tool.tarpaulin.default]
+exclude-files = [
+    "binaries/migrator/*",
+    "binaries/seeder/*",
+    "*/target/*",
+    "*/tests/*"
+]
+timeout = 180

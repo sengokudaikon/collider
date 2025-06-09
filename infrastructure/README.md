@@ -12,7 +12,7 @@ This directory contains the consolidated infrastructure configuration for Collid
 - **Terraform**: Infrastructure as Code for cluster and cloud resources
 - **K3S/K3D**: Lightweight Kubernetes for both local and production
 - **Helm**: Application packaging and deployment
-- **GCP**: Production hosting (follows [article.md](../article.md) best practices)
+- **GCP**: Production hosting
 
 ### Core Services
 All environments deploy the same service topology:
@@ -135,7 +135,7 @@ The system uses sensible defaults with environment-specific overrides:
 ### Terraform Variables
 Key variables in `terraform/variables.tf`:
 
-```hcl
+```hcl,ignore
 # Core
 environment       = "local" | "prod"
 gcp_project_id   = "your-project"     # Required for prod
@@ -330,7 +330,7 @@ terraform output
 
 ## 🔄 Migration from Previous Setup
 
-This infrastructure replaces the previous Docker Compose and multi-environment Terraform setup with:
+This infrastructure replaces the previous docker-compose and multi-environment Terraform setup with:
 
 ### Benefits
 - **Unified approach**: Same technology stack for local and production
@@ -344,7 +344,7 @@ This infrastructure replaces the previous Docker Compose and multi-environment T
 2. **Deploy new infrastructure**: `just dev-setup`
 3. **Verify functionality**: `just verify-local`
 4. **Update CI/CD**: Point to new deployment commands
-5. **Clean up old resources**: Remove Docker Compose and old Terraform
+5. **Clean up old resources**: Remove docker-compose and old Terraform
 
 ## 📚 Additional Resources
 

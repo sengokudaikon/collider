@@ -236,10 +236,8 @@ mod tests {
         EventsAnalyticsService,
         EventDao,
     )> {
-        let postgres_container =
-            TestPostgresContainer::new_with_unique_db().await?;
-        let redis_container =
-            TestRedisContainer::new_with_unique_db().await?;
+        let postgres_container = TestPostgresContainer::new().await?;
+        let redis_container = TestRedisContainer::new().await?;
 
         // Clean Redis data to ensure test isolation
         redis_container.flush_db().await?;

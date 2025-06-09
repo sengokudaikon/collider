@@ -8,7 +8,7 @@ TARGET_URL=${TARGET_URL:-"http://app:8080"}
 RESULTS_DIR="/app/results"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
-echo "🚀 Collider Benchmarking Suite (Docker Compose)"
+echo "🚀 Collider Benchmarking Suite (docker-compose)"
 echo "==============================================="
 echo "Target: $TARGET_URL"
 echo "Results: $RESULTS_DIR"
@@ -96,7 +96,7 @@ generate_summary() {
 
 **Test Date:** $(date)
 **Target:** $TARGET_URL
-**Environment:** Docker Compose
+**Environment:** docker-compose
 **Test ID:** $TIMESTAMP
 
 ## Test Overview

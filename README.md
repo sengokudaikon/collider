@@ -13,7 +13,7 @@ Collider is a high-performance event tracking and analytics system built with Ru
 
 ## Quick Start
 
-### Using Docker Compose (Recommended)
+### Using docker-compose (Recommended)
 
 ```bash
 # Clone the repository
@@ -21,7 +21,7 @@ git clone <repository-url>
 cd collider
 
 # Start all services
-docker compose up -d
+docker-compose up -d
 
 # Check health
 curl http://localhost:8080/health

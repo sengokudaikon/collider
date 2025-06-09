@@ -3,7 +3,7 @@ use test_utils::TestPostgresInstance;
 
 #[tokio::test]
 async fn test_migrator_up_integration() -> Result<()> {
-    let postgres = TestPostgresInstance::new_with_unique_db().await?;
+    let postgres = TestPostgresInstance::new().await?;
     let migrator = postgres.get_migrator().await?;
 
     migrator.reset_all().await?;
@@ -23,7 +23,7 @@ async fn test_migrator_up_integration() -> Result<()> {
 
 #[tokio::test]
 async fn test_migrator_down_integration() -> Result<()> {
-    let postgres = TestPostgresInstance::new_with_unique_db().await?;
+    let postgres = TestPostgresInstance::new().await?;
     let migrator = postgres.get_migrator().await?;
 
     let applied_before = migrator.list_applied_migrations().await?;
@@ -41,7 +41,7 @@ async fn test_migrator_down_integration() -> Result<()> {
 
 #[tokio::test]
 async fn test_migrator_reset_integration() -> Result<()> {
-    let postgres = TestPostgresInstance::new_with_unique_db().await?;
+    let postgres = TestPostgresInstance::new().await?;
     let migrator = postgres.get_migrator().await?;
 
     let applied_before = migrator.list_applied_migrations().await?;
@@ -57,7 +57,7 @@ async fn test_migrator_reset_integration() -> Result<()> {
 
 #[tokio::test]
 async fn test_migrator_status_integration() -> Result<()> {
-    let postgres = TestPostgresInstance::new_with_unique_db().await?;
+    let postgres = TestPostgresInstance::new().await?;
     let migrator = postgres.get_migrator().await?;
 
     migrator.reset_all().await?;
@@ -81,7 +81,7 @@ async fn test_migrator_status_integration() -> Result<()> {
 
 #[tokio::test]
 async fn test_migrator_idempotent() -> Result<()> {
-    let postgres = TestPostgresInstance::new_with_unique_db().await?;
+    let postgres = TestPostgresInstance::new().await?;
     let migrator = postgres.get_migrator().await?;
 
     migrator.reset_all().await?;
@@ -99,7 +99,7 @@ async fn test_migrator_idempotent() -> Result<()> {
 
 #[tokio::test]
 async fn test_migrator_single_migration() -> Result<()> {
-    let postgres = TestPostgresInstance::new_with_unique_db().await?;
+    let postgres = TestPostgresInstance::new().await?;
     let migrator = postgres.get_migrator().await?;
 
     migrator.reset_all().await?;

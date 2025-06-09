@@ -2,7 +2,7 @@ use sea_orm::{ConnectionTrait, Statement, TransactionTrait};
 use test_utils::postgres::TestPostgresContainer;
 
 async fn setup_test_connection() -> anyhow::Result<TestPostgresContainer> {
-    TestPostgresContainer::new_with_unique_db().await
+    TestPostgresContainer::new().await
 }
 
 #[tokio::test]

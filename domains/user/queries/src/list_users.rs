@@ -22,7 +22,7 @@ pub enum ListUsersError {
     Pool(#[from] redis_connection::PoolError),
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct ListUsersQuery {
     pub limit: Option<u64>,
     pub offset: Option<u64>,
@@ -76,12 +76,72 @@ impl ListUsersQueryHandler {
             Ok(users)
         }
         else {
-            // For paginated queries, skip cache for now
             let users = self
                 .user_dao
                 .find_with_pagination(query.limit, query.offset)
                 .await?;
             Ok(users)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use test_utils::{redis::TestRedisContainer, *};
+
+    use super::*;
+
+    async fn setup_test_db() -> anyhow::Result<(
+        test_utils::postgres::TestPostgresContainer,
+        ListUsersQueryHandler,
+    )> {
+        let container =
+            test_utils::postgres::TestPostgresContainer::new().await?;
+        let redis_container = TestRedisContainer::new().await.unwrap();
+        redis_container.flush_db().await.unwrap();
+        let sql_connect = create_sql_connect(&container);
+        let handler = ListUsersQueryHandler::new(sql_connect);
+        Ok((container, handler))
+    }
+
+    #[tokio::test]
+    async fn test_list_users_with_limit() {
+        let (container, handler) = setup_test_db().await.unwrap();
+        create_test_users(&container).await.unwrap();
+
+        let query = ListUsersQuery {
+            limit: Some(1),
+            offset: None,
+        };
+        let result = handler.execute(query).await.unwrap();
+
+        assert_eq!(result.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_list_users_with_offset() {
+        let (container, handler) = setup_test_db().await.unwrap();
+        create_test_users(&container).await.unwrap();
+
+        let query = ListUsersQuery {
+            limit: None,
+            offset: Some(1),
+        };
+        let result = handler.execute(query).await.unwrap();
+
+        assert!(result.len() >= 1);
+    }
+
+    #[tokio::test]
+    async fn test_list_users_empty() {
+        let (_container, handler) = setup_test_db().await.unwrap();
+
+        let query = ListUsersQuery {
+            limit: None,
+            offset: None,
+        };
+        let result = handler.execute(query).await.unwrap();
+
+        assert_eq!(result.len(), 0);
     }
 }

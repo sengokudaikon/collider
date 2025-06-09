@@ -132,8 +132,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_test_event_type() {
-        let container =
-            TestPostgresContainer::new_with_unique_db().await.unwrap();
+        let container = TestPostgresContainer::new().await.unwrap();
 
         // Clean any existing data
         let _ = clean_test_data(&container).await;
@@ -147,8 +146,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_test_user() {
-        let container =
-            TestPostgresContainer::new_with_unique_db().await.unwrap();
+        let container = TestPostgresContainer::new().await.unwrap();
 
         // Clean any existing data
         let _ = clean_test_data(&container).await;
@@ -168,8 +166,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_test_event() {
-        let container =
-            TestPostgresContainer::new_with_unique_db().await.unwrap();
+        let container = TestPostgresContainer::new().await.unwrap();
 
         // Clean any existing data
         let _ = clean_test_data(&container).await;

@@ -119,3 +119,109 @@ impl GetUserEventsQueryHandler {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use test_utils::{redis::TestRedisContainer, *};
+    use uuid::Uuid;
+
+    use super::*;
+
+    async fn setup_test_db() -> anyhow::Result<(
+        test_utils::postgres::TestPostgresContainer,
+        GetUserEventsQueryHandler,
+    )> {
+        let container =
+            test_utils::postgres::TestPostgresContainer::new().await?;
+        let redis_container = TestRedisContainer::new().await.unwrap();
+        redis_container.flush_db().await.unwrap();
+
+        let sql_connect = create_sql_connect(&container);
+        let handler = GetUserEventsQueryHandler::new(sql_connect);
+        Ok((container, handler))
+    }
+
+    #[tokio::test]
+    async fn test_get_user_events_without_limit() {
+        let (container, handler) = setup_test_db().await.unwrap();
+        let event_type_id = create_test_event_type(&container).await.unwrap();
+        let user_id = create_test_user(&container).await.unwrap();
+        let _event1_id =
+            create_test_event(&container, user_id, event_type_id, None)
+                .await
+                .unwrap();
+        let _event2_id = create_test_event(
+            &container,
+            user_id,
+            event_type_id,
+            Some(r#"{"key": "value"}"#),
+        )
+        .await
+        .unwrap();
+
+        let query = GetUserEventsQuery {
+            user_id,
+            limit: None,
+        };
+        let result = handler.execute(query).await.unwrap();
+
+        assert_eq!(result.len(), 2);
+        assert!(result.iter().all(|e| e.user_id == user_id));
+    }
+
+    #[tokio::test]
+    async fn test_get_user_events_with_limit() {
+        let (container, handler) = setup_test_db().await.unwrap();
+        let event_type_id = create_test_event_type(&container).await.unwrap();
+        let user_id = create_test_user(&container).await.unwrap();
+        let _event1_id =
+            create_test_event(&container, user_id, event_type_id, None)
+                .await
+                .unwrap();
+        let _event2_id =
+            create_test_event(&container, user_id, event_type_id, None)
+                .await
+                .unwrap();
+        let _event3_id =
+            create_test_event(&container, user_id, event_type_id, None)
+                .await
+                .unwrap();
+
+        let query = GetUserEventsQuery {
+            user_id,
+            limit: Some(2),
+        };
+        let result = handler.execute(query).await.unwrap();
+
+        assert_eq!(result.len(), 2);
+        assert!(result.iter().all(|e| e.user_id == user_id));
+    }
+
+    #[tokio::test]
+    async fn test_get_user_events_empty() {
+        let (container, handler) = setup_test_db().await.unwrap();
+        let user_id = create_test_user(&container).await.unwrap();
+
+        let query = GetUserEventsQuery {
+            user_id,
+            limit: None,
+        };
+        let result = handler.execute(query).await.unwrap();
+
+        assert_eq!(result.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_user_events_non_existent_user() {
+        let (_container, handler) = setup_test_db().await.unwrap();
+        let non_existent_user_id = Uuid::now_v7();
+
+        let query = GetUserEventsQuery {
+            user_id: non_existent_user_id,
+            limit: None,
+        };
+        let result = handler.execute(query).await.unwrap();
+
+        assert_eq!(result.len(), 0);
+    }
+}
