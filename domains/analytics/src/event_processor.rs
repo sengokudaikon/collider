@@ -251,7 +251,7 @@ mod tests {
     async fn setup_test_environment()
     -> anyhow::Result<(TestPostgresContainer, EventDao, Arc<MockAnalytics>)>
     {
-        let container = TestPostgresContainer::new().await?;
+        let container = TestPostgresContainer::new_with_unique_db().await?;
 
         container
             .execute_sql(
@@ -376,7 +376,8 @@ mod tests {
             return;
         }
 
-        let postgres_container = TestPostgresContainer::new().await.unwrap();
+        let postgres_container =
+            TestPostgresContainer::new_with_unique_db().await.unwrap();
         let _redis_container = TestRedisContainer::new().await.unwrap();
 
         postgres_container

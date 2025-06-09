@@ -15,7 +15,7 @@ use uuid::Uuid;
 
 async fn setup_test_app()
 -> anyhow::Result<(TestPostgresContainer, Router, EventDao)> {
-    let container = TestPostgresContainer::new().await?;
+    let container = TestPostgresContainer::new_with_unique_db().await?;
 
     let sql_connect = create_sql_connect(&container);
     let services = EventServices::new(sql_connect.clone());

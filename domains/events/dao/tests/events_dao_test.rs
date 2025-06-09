@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 async fn setup_test_db() -> anyhow::Result<(TestPostgresContainer, EventDao)>
 {
-    let container = TestPostgresContainer::new().await?;
+    let container = TestPostgresContainer::new_with_unique_db().await?;
 
     // Clean any existing test data to ensure test isolation
     let _ = clean_test_data(&container).await;

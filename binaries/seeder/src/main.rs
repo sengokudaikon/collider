@@ -119,7 +119,8 @@ async fn run_all_seeders(
                 let runner_handle = tokio::spawn(async move {
                     if let Err(e) = runner.run_all().await {
                         error!("Seeding failed: {}", e);
-                        progress_tracker.error("Runner".to_string(), e.to_string());
+                        progress_tracker
+                            .error("Runner".to_string(), e.to_string());
                     }
                     progress_tracker.finish();
                 });
@@ -130,9 +131,13 @@ async fn run_all_seeders(
                 if let Err(e) = ui_result {
                     error!("UI error: {}", e);
                 }
-            },
+            }
             Err(e) => {
-                info!("Failed to initialize progress UI, falling back to quiet mode: {}", e);
+                info!(
+                    "Failed to initialize progress UI, falling back to \
+                     quiet mode: {}",
+                    e
+                );
                 let runner = SeederRunner::new(db)
                     .add_seeder(Box::new(user_seeder))
                     .add_seeder(Box::new(event_type_seeder))
@@ -169,7 +174,8 @@ async fn run_user_seeder(
                 let runner_handle = tokio::spawn(async move {
                     if let Err(e) = runner.run_all().await {
                         error!("Seeding failed: {}", e);
-                        progress_tracker.error("Runner".to_string(), e.to_string());
+                        progress_tracker
+                            .error("Runner".to_string(), e.to_string());
                     }
                     progress_tracker.finish();
                 });
@@ -180,10 +186,15 @@ async fn run_user_seeder(
                 if let Err(e) = ui_result {
                     error!("UI error: {}", e);
                 }
-            },
+            }
             Err(e) => {
-                info!("Failed to initialize progress UI, falling back to quiet mode: {}", e);
-                let runner = SeederRunner::new(db).add_seeder(Box::new(user_seeder));
+                info!(
+                    "Failed to initialize progress UI, falling back to \
+                     quiet mode: {}",
+                    e
+                );
+                let runner =
+                    SeederRunner::new(db).add_seeder(Box::new(user_seeder));
                 runner.run_all().await?;
             }
         }
@@ -218,7 +229,8 @@ async fn run_event_type_seeder(
                 let runner_handle = tokio::spawn(async move {
                     if let Err(e) = runner.run_all().await {
                         error!("Seeding failed: {}", e);
-                        progress_tracker.error("Runner".to_string(), e.to_string());
+                        progress_tracker
+                            .error("Runner".to_string(), e.to_string());
                     }
                     progress_tracker.finish();
                 });
@@ -229,11 +241,15 @@ async fn run_event_type_seeder(
                 if let Err(e) = ui_result {
                     error!("UI error: {}", e);
                 }
-            },
+            }
             Err(e) => {
-                info!("Failed to initialize progress UI, falling back to quiet mode: {}", e);
-                let runner =
-                    SeederRunner::new(db).add_seeder(Box::new(event_type_seeder));
+                info!(
+                    "Failed to initialize progress UI, falling back to \
+                     quiet mode: {}",
+                    e
+                );
+                let runner = SeederRunner::new(db)
+                    .add_seeder(Box::new(event_type_seeder));
                 runner.run_all().await?;
             }
         }
@@ -272,7 +288,8 @@ async fn run_event_seeder(
                 let runner_handle = tokio::spawn(async move {
                     if let Err(e) = runner.run_all().await {
                         error!("Seeding failed: {}", e);
-                        progress_tracker.error("Runner".to_string(), e.to_string());
+                        progress_tracker
+                            .error("Runner".to_string(), e.to_string());
                     }
                     progress_tracker.finish();
                 });
@@ -283,10 +300,15 @@ async fn run_event_seeder(
                 if let Err(e) = ui_result {
                     error!("UI error: {}", e);
                 }
-            },
+            }
             Err(e) => {
-                info!("Failed to initialize progress UI, falling back to quiet mode: {}", e);
-                let runner = SeederRunner::new(db).add_seeder(Box::new(event_seeder));
+                info!(
+                    "Failed to initialize progress UI, falling back to \
+                     quiet mode: {}",
+                    e
+                );
+                let runner =
+                    SeederRunner::new(db).add_seeder(Box::new(event_seeder));
                 runner.run_all().await?;
             }
         }

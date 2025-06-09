@@ -10,12 +10,16 @@ use crate::sql_migrator::SqlMigrator;
 pub struct TestPostgresContainer {
     pub connection: DatabaseConnection,
     pub connection_string: String,
+    is_unique_db: bool,
+    db_name: Option<String>,
 }
 
 impl TestPostgresContainer {
     pub async fn new() -> Result<Self> {
         Self::new_with_connection_string(
             "postgres://postgres:postgres@localhost:5433/test_db",
+            false,
+            None,
         )
         .await
     }
@@ -48,11 +52,16 @@ impl TestPostgresContainer {
         admin_pool.close().await;
 
         // Now connect to the unique database and set it up
-        Self::new_with_connection_string(&unique_connection).await
+        Self::new_with_connection_string(
+            &unique_connection,
+            true,
+            Some(unique_db_name.clone()),
+        )
+        .await
     }
 
     pub async fn new_with_connection_string(
-        connection_string: &str,
+        connection_string: &str, is_unique_db: bool, db_name: Option<String>,
     ) -> Result<Self> {
         let connection_string = connection_string.to_string();
 
@@ -65,6 +74,8 @@ impl TestPostgresContainer {
         let instance = Self {
             connection,
             connection_string,
+            is_unique_db,
+            db_name,
         };
 
         instance.setup_extensions().await?;
@@ -149,6 +160,131 @@ impl TestPostgresContainer {
 
         unreachable!("Loop should have returned or errored")
     }
+
+    /// Manually cleanup the database if this is a unique database container
+    pub async fn cleanup(&self) -> Result<()> {
+        if self.is_unique_db {
+            if let Some(db_name) = &self.db_name {
+                cleanup_unique_database(db_name).await?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Drop for TestPostgresContainer {
+    fn drop(&mut self) {
+        if self.is_unique_db {
+            if let Some(db_name) = &self.db_name {
+                // Spawn a blocking task to clean up the database
+                let db_name = db_name.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = cleanup_unique_database(&db_name).await {
+                        eprintln!(
+                            "Warning: Failed to cleanup test database {}: {}",
+                            db_name, e
+                        );
+                    }
+                });
+            }
+        }
+    }
+}
+
+async fn cleanup_unique_database(db_name: &str) -> Result<()> {
+    let base_connection =
+        "postgres://postgres:postgres@localhost:5433/postgres";
+
+    match PgPoolOptions::new()
+        .max_connections(1)
+        .connect(base_connection)
+        .await
+    {
+        Ok(admin_pool) => {
+            // Terminate all connections to the database first
+            let terminate_query = format!(
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity \
+                 WHERE datname = '{}' AND pid <> pg_backend_pid()",
+                db_name
+            );
+            let _ = sqlx::query(&terminate_query).execute(&admin_pool).await;
+
+            // Drop the database
+            let drop_query = format!("DROP DATABASE IF EXISTS {}", db_name);
+            if let Err(e) =
+                sqlx::query(&drop_query).execute(&admin_pool).await
+            {
+                eprintln!("Failed to drop database {}: {}", db_name, e);
+            }
+
+            admin_pool.close().await;
+        }
+        Err(e) => {
+            eprintln!(
+                "Failed to connect to admin database for cleanup: {}",
+                e
+            );
+        }
+    }
+
+    Ok(())
+}
+
+/// Cleanup all test databases matching the pattern test_db_*
+pub async fn cleanup_all_test_databases() -> Result<()> {
+    let base_connection =
+        "postgres://postgres:postgres@localhost:5433/postgres";
+
+    match PgPoolOptions::new()
+        .max_connections(1)
+        .connect(base_connection)
+        .await
+    {
+        Ok(admin_pool) => {
+            // Get all databases that match our test pattern
+            let query = "SELECT datname FROM pg_database WHERE datname LIKE \
+                         'test_db_%'";
+            let rows: Vec<(String,)> = sqlx::query_as(query)
+                .fetch_all(&admin_pool)
+                .await
+                .context("Failed to list test databases")?;
+
+            for (db_name,) in rows {
+                println!("Cleaning up test database: {}", db_name);
+
+                // Terminate all connections to the database first
+                let terminate_query = format!(
+                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity \
+                     WHERE datname = '{}' AND pid <> pg_backend_pid()",
+                    db_name
+                );
+                let _ =
+                    sqlx::query(&terminate_query).execute(&admin_pool).await;
+
+                // Drop the database
+                let drop_query =
+                    format!("DROP DATABASE IF EXISTS {}", db_name);
+                if let Err(e) =
+                    sqlx::query(&drop_query).execute(&admin_pool).await
+                {
+                    eprintln!("Failed to drop database {}: {}", db_name, e);
+                }
+                else {
+                    println!("Successfully cleaned up database: {}", db_name);
+                }
+            }
+
+            admin_pool.close().await;
+        }
+        Err(e) => {
+            eprintln!(
+                "Failed to connect to admin database for cleanup: {}",
+                e
+            );
+        }
+    }
+
+    Ok(())
 }
 
 #[derive(serde::Deserialize)]

@@ -15,8 +15,7 @@ pub async fn create_test_event_type_with_name(
 ) -> Result<i32> {
     let sqlx_pool = container.connection.get_postgres_connection_pool();
     let row = sqlx::query_as::<_, (i32,)>(
-        "INSERT INTO event_types (name) VALUES ($1) ON CONFLICT (name) DO \
-         UPDATE SET name = EXCLUDED.name RETURNING id",
+        "INSERT INTO event_types (name) VALUES ($1) RETURNING id",
     )
     .bind(name)
     .fetch_one(sqlx_pool)
@@ -29,14 +28,12 @@ pub async fn create_test_event_types(
 ) -> Result<(i32, i32)> {
     let sqlx_pool = container.connection.get_postgres_connection_pool();
     let login_row = sqlx::query_as::<_, (i32,)>(
-        "INSERT INTO event_types (name) VALUES ('login_event') ON CONFLICT \
-         (name) DO UPDATE SET name = EXCLUDED.name RETURNING id",
+        "INSERT INTO event_types (name) VALUES ('login_event') RETURNING id",
     )
     .fetch_one(sqlx_pool)
     .await?;
     let logout_row = sqlx::query_as::<_, (i32,)>(
-        "INSERT INTO event_types (name) VALUES ('logout_event') ON CONFLICT \
-         (name) DO UPDATE SET name = EXCLUDED.name RETURNING id",
+        "INSERT INTO event_types (name) VALUES ('logout_event') RETURNING id",
     )
     .fetch_one(sqlx_pool)
     .await?;
@@ -135,7 +132,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_test_event_type() {
-        let container = TestPostgresContainer::new().await.unwrap();
+        let container =
+            TestPostgresContainer::new_with_unique_db().await.unwrap();
 
         // Clean any existing data
         let _ = clean_test_data(&container).await;
@@ -149,7 +147,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_test_user() {
-        let container = TestPostgresContainer::new().await.unwrap();
+        let container =
+            TestPostgresContainer::new_with_unique_db().await.unwrap();
 
         // Clean any existing data
         let _ = clean_test_data(&container).await;
@@ -169,7 +168,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_test_event() {
-        let container = TestPostgresContainer::new().await.unwrap();
+        let container =
+            TestPostgresContainer::new_with_unique_db().await.unwrap();
 
         // Clean any existing data
         let _ = clean_test_data(&container).await;
