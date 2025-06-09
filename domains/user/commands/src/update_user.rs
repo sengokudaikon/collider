@@ -6,6 +6,7 @@ use thiserror::Error;
 use tracing::instrument;
 use user_dao::UserDao;
 use user_models as users;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 #[derive(Debug, Error)]
@@ -18,14 +19,14 @@ pub enum UpdateUserError {
     NotFound { user_id: Uuid },
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateUserCommand {
     #[serde(skip)]
     pub user_id: Uuid,
     pub name: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct UpdateUserResponse {
     pub id: Uuid,
     pub name: String,

@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use sql_connection::SqlConnect;
 use thiserror::Error;
 use tracing::instrument;
+use utoipa::ToSchema;
 
 #[derive(Debug, Error)]
 pub enum BulkDeleteEventsError {
@@ -13,12 +14,12 @@ pub enum BulkDeleteEventsError {
     InvalidTimestamp,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct BulkDeleteEventsCommand {
     pub before: DateTime<Utc>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct BulkDeleteEventsResponse {
     pub deleted_count: u64,
     pub deleted_before: DateTime<Utc>,

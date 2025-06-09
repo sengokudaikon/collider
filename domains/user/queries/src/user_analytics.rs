@@ -9,6 +9,7 @@ use redis_connection::{
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::instrument;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::cache_keys::*;
@@ -23,7 +24,7 @@ pub enum UserAnalyticsError {
     Analytics(String),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct UserEventMetrics {
     pub total_events: u64,
     pub events_last_24h: u64,
@@ -33,7 +34,7 @@ pub struct UserEventMetrics {
     pub event_type_counts: Vec<EventTypeCount>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct EventTypeCount {
     pub event_type: String,
     pub count: u64,

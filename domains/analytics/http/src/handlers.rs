@@ -13,6 +13,7 @@ use domain::AppError;
 use serde::{Deserialize, Serialize};
 use sql_connection::SqlConnect;
 use tracing::instrument;
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -44,7 +45,7 @@ impl AnalyticsHandlers {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct StatsQuery {
     pub from: Option<DateTime<Utc>>,
     pub to: Option<DateTime<Utc>>,
@@ -52,7 +53,7 @@ pub struct StatsQuery {
     pub event_type: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct StatsResponse {
     pub total_events: u64,
     pub unique_users: u64,
@@ -60,19 +61,32 @@ pub struct StatsResponse {
     pub period: StatsTimePeriod,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct StatsTimePeriod {
     pub from: DateTime<Utc>,
     pub to: DateTime<Utc>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct UserEventsQuery {
     pub limit: Option<u64>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/analytics/stats",
+    params(
+        StatsQuery
+    ),
+    responses(
+        (status = 200, description = "Analytics statistics", body = StatsResponse),
+        (status = 400, description = "Invalid query parameters"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "analytics"
+)]
 #[instrument(skip_all)]
-async fn get_stats(
+pub async fn get_stats(
     State(services): State<AnalyticsServices>,
     Query(params): Query<StatsQuery>,
 ) -> Result<Json<StatsResponse>, AppError> {
@@ -145,8 +159,22 @@ async fn get_stats(
     }))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/analytics/users/{user_id}/events",
+    params(
+        ("user_id" = Uuid, Path, description = "User ID"),
+        UserEventsQuery
+    ),
+    responses(
+        (status = 200, description = "User events", body = Vec<events_models::EventModel>),
+        (status = 404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "analytics"
+)]
 #[instrument(skip_all)]
-async fn get_user_events(
+pub async fn get_user_events(
     Path(user_id): Path<Uuid>, Query(params): Query<UserEventsQuery>,
 ) -> Result<Json<Vec<events_models::EventModel>>, AppError> {
     use events_dao::EventDao;
@@ -165,44 +193,57 @@ async fn get_user_events(
 }
 
 // Additional query types for new endpoints
-#[derive(Debug, Deserialize)]
-struct RealtimeMetricsQuery {
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct RealtimeMetricsQuery {
     bucket: Option<String>,
     timestamp: Option<DateTime<Utc>>,
     event_type: Option<String>,
     user_ids: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-struct TimeSeriesQuery {
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct TimeSeriesQuery {
     bucket: Option<String>,
     from: DateTime<Utc>,
     to: DateTime<Utc>,
     event_type: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-struct HourlySummariesQuery {
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct HourlySummariesQuery {
     from: DateTime<Utc>,
     to: DateTime<Utc>,
     event_type_ids: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-struct UserActivityQuery {
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct UserActivityQuery {
     user_id: Option<Uuid>,
     from: DateTime<Utc>,
     to: DateTime<Utc>,
 }
 
-#[derive(Debug, Deserialize)]
-struct PopularEventsQuery {
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct PopularEventsQuery {
     period: Option<String>,
     limit: Option<i64>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/analytics/metrics/realtime",
+    params(
+        RealtimeMetricsQuery
+    ),
+    responses(
+        (status = 200, description = "Real-time metrics"),
+        (status = 400, description = "Invalid query parameters"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "analytics"
+)]
 #[instrument(skip_all)]
-async fn get_realtime_metrics(
+pub async fn get_realtime_metrics(
     State(services): State<AnalyticsServices>,
     Query(params): Query<RealtimeMetricsQuery>,
 ) -> Result<Json<analytics::BucketMetrics>, AppError> {
@@ -241,8 +282,21 @@ async fn get_realtime_metrics(
     Ok(Json(metrics))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/analytics/metrics/timeseries",
+    params(
+        TimeSeriesQuery
+    ),
+    responses(
+        (status = 200, description = "Time series data"),
+        (status = 400, description = "Invalid query parameters"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "analytics"
+)]
 #[instrument(skip_all)]
-async fn get_time_series(
+pub async fn get_time_series(
     State(services): State<AnalyticsServices>,
     Query(params): Query<TimeSeriesQuery>,
 ) -> Result<Json<Vec<(String, analytics::BucketMetrics)>>, AppError> {
@@ -272,8 +326,21 @@ async fn get_time_series(
     Ok(Json(time_series))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/analytics/summaries/hourly",
+    params(
+        HourlySummariesQuery
+    ),
+    responses(
+        (status = 200, description = "Hourly summaries"),
+        (status = 400, description = "Invalid query parameters"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "analytics"
+)]
 #[instrument(skip_all)]
-async fn get_hourly_summaries(
+pub async fn get_hourly_summaries(
     State(services): State<AnalyticsServices>,
     Query(params): Query<HourlySummariesQuery>,
 ) -> Result<Json<Vec<analytics::EventSummary>>, AppError> {
@@ -292,8 +359,21 @@ async fn get_hourly_summaries(
     Ok(Json(summaries))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/analytics/activity/users",
+    params(
+        UserActivityQuery
+    ),
+    responses(
+        (status = 200, description = "User activity data"),
+        (status = 400, description = "Invalid query parameters"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "analytics"
+)]
 #[instrument(skip_all)]
-async fn get_user_activity(
+pub async fn get_user_activity(
     State(services): State<AnalyticsServices>,
     Query(params): Query<UserActivityQuery>,
 ) -> Result<Json<Vec<analytics::UserActivity>>, AppError> {
@@ -306,8 +386,21 @@ async fn get_user_activity(
     Ok(Json(activity))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/analytics/events/popular",
+    params(
+        PopularEventsQuery
+    ),
+    responses(
+        (status = 200, description = "Popular events"),
+        (status = 400, description = "Invalid query parameters"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "analytics"
+)]
 #[instrument(skip_all)]
-async fn get_popular_events_endpoint(
+pub async fn get_popular_events_endpoint(
     State(services): State<AnalyticsServices>,
     Query(params): Query<PopularEventsQuery>,
 ) -> Result<Json<Vec<analytics::PopularEvents>>, AppError> {
@@ -321,8 +414,17 @@ async fn get_popular_events_endpoint(
     Ok(Json(popular_events))
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/analytics/refresh",
+    responses(
+        (status = 200, description = "Materialized views refreshed successfully"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "analytics"
+)]
 #[instrument(skip_all)]
-async fn refresh_materialized_views(
+pub async fn refresh_materialized_views(
     State(services): State<AnalyticsServices>,
 ) -> Result<StatusCode, AppError> {
     services

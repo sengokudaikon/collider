@@ -5,6 +5,7 @@ use thiserror::Error;
 use tracing::instrument;
 use user_dao::UserDao;
 use user_models as users;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 #[derive(Debug, Error)]
@@ -15,12 +16,12 @@ pub enum CreateUserError {
     Dao(#[from] user_dao::UserDaoError),
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateUserCommand {
     pub name: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct CreateUserResponse {
     pub id: Uuid,
     pub name: String,

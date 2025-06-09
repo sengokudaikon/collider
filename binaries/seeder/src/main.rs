@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use anyhow::Result;
 use clap::Parser;
 use seeders::{
@@ -7,7 +9,6 @@ use seeders::{
 use sql_connection::{
     SqlConnect, config::PostgresDbConfig, connect_postgres_db,
 };
-use std::time::Instant;
 use tokio::signal;
 use tracing::{Level, error, info, warn};
 
@@ -30,13 +31,15 @@ async fn main() -> Result<()> {
     let db_connection_start = Instant::now();
     connect_postgres_db(&config).await?;
     let db_connection_time = db_connection_start.elapsed();
-    info!("📚 Connected to database successfully in {:.2}ms", 
-          db_connection_time.as_secs_f64() * 1000.0);
+    info!(
+        "📚 Connected to database successfully in {:.2}ms",
+        db_connection_time.as_secs_f64() * 1000.0
+    );
 
     let db = SqlConnect::from_global();
 
     let seeding_start = Instant::now();
-    
+
     // Set up graceful shutdown handling
     let seeding_future = async {
         match cli.command {
@@ -63,20 +66,20 @@ async fn main() -> Result<()> {
             Commands::Users {
                 min_users,
                 max_users,
-            } => {
-                run_user_seeder(db, min_users, max_users, cli.quiet).await
-            }
+            } => run_user_seeder(db, min_users, max_users, cli.quiet).await,
             Commands::EventTypes {
                 min_types,
                 max_types,
             } => {
-                run_event_type_seeder(db, min_types, max_types, cli.quiet).await
+                run_event_type_seeder(db, min_types, max_types, cli.quiet)
+                    .await
             }
             Commands::Events {
                 target_events,
                 batch_size,
             } => {
-                run_event_seeder(db, target_events, batch_size, cli.quiet).await
+                run_event_seeder(db, target_events, batch_size, cli.quiet)
+                    .await
             }
         }
     };
@@ -84,7 +87,7 @@ async fn main() -> Result<()> {
     // Set up signal handling for graceful shutdown
     let shutdown_signal = async {
         let ctrl_c = signal::ctrl_c();
-        
+
         #[cfg(unix)]
         let terminate = async {
             signal::unix::signal(signal::unix::SignalKind::terminate())
@@ -108,7 +111,7 @@ async fn main() -> Result<()> {
 
     // Add timeout for very large operations (2 hours)
     let timeout_duration = std::time::Duration::from_secs(2 * 60 * 60);
-    
+
     // Run seeding with signal handling and timeout
     tokio::select! {
         result = seeding_future => {
@@ -127,7 +130,7 @@ async fn main() -> Result<()> {
     }
 
     let seeding_time = seeding_start.elapsed();
-    
+
     let total_time = start_time.elapsed();
     info!("✅ Database seeding completed successfully!");
     info!("⏱️  Seeding time: {:.2}s", seeding_time.as_secs_f64());

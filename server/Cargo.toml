@@ -16,8 +16,10 @@ sea-orm.workspace = true
 sqlx.workspace = true
 
 events-http = { path = "../domains/events/http" }
+events-commands = { path = "../domains/events/commands" }
 analytics-http = { path = "../domains/analytics/http" }
 user-http = { path = "../domains/user/http" }
+user-commands = { path = "../domains/user/commands" }
 test-utils.workspace = true
 seeders = { path = "../libs/seeders" }
 database-traits.workspace = true

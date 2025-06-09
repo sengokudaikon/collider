@@ -1,6 +1,7 @@
+use std::time::Instant;
+
 use anyhow::Result;
 use sql_connection::SqlConnect;
-use std::time::Instant;
 use tracing::{info, instrument, warn};
 
 use crate::{ProgressTracker, Seeder};
@@ -67,8 +68,12 @@ impl SeederRunner {
                 }
                 Err(e) => {
                     let seeder_time = seeder_start.elapsed();
-                    warn!("❌ Seeder '{}' failed after {:.2}s: {}", 
-                          seeder.name(), seeder_time.as_secs_f64(), e);
+                    warn!(
+                        "❌ Seeder '{}' failed after {:.2}s: {}",
+                        seeder.name(),
+                        seeder_time.as_secs_f64(),
+                        e
+                    );
 
                     if let Some(tracker) = &self.progress_tracker {
                         tracker

@@ -8,9 +8,10 @@ use axum::{
 use chrono::{DateTime, Utc};
 use domain::AppError;
 use events_commands::{
-    BulkDeleteEventsCommand, BulkDeleteEventsHandler, CreateEventCommand,
-    CreateEventHandler, DeleteEventHandler, UpdateEventCommand,
-    UpdateEventHandler,
+    BulkDeleteEventsCommand, BulkDeleteEventsHandler,
+    BulkDeleteEventsResponse, CreateEventCommand, CreateEventHandler,
+    CreateEventResponse, DeleteEventHandler, UpdateEventCommand,
+    UpdateEventHandler, UpdateEventResponse,
 };
 use events_queries::{
     GetEventQuery, GetEventQueryHandler, ListEventsQuery,
@@ -19,6 +20,7 @@ use events_queries::{
 use serde::Deserialize;
 use sql_connection::SqlConnect;
 use tracing::instrument;
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::EventResponse;
@@ -61,8 +63,19 @@ impl EventHandlers {
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/events",
+    request_body = CreateEventCommand,
+    responses(
+        (status = 201, description = "Event created successfully", body = CreateEventResponse),
+        (status = 400, description = "Invalid request data"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "events"
+)]
 #[instrument(skip_all)]
-async fn create_event(
+pub async fn create_event(
     State(services): State<EventServices>,
     Json(command): Json<CreateEventCommand>,
 ) -> Result<(StatusCode, Json<events_commands::CreateEventResponse>), AppError>
@@ -75,8 +88,23 @@ async fn create_event(
     Ok((StatusCode::CREATED, Json(result.event)))
 }
 
+#[utoipa::path(
+    put,
+    path = "/api/events/{id}",
+    request_body = UpdateEventCommand,
+    params(
+        ("id" = Uuid, Path, description = "Event ID")
+    ),
+    responses(
+        (status = 200, description = "Event updated successfully", body = UpdateEventResponse),
+        (status = 404, description = "Event not found"),
+        (status = 400, description = "Invalid request data"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "events"
+)]
 #[instrument(skip_all)]
-async fn update_event(
+pub async fn update_event(
     State(services): State<EventServices>, Path(id): Path<Uuid>,
     Json(mut command): Json<UpdateEventCommand>,
 ) -> Result<Json<events_commands::UpdateEventResponse>, AppError> {
@@ -89,8 +117,21 @@ async fn update_event(
     Ok(Json(result.event))
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/events/{id}",
+    params(
+        ("id" = Uuid, Path, description = "Event ID")
+    ),
+    responses(
+        (status = 204, description = "Event deleted successfully"),
+        (status = 404, description = "Event not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "events"
+)]
 #[instrument(skip_all)]
-async fn delete_event(
+pub async fn delete_event(
     State(services): State<EventServices>, Path(id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
     let command = events_commands::DeleteEventCommand { event_id: id };
@@ -102,8 +143,21 @@ async fn delete_event(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/events/{id}",
+    params(
+        ("id" = Uuid, Path, description = "Event ID")
+    ),
+    responses(
+        (status = 200, description = "Event found", body = EventResponse),
+        (status = 404, description = "Event not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "events"
+)]
 #[instrument(skip_all)]
-async fn get_event(
+pub async fn get_event(
     State(services): State<EventServices>, Path(id): Path<Uuid>,
 ) -> Result<Json<EventResponse>, AppError> {
     let query = GetEventQuery { event_id: id };
@@ -115,8 +169,21 @@ async fn get_event(
     Ok(Json(event.into()))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/events",
+    params(
+        ListEventsParams
+    ),
+    responses(
+        (status = 200, description = "List of events", body = Vec<EventResponse>),
+        (status = 400, description = "Invalid query parameters"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "events"
+)]
 #[instrument(skip_all)]
-async fn list_events(
+pub async fn list_events(
     State(services): State<EventServices>,
     Query(params): Query<ListEventsParams>,
 ) -> Result<Json<Vec<EventResponse>>, AppError> {
@@ -142,8 +209,8 @@ async fn list_events(
     Ok(Json(events.into_iter().map(Into::into).collect()))
 }
 
-#[derive(Debug, Deserialize)]
-struct ListEventsParams {
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct ListEventsParams {
     user_id: Option<Uuid>,
     event_type_id: Option<i32>,
     limit: Option<u64>,
@@ -151,13 +218,26 @@ struct ListEventsParams {
     page: Option<u64>,
 }
 
-#[derive(Debug, Deserialize)]
-struct BulkDeleteParams {
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct BulkDeleteParams {
     before: DateTime<Utc>,
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/events",
+    params(
+        BulkDeleteParams
+    ),
+    responses(
+        (status = 200, description = "Events deleted successfully", body = BulkDeleteEventsResponse),
+        (status = 400, description = "Invalid query parameters"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "events"
+)]
 #[instrument(skip_all)]
-async fn bulk_delete_events(
+pub async fn bulk_delete_events(
     State(services): State<EventServices>,
     Query(params): Query<BulkDeleteParams>,
 ) -> Result<Json<events_commands::BulkDeleteEventsResponse>, AppError> {

@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use sql_connection::SqlConnect;
 use thiserror::Error;
 use tracing::instrument;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 #[derive(Debug, Error)]
@@ -19,7 +20,7 @@ pub enum CreateEventError {
     EventTypeDao(#[from] events_dao::EventTypeDaoError),
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct CreateEventCommand {
     pub user_id: Uuid,
     pub event_type: String,
@@ -27,7 +28,7 @@ pub struct CreateEventCommand {
     pub metadata: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct CreateEventResponse {
     pub id: Uuid,
     pub user_id: Uuid,

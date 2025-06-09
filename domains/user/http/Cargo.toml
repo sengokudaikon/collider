@@ -28,3 +28,4 @@ http = { workspace = true }
 user-dao = { workspace = true }
 sql-connection = { workspace = true }
 domain = { workspace = true }
+utoipa = { workspace = true }

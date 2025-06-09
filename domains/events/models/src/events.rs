@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 use typed_builder::TypedBuilder;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 #[derive(
@@ -13,6 +14,7 @@ use uuid::Uuid;
     Serialize,
     Deserialize,
     TypedBuilder,
+    ToSchema,
 )]
 #[sea_orm(table_name = "events")]
 pub struct Model {

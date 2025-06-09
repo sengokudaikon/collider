@@ -9,13 +9,15 @@ use domain::AppError;
 use serde::Deserialize;
 use tracing::instrument;
 use user_commands::{
-    CreateUserCommand, CreateUserHandler, DeleteUserCommand,
-    DeleteUserHandler, UpdateUserCommand, UpdateUserHandler,
+    CreateUserCommand, CreateUserHandler, CreateUserResponse,
+    DeleteUserCommand, DeleteUserHandler, UpdateUserCommand,
+    UpdateUserHandler, UpdateUserResponse,
 };
 use user_queries::{
     GetUserByNameQueryHandler, GetUserQueryHandler, ListUsersQueryHandler,
     UserAnalyticsService,
 };
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::UserResponse;
@@ -61,8 +63,19 @@ impl UserHandlers {
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/users",
+    request_body = CreateUserCommand,
+    responses(
+        (status = 201, description = "User created successfully", body = CreateUserResponse),
+        (status = 400, description = "Invalid request data"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "users"
+)]
 #[instrument(skip_all)]
-async fn create_user(
+pub async fn create_user(
     State(services): State<UserServices>,
     Json(command): Json<CreateUserCommand>,
 ) -> Result<(StatusCode, Json<user_commands::CreateUserResponse>), AppError> {
@@ -78,8 +91,23 @@ async fn create_user(
     Ok((StatusCode::CREATED, Json(result.user)))
 }
 
+#[utoipa::path(
+    put,
+    path = "/api/users/{id}",
+    request_body = UpdateUserCommand,
+    params(
+        ("id" = Uuid, Path, description = "User ID")
+    ),
+    responses(
+        (status = 200, description = "User updated successfully", body = UpdateUserResponse),
+        (status = 404, description = "User not found"),
+        (status = 400, description = "Invalid request data"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "users"
+)]
 #[instrument(skip_all)]
-async fn update_user(
+pub async fn update_user(
     State(services): State<UserServices>, Path(id): Path<Uuid>,
     Json(mut command): Json<UpdateUserCommand>,
 ) -> Result<Json<user_commands::UpdateUserResponse>, AppError> {
@@ -96,8 +124,21 @@ async fn update_user(
     Ok(Json(result.user))
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/users/{id}",
+    params(
+        ("id" = Uuid, Path, description = "User ID")
+    ),
+    responses(
+        (status = 204, description = "User deleted successfully"),
+        (status = 404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "users"
+)]
 #[instrument(skip_all)]
-async fn delete_user(
+pub async fn delete_user(
     State(services): State<UserServices>, Path(id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
     let command = DeleteUserCommand { user_id: id };
@@ -113,16 +154,30 @@ async fn delete_user(
     Ok(StatusCode::NO_CONTENT)
 }
 
-#[derive(Debug, Deserialize)]
-struct UserQueryParams {
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct UserQueryParams {
     #[serde(default)]
     include_metrics: bool,
     limit: Option<u64>,
     offset: Option<u64>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/users/{id}",
+    params(
+        ("id" = Uuid, Path, description = "User ID"),
+        UserQueryParams
+    ),
+    responses(
+        (status = 200, description = "User found", body = UserResponse),
+        (status = 404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "users"
+)]
 #[instrument(skip_all)]
-async fn get_user(
+pub async fn get_user(
     State(services): State<UserServices>, Path(id): Path<Uuid>,
     Query(params): Query<UserQueryParams>,
 ) -> Result<Json<UserResponse>, AppError> {
@@ -147,8 +202,21 @@ async fn get_user(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/users",
+    params(
+        UserQueryParams
+    ),
+    responses(
+        (status = 200, description = "List of users", body = Vec<UserResponse>),
+        (status = 400, description = "Invalid query parameters"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "users"
+)]
 #[instrument(skip_all)]
-async fn list_users(
+pub async fn list_users(
     State(services): State<UserServices>,
     Query(params): Query<UserQueryParams>,
 ) -> Result<Json<Vec<UserResponse>>, AppError> {
@@ -189,8 +257,21 @@ async fn list_users(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/users/by-name/{username}",
+    params(
+        ("username" = String, Path, description = "Username")
+    ),
+    responses(
+        (status = 200, description = "User found", body = UserResponse),
+        (status = 404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "users"
+)]
 #[instrument(skip_all)]
-async fn get_user_by_name(
+pub async fn get_user_by_name(
     State(services): State<UserServices>, Path(name): Path<String>,
 ) -> Result<Json<UserResponse>, AppError> {
     let query = user_queries::GetUserByNameQuery { name };
@@ -202,8 +283,21 @@ async fn get_user_by_name(
     Ok(Json(user.into()))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/users/{id}/metrics",
+    params(
+        ("id" = Uuid, Path, description = "User ID")
+    ),
+    responses(
+        (status = 200, description = "User with metrics", body = UserResponse),
+        (status = 404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "users"
+)]
 #[instrument(skip_all)]
-async fn get_user_with_metrics(
+pub async fn get_user_with_metrics(
     State(services): State<UserServices>, Path(id): Path<Uuid>,
 ) -> Result<Json<UserResponse>, AppError> {
     let user_query = user_queries::GetUserQuery { user_id: id };

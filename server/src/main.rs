@@ -87,13 +87,51 @@ async fn main() -> anyhow::Result<()> {
 #[derive(OpenApi)]
 #[openapi(
     paths(
-        health_check
+        health_check,
+        events_http::handlers::create_event,
+        events_http::handlers::update_event,
+        events_http::handlers::delete_event,
+        events_http::handlers::get_event,
+        events_http::handlers::list_events,
+        events_http::handlers::bulk_delete_events,
+        analytics_http::handlers::get_stats,
+        analytics_http::handlers::get_user_events,
+        analytics_http::handlers::get_realtime_metrics,
+        analytics_http::handlers::get_time_series,
+        analytics_http::handlers::get_hourly_summaries,
+        analytics_http::handlers::get_user_activity,
+        analytics_http::handlers::get_popular_events_endpoint,
+        analytics_http::handlers::refresh_materialized_views,
+        user_http::handlers::create_user,
+        user_http::handlers::update_user,
+        user_http::handlers::delete_user,
+        user_http::handlers::get_user,
+        user_http::handlers::list_users,
+        user_http::handlers::get_user_by_name,
+        user_http::handlers::get_user_with_metrics
     ),
     components(
-        schemas()
+        schemas(
+            events_http::EventResponse,
+            events_commands::CreateEventCommand,
+            events_commands::CreateEventResponse,
+            events_commands::UpdateEventCommand,
+            events_commands::UpdateEventResponse,
+            events_commands::BulkDeleteEventsResponse,
+            analytics_http::handlers::StatsResponse,
+            analytics_http::handlers::StatsQuery,
+            user_http::UserResponse,
+            user_commands::CreateUserCommand,
+            user_commands::CreateUserResponse,
+            user_commands::UpdateUserCommand,
+            user_commands::UpdateUserResponse
+        )
     ),
     tags(
-        (name = "collider", description = "Collider API endpoints")
+        (name = "health", description = "Health check endpoints"),
+        (name = "events", description = "Event management endpoints"),
+        (name = "analytics", description = "Analytics and metrics endpoints"),
+        (name = "users", description = "User management endpoints")
     ),
     info(
         title = "Collider API",
