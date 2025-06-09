@@ -105,28 +105,40 @@ async fn run_all_seeders(
         runner.run_all().await?;
     }
     else {
-        let (progress_tracker, progress_rx) = ProgressTracker::new();
-        let mut progress_ui = ProgressUI::new()?;
+        // Try to initialize UI, fallback to quiet mode if it fails
+        match ProgressUI::new() {
+            Ok(mut progress_ui) => {
+                let (progress_tracker, progress_rx) = ProgressTracker::new();
 
-        let runner = SeederRunner::new(db)
-            .with_progress(progress_tracker.clone())
-            .add_seeder(Box::new(user_seeder))
-            .add_seeder(Box::new(event_type_seeder))
-            .add_seeder(Box::new(event_seeder));
+                let runner = SeederRunner::new(db)
+                    .with_progress(progress_tracker.clone())
+                    .add_seeder(Box::new(user_seeder))
+                    .add_seeder(Box::new(event_type_seeder))
+                    .add_seeder(Box::new(event_seeder));
 
-        let runner_handle = tokio::spawn(async move {
-            if let Err(e) = runner.run_all().await {
-                error!("Seeding failed: {}", e);
-                progress_tracker.error("Runner".to_string(), e.to_string());
+                let runner_handle = tokio::spawn(async move {
+                    if let Err(e) = runner.run_all().await {
+                        error!("Seeding failed: {}", e);
+                        progress_tracker.error("Runner".to_string(), e.to_string());
+                    }
+                    progress_tracker.finish();
+                });
+
+                let ui_result = progress_ui.run(progress_rx).await;
+                let _ = runner_handle.await;
+
+                if let Err(e) = ui_result {
+                    error!("UI error: {}", e);
+                }
+            },
+            Err(e) => {
+                info!("Failed to initialize progress UI, falling back to quiet mode: {}", e);
+                let runner = SeederRunner::new(db)
+                    .add_seeder(Box::new(user_seeder))
+                    .add_seeder(Box::new(event_type_seeder))
+                    .add_seeder(Box::new(event_seeder));
+                runner.run_all().await?;
             }
-            progress_tracker.finish();
-        });
-
-        let ui_result = progress_ui.run(progress_rx).await;
-        let _ = runner_handle.await;
-
-        if let Err(e) = ui_result {
-            error!("UI error: {}", e);
         }
     }
 
@@ -145,26 +157,35 @@ async fn run_user_seeder(
         runner.run_all().await?;
     }
     else {
-        let (progress_tracker, progress_rx) = ProgressTracker::new();
-        let mut progress_ui = ProgressUI::new()?;
+        // Try to initialize UI, fallback to quiet mode if it fails
+        match ProgressUI::new() {
+            Ok(mut progress_ui) => {
+                let (progress_tracker, progress_rx) = ProgressTracker::new();
 
-        let runner = SeederRunner::new(db)
-            .with_progress(progress_tracker.clone())
-            .add_seeder(Box::new(user_seeder));
+                let runner = SeederRunner::new(db)
+                    .with_progress(progress_tracker.clone())
+                    .add_seeder(Box::new(user_seeder));
 
-        let runner_handle = tokio::spawn(async move {
-            if let Err(e) = runner.run_all().await {
-                error!("Seeding failed: {}", e);
-                progress_tracker.error("Runner".to_string(), e.to_string());
+                let runner_handle = tokio::spawn(async move {
+                    if let Err(e) = runner.run_all().await {
+                        error!("Seeding failed: {}", e);
+                        progress_tracker.error("Runner".to_string(), e.to_string());
+                    }
+                    progress_tracker.finish();
+                });
+
+                let ui_result = progress_ui.run(progress_rx).await;
+                let _ = runner_handle.await;
+
+                if let Err(e) = ui_result {
+                    error!("UI error: {}", e);
+                }
+            },
+            Err(e) => {
+                info!("Failed to initialize progress UI, falling back to quiet mode: {}", e);
+                let runner = SeederRunner::new(db).add_seeder(Box::new(user_seeder));
+                runner.run_all().await?;
             }
-            progress_tracker.finish();
-        });
-
-        let ui_result = progress_ui.run(progress_rx).await;
-        let _ = runner_handle.await;
-
-        if let Err(e) = ui_result {
-            error!("UI error: {}", e);
         }
     }
 
@@ -185,26 +206,36 @@ async fn run_event_type_seeder(
         runner.run_all().await?;
     }
     else {
-        let (progress_tracker, progress_rx) = ProgressTracker::new();
-        let mut progress_ui = ProgressUI::new()?;
+        // Try to initialize UI, fallback to quiet mode if it fails
+        match ProgressUI::new() {
+            Ok(mut progress_ui) => {
+                let (progress_tracker, progress_rx) = ProgressTracker::new();
 
-        let runner = SeederRunner::new(db)
-            .with_progress(progress_tracker.clone())
-            .add_seeder(Box::new(event_type_seeder));
+                let runner = SeederRunner::new(db)
+                    .with_progress(progress_tracker.clone())
+                    .add_seeder(Box::new(event_type_seeder));
 
-        let runner_handle = tokio::spawn(async move {
-            if let Err(e) = runner.run_all().await {
-                error!("Seeding failed: {}", e);
-                progress_tracker.error("Runner".to_string(), e.to_string());
+                let runner_handle = tokio::spawn(async move {
+                    if let Err(e) = runner.run_all().await {
+                        error!("Seeding failed: {}", e);
+                        progress_tracker.error("Runner".to_string(), e.to_string());
+                    }
+                    progress_tracker.finish();
+                });
+
+                let ui_result = progress_ui.run(progress_rx).await;
+                let _ = runner_handle.await;
+
+                if let Err(e) = ui_result {
+                    error!("UI error: {}", e);
+                }
+            },
+            Err(e) => {
+                info!("Failed to initialize progress UI, falling back to quiet mode: {}", e);
+                let runner =
+                    SeederRunner::new(db).add_seeder(Box::new(event_type_seeder));
+                runner.run_all().await?;
             }
-            progress_tracker.finish();
-        });
-
-        let ui_result = progress_ui.run(progress_rx).await;
-        let _ = runner_handle.await;
-
-        if let Err(e) = ui_result {
-            error!("UI error: {}", e);
         }
     }
 
@@ -229,26 +260,35 @@ async fn run_event_seeder(
         runner.run_all().await?;
     }
     else {
-        let (progress_tracker, progress_rx) = ProgressTracker::new();
-        let mut progress_ui = ProgressUI::new()?;
+        // Try to initialize UI, fallback to quiet mode if it fails
+        match ProgressUI::new() {
+            Ok(mut progress_ui) => {
+                let (progress_tracker, progress_rx) = ProgressTracker::new();
 
-        let runner = SeederRunner::new(db)
-            .with_progress(progress_tracker.clone())
-            .add_seeder(Box::new(event_seeder));
+                let runner = SeederRunner::new(db)
+                    .with_progress(progress_tracker.clone())
+                    .add_seeder(Box::new(event_seeder));
 
-        let runner_handle = tokio::spawn(async move {
-            if let Err(e) = runner.run_all().await {
-                error!("Seeding failed: {}", e);
-                progress_tracker.error("Runner".to_string(), e.to_string());
+                let runner_handle = tokio::spawn(async move {
+                    if let Err(e) = runner.run_all().await {
+                        error!("Seeding failed: {}", e);
+                        progress_tracker.error("Runner".to_string(), e.to_string());
+                    }
+                    progress_tracker.finish();
+                });
+
+                let ui_result = progress_ui.run(progress_rx).await;
+                let _ = runner_handle.await;
+
+                if let Err(e) = ui_result {
+                    error!("UI error: {}", e);
+                }
+            },
+            Err(e) => {
+                info!("Failed to initialize progress UI, falling back to quiet mode: {}", e);
+                let runner = SeederRunner::new(db).add_seeder(Box::new(event_seeder));
+                runner.run_all().await?;
             }
-            progress_tracker.finish();
-        });
-
-        let ui_result = progress_ui.run(progress_rx).await;
-        let _ = runner_handle.await;
-
-        if let Err(e) = ui_result {
-            error!("UI error: {}", e);
         }
     }
 

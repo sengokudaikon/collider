@@ -90,6 +90,7 @@ impl EventTypeSeeder {
         }
 
         event_types::Entity::insert_many(batch_event_types)
+            .on_conflict_do_nothing()
             .exec(db)
             .await?;
         Ok(event_names)
