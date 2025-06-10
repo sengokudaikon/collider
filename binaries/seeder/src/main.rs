@@ -12,11 +12,11 @@ use seeders::{
     EventSeeder, EventTypeSeeder, ProgressTracker, SeederRunner, UserSeeder,
 };
 use sql_connection::{
-    config::PostgresDbConfig, connect_postgres_db, SqlConnect,
+    SqlConnect, config::PostgresDbConfig, connect_postgres_db,
 };
 use tokio::signal;
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info, warn, Level};
+use tracing::{Level, error, info, warn};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -44,8 +44,8 @@ async fn main() -> Result<()> {
 
     let config = PostgresDbConfig {
         uri: cli.get_database_url(),
-        max_conn: Some(50),
-        min_conn: Some(5),
+        max_conn: Some(100), // Increased for parallel batch processing
+        min_conn: Some(20),  // Higher baseline for bulk operations
         logger: false,
     };
 
@@ -214,15 +214,17 @@ async fn run_all_seeders(
 
     match mode {
         ProgressMode::Quiet => {
-            // No progress output, just run
+            // No progress output, use parallel execution for better
+            // performance
             let runner = SeederRunner::new(db)
                 .add_seeder(Box::new(user_seeder))
                 .add_seeder(Box::new(event_type_seeder))
                 .add_seeder(Box::new(event_seeder));
-            runner.run_all().await?;
+            runner.run_parallel().await?;
         }
         ProgressMode::Interactive => {
-            // Use CLI progress bars for interactive mode
+            // Use CLI progress bars for interactive mode with parallel
+            // execution
             let mut cli_progress = CliProgress::new();
             let (progress_tracker, progress_rx) = ProgressTracker::new();
 
@@ -233,7 +235,7 @@ async fn run_all_seeders(
                 .add_seeder(Box::new(event_seeder));
 
             let runner_handle = tokio::spawn(async move {
-                if let Err(e) = runner.run_all().await {
+                if let Err(e) = runner.run_parallel().await {
                     error!("Seeding failed: {}", e);
                     progress_tracker
                         .error("Runner".to_string(), e.to_string());

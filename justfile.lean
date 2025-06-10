@@ -120,6 +120,24 @@ build-binaries:
     cargo build --release --bin migrator
     cargo build --release --bin seeder
 
+# Fast binary builds with native CPU optimization  
+build-binaries-native:
+    @echo "🚀 Building with native CPU optimizations..."
+    RUSTFLAGS="-C target-cpu=native" cargo build --release --bin migrator
+    RUSTFLAGS="-C target-cpu=native" cargo build --release --bin seeder
+
+# Ultra-optimized binary builds (requires nightly, MacOS target)
+build-binaries-ultra:
+    @echo "🔥 Ultra-optimized build with build-std..."
+    cargo +nightly build -Z build-std=std,panic_abort --target x86_64-apple-darwin --release --bin migrator
+    cargo +nightly build -Z build-std=std,panic_abort --target x86_64-apple-darwin --release --bin seeder
+
+# Size-optimized binary builds (smallest possible)
+build-binaries-small:
+    @echo "📦 Building for minimum binary size..."
+    RUSTFLAGS="-C opt-level=z -C lto=fat -C codegen-units=1 -C strip=symbols" cargo build --release --bin migrator
+    RUSTFLAGS="-C opt-level=z -C lto=fat -C codegen-units=1 -C strip=symbols" cargo build --release --bin seeder
+
 # ==== Utilities ====
 
 # Install development tools

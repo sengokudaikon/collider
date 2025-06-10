@@ -1,14 +1,16 @@
-use std::time::Instant;
+use std::{sync::Arc, time::Instant};
 
 use anyhow::Result;
 use async_trait::async_trait;
 use chrono::{Duration, Utc};
 use database_traits::connection::GetDatabaseConnect;
 use events_models::{event_types, events};
+use futures::{StreamExt, stream};
 use rand::{Rng, prelude::IndexedRandom, rng};
 use sea_orm::{EntityTrait, Set};
 use serde_json::json;
 use sql_connection::SqlConnect;
+use tokio::sync::Semaphore;
 use tracing::{info, instrument, warn};
 use user_models as users;
 use uuid::Uuid;
@@ -70,10 +72,14 @@ impl EventSeeder {
         Ok(event_type_ids)
     }
 
-    fn generate_metadata(&self) -> serde_json::Value {
-        let mut rng = rng();
+    // Static version of metadata generation
+    fn generate_metadata_static() -> serde_json::Value {
+        use rand::{Rng, rng};
 
-        match rng.random_range(0..5) {
+        let mut rng = rng();
+        let variant = rng.random_range(0..5);
+
+        match variant {
             0 => {
                 json!({
                     "page_url": format!("/page/{}", rng.random_range(1..1000)),
@@ -116,30 +122,175 @@ impl EventSeeder {
         }
     }
 
-    #[instrument(skip(self, user_ids, event_type_ids, progress_tracker), fields(batch_size = self.batch_size))]
-    async fn generate_event_batch(
-        &self, user_ids: &[Uuid], event_type_ids: &[i32], batch_start: usize,
-        batch_size: usize, progress_tracker: &Option<ProgressTracker>,
+    #[instrument(skip(self, progress_tracker))]
+    async fn generate_events_parallel(
+        &self, user_ids: Vec<Uuid>, event_type_ids: Vec<i32>,
+        progress_tracker: &Option<ProgressTracker>,
     ) -> Result<()> {
-        let db = self.db.get_connect();
-        let mut batch_events = Vec::with_capacity(batch_size);
+        let generation_start = Instant::now();
+        info!(
+            "Starting optimized parallel generation of {} events \
+             (pre-generation + concurrent inserts)",
+            self.target_events
+        );
+
+        // Phase 1: Pre-generate ALL event data in memory (CPU intensive)
+        info!(
+            "Phase 1: Pre-generating {} events in memory...",
+            self.target_events
+        );
+        let pre_gen_start = Instant::now();
+
+        let all_events = Self::pre_generate_events_bulk(
+            self.target_events,
+            &user_ids,
+            &event_type_ids,
+        )?;
+
+        let pre_gen_time = pre_gen_start.elapsed();
+        info!(
+            "Pre-generation completed in {:.2}s ({:.0} events/sec)",
+            pre_gen_time.as_secs_f64(),
+            self.target_events as f64 / pre_gen_time.as_secs_f64()
+        );
+
+        // Phase 2: Split into chunks and distribute to workers (I/O
+        // intensive)
+        info!(
+            "Phase 2: Distributing to {} concurrent database workers...",
+            12
+        );
+        let chunks: Vec<Vec<events::ActiveModel>> = all_events
+            .chunks(self.batch_size)
+            .map(|chunk| chunk.to_vec())
+            .collect();
+
+        let total_chunks = chunks.len();
+        let semaphore = Arc::new(Semaphore::new(12)); // More workers since no CPU work
+
+        let results: Vec<Result<(usize, usize, f64)>> =
+            stream::iter(chunks.into_iter().enumerate())
+                .map(|(chunk_idx, chunk)| {
+                    let semaphore = semaphore.clone();
+                    let db = self.db.clone();
+                    let progress_tracker = progress_tracker.clone();
+                    let target_events = self.target_events;
+
+                    async move {
+                        let _permit =
+                            semaphore.acquire().await.map_err(|e| {
+                                anyhow::anyhow!("Semaphore error: {}", e)
+                            })?;
+
+                        let insert_start = Instant::now();
+                        let chunk_size = chunk.len();
+
+                        // Pure database insert - no data generation
+                        Self::insert_pre_generated_batch(
+                            &db,
+                            chunk,
+                            chunk_idx * self.batch_size,
+                            target_events,
+                            &progress_tracker,
+                        )
+                        .await?;
+
+                        let insert_time = insert_start.elapsed();
+                        let events_per_sec: f64 =
+                            chunk_size as f64 / insert_time.as_secs_f64();
+
+                        Ok((chunk_idx, chunk_size, events_per_sec))
+                    }
+                })
+                .buffer_unordered(12) // 12 concurrent database workers
+                .collect()
+                .await;
+
+        // Process results and calculate metrics
+        let mut total_events_inserted = 0;
+        let mut failed_chunks = 0;
+        let mut max_throughput: f64 = 0.0;
+
+        for result in results {
+            match result {
+                Ok((chunk_idx, chunk_size, events_per_sec)) => {
+                    total_events_inserted += chunk_size;
+                    max_throughput = max_throughput.max(events_per_sec);
+
+                    // Log progress every 10 chunks
+                    if (chunk_idx + 1) % 10 == 0 || chunk_size >= 10000 {
+                        let elapsed = generation_start.elapsed();
+                        let overall_rate = total_events_inserted as f64
+                            / elapsed.as_secs_f64();
+                        let progress = (total_events_inserted as f64
+                            / self.target_events as f64)
+                            * 100.0;
+
+                        info!(
+                            "Chunk {}/{}: {:.0} events/sec (chunk), {:.0} \
+                             events/sec (overall), {:.1}% complete",
+                            chunk_idx + 1,
+                            total_chunks,
+                            events_per_sec,
+                            overall_rate,
+                            progress
+                        );
+                    }
+                }
+                Err(e) => {
+                    failed_chunks += 1;
+                    warn!("Failed to insert chunk: {}", e);
+                }
+            }
+        }
+
+        if failed_chunks > 0 {
+            return Err(anyhow::anyhow!(
+                "{} chunks failed to insert",
+                failed_chunks
+            ));
+        }
+
+        let total_time = generation_start.elapsed();
+        let overall_rate =
+            self.target_events as f64 / total_time.as_secs_f64();
+
+        info!("🚀 Optimized parallel seeding completed!");
+        info!(
+            "✓ Total: {} events in {:.2}s ({:.0} events/sec overall)",
+            self.target_events,
+            total_time.as_secs_f64(),
+            overall_rate
+        );
+        info!(
+            "✓ Pre-generation: {:.2}s, Concurrent inserts: {:.2}s",
+            pre_gen_time.as_secs_f64(),
+            (total_time - pre_gen_time).as_secs_f64()
+        );
+        info!("✓ Peak insert throughput: {:.0} events/sec", max_throughput);
+
+        Ok(())
+    }
+
+    // Phase 1: Pre-generate ALL events in memory (CPU intensive,
+    // single-threaded)
+    fn pre_generate_events_bulk(
+        target_events: usize, user_ids: &[Uuid], event_type_ids: &[i32],
+    ) -> Result<Vec<events::ActiveModel>> {
+        let mut all_events = Vec::with_capacity(target_events);
+        let mut rng = rng();
 
         let start_time = Utc::now() - Duration::days(30);
         let end_time = Utc::now();
         let time_range_seconds = (end_time - start_time).num_seconds();
 
-        for _ in 0..batch_size {
-            let (user_id, event_type_id, random_seconds) = {
-                let mut rng = rng();
-                let user_id = *user_ids.choose(&mut rng).unwrap();
-                let event_type_id = *event_type_ids.choose(&mut rng).unwrap();
-                let random_seconds = rng.random_range(0..time_range_seconds);
-                (user_id, event_type_id, random_seconds)
-            };
-
+        // Bulk generate all events at once
+        for _ in 0..target_events {
+            let user_id = *user_ids.choose(&mut rng).unwrap();
+            let event_type_id = *event_type_ids.choose(&mut rng).unwrap();
+            let random_seconds = rng.random_range(0..time_range_seconds);
             let timestamp = start_time + Duration::seconds(random_seconds);
-
-            let metadata = self.generate_metadata();
+            let metadata = Self::generate_metadata_static();
 
             let active_event = events::ActiveModel {
                 id: Set(Uuid::now_v7()),
@@ -149,34 +300,42 @@ impl EventSeeder {
                 metadata: Set(Some(metadata)),
             };
 
-            batch_events.push(active_event);
+            all_events.push(active_event);
         }
 
-        events::Entity::insert_many(batch_events).exec(db).await?;
+        Ok(all_events)
+    }
 
-        let current_total = batch_start + batch_size;
+    // Phase 2: Pure database insert (I/O intensive, concurrent)
+    #[instrument(skip(db, events_batch, progress_tracker))]
+    async fn insert_pre_generated_batch(
+        db: &SqlConnect, events_batch: Vec<events::ActiveModel>,
+        batch_start: usize, target_events: usize,
+        progress_tracker: &Option<ProgressTracker>,
+    ) -> Result<()> {
+        let db_conn = db.get_connect();
+        let batch_size = events_batch.len();
 
-        // Send progress update if tracker is available
+        // Pure insert operation - no data generation overhead
+        events::Entity::insert_many(events_batch)
+            .exec(db_conn)
+            .await?;
+
+        // Update progress
         if let Some(tracker) = progress_tracker {
+            let current_total = batch_start + batch_size;
             let progress_percentage =
-                (current_total as f64 / self.target_events as f64) * 100.0;
+                (current_total as f64 / target_events as f64) * 100.0;
+
             tracker.update(ProgressUpdate {
                 seeder_name: "EventSeeder".to_string(),
                 current: current_total,
-                total: self.target_events,
+                total: target_events,
                 message: format!(
-                    "Generated {} events ({:.1}% complete)",
+                    "Inserted {} events ({:.1}% complete)",
                     current_total, progress_percentage
                 ),
             });
-        }
-
-        if current_total % 100000 == 0 {
-            info!(
-                "Generated {} events ({:.1}% complete)",
-                current_total,
-                (current_total as f64 / self.target_events as f64) * 100.0
-            );
         }
 
         Ok(())
@@ -187,86 +346,13 @@ impl EventSeeder {
         &self, user_ids: Vec<Uuid>, event_type_ids: Vec<i32>,
         progress_tracker: &Option<ProgressTracker>,
     ) -> Result<()> {
-        let generation_start = Instant::now();
-        info!(
-            "Starting generation of {} events in batches of {}",
-            self.target_events, self.batch_size
-        );
-
-        let total_batches = self.target_events.div_ceil(self.batch_size);
-        let mut events_generated = 0;
-
-        for batch_num in 0..total_batches {
-            let batch_start = batch_num * self.batch_size;
-            let remaining_events = self.target_events - batch_start;
-            let current_batch_size =
-                std::cmp::min(self.batch_size, remaining_events);
-
-            if current_batch_size == 0 {
-                break;
-            }
-
-            let batch_start_time = Instant::now();
-            match self
-                .generate_event_batch(
-                    &user_ids,
-                    &event_type_ids,
-                    batch_start,
-                    current_batch_size,
-                    progress_tracker,
-                )
-                .await
-            {
-                Ok(_) => {
-                    events_generated += current_batch_size;
-                    let batch_time = batch_start_time.elapsed();
-                    let events_per_sec =
-                        current_batch_size as f64 / batch_time.as_secs_f64();
-
-                    // Log progress every 10 batches or for large batches
-                    if (batch_num + 1) % 10 == 0
-                        || current_batch_size >= 10000
-                    {
-                        let elapsed = generation_start.elapsed();
-                        let overall_rate =
-                            events_generated as f64 / elapsed.as_secs_f64();
-                        let progress = (events_generated as f64
-                            / self.target_events as f64)
-                            * 100.0;
-
-                        info!(
-                            "Batch {}/{}: {} events/sec (batch), {:.0} \
-                             events/sec (overall), {:.1}% complete",
-                            batch_num + 1,
-                            total_batches,
-                            events_per_sec as u32,
-                            overall_rate,
-                            progress
-                        );
-                    }
-                }
-                Err(e) => {
-                    warn!(
-                        "Failed to generate batch {}: {}",
-                        batch_num + 1,
-                        e
-                    );
-                    return Err(e);
-                }
-            }
-        }
-
-        let total_time = generation_start.elapsed();
-        let overall_rate =
-            self.target_events as f64 / total_time.as_secs_f64();
-
-        info!(
-            "Successfully generated {} events in {:.2}s ({:.0} events/sec)",
-            self.target_events,
-            total_time.as_secs_f64(),
-            overall_rate
-        );
-        Ok(())
+        // Use parallel processing for better performance
+        self.generate_events_parallel(
+            user_ids,
+            event_type_ids,
+            progress_tracker,
+        )
+        .await
     }
 }
 

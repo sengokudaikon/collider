@@ -1,0 +1,4 @@
+($1, $2, $3, $4, $5)
+< concatenated list of 10000 tuples >,
+($49996, $49997, $49998, $49999, $50000) RETURNING \"id\"\n" rows_affected=10000 rows_returned=10000 elapsed=2.113715125s elapsed_secs=2.113715125 slow_threshold=1s
+EventSeeder  [==================>---------------------] 4660000/10000000 (47%) Generated 4660000 events (46.6% complete)

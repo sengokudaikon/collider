@@ -15,6 +15,7 @@ tracing.workspace = true
 uuid.workspace = true
 tokio.workspace = true
 tokio-util = "0.7"
+futures.workspace = true
 anyhow = "1.0"
 
 events-models = { path = "../../domains/events/models" }

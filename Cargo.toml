@@ -98,11 +98,12 @@ domain = { path = "libs/domain" }
 
 
 [profile.release]
-lto = true
+lto = "thin"          # Better parallelism vs "fat" LTO, 4-20% faster builds
 strip = true
-incremental = true
-codegen-units = 16
+incremental = false   # Disable for release builds (better optimization)
+codegen-units = 1     # Best optimization (slower compile, faster runtime)
 opt-level = 3
+panic = "abort"       # 10% smaller binaries, faster execution
 
 [profile.dev]
 opt-level = 0

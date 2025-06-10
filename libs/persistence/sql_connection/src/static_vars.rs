@@ -33,7 +33,7 @@ where
         db_options.min_connections(min_conn);
     }
     db_options
-        .sqlx_logging(true)
+        .sqlx_logging(config.sql_logger())
         .sqlx_logging_level(log::LevelFilter::Info)
         .set_schema_search_path("public");
 
