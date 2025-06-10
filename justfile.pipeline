@@ -56,15 +56,15 @@ mega-pipeline:
     sleep 15
     
     echo "Setting up development database..."
-    DATABASE_URL="postgres://postgres:postgres@localhost:5432/events" \
+    DATABASE_URL="postgres://postgres:postgres@localhost:5432/postgres" \
     cargo run --bin migrator -- up
     
-    DATABASE_URL="postgres://postgres:postgres@localhost:5432/events" \
+    DATABASE_URL="postgres://postgres:postgres@localhost:5432/postgres" \
     cargo run --bin seeder -- all --min-users 1000 --max-users 5000 --target-events 100000
     
     # Wait for app to be ready
     echo "Waiting for application to be ready..."
-    until curl -f http://localhost:8080/health &>/dev/null; do
+    until curl -f http://localhost:8880/health &>/dev/null; do
         echo "  Waiting for app..."
         sleep 5
     done
@@ -107,7 +107,7 @@ mega-pipeline:
         echo ""
         echo "⚡ Running Vegeta tests..."
         cd infrastructure/benchmarking
-        timeout 120s ./run_load_test.sh localhost:8080 2>&1 || echo "Vegeta test completed/timed out"
+        timeout 120s ./run_load_test.sh localhost:8880 2>&1 || echo "Vegeta test completed/timed out"
         cd ../..
         
     } | tee "$RESULTS_DIR/benchmark_output.log"
@@ -122,7 +122,7 @@ mega-pipeline:
     
     # Collect final metrics
     echo "Collecting final application metrics..."
-    curl -s http://localhost:8080/metrics > "$RESULTS_DIR/final_metrics.txt" 2>/dev/null || echo "Metrics not available"
+    curl -s http://localhost:8880/metrics > "$RESULTS_DIR/final_metrics.txt" 2>/dev/null || echo "Metrics not available"
     
     # Container stats
     echo "Collecting container statistics..."
@@ -141,7 +141,7 @@ mega-pipeline:
     echo "📋 System monitoring: $RESULTS_DIR/system_monitor.log"
     echo ""
     echo "🔧 Development environment is still running at:"
-    echo "   Application: http://localhost:8080"
+    echo "   Application: http://localhost:8880"
     echo "   Prometheus: http://localhost:9090"
     echo "   Grafana: http://localhost:3000"
     echo ""
@@ -234,14 +234,14 @@ benchmark-pipeline:
     sleep 15
     
     # Setup with more data for realistic benchmarks
-    DATABASE_URL="postgres://postgres:postgres@localhost:5432/events" \
+    DATABASE_URL="postgres://postgres:postgres@localhost:5432/postgres" \
     cargo run --bin migrator -- up
     
-    DATABASE_URL="postgres://postgres:postgres@localhost:5432/events" \
+    DATABASE_URL="postgres://postgres:postgres@localhost:5432/postgres" \
     cargo run --bin seeder -- all --min-users 5000 --max-users 10000 --target-events 1000000
     
     # Wait for app
-    until curl -f http://localhost:8080/health &>/dev/null; do
+    until curl -f http://localhost:8880/health &>/dev/null; do
         sleep 5
     done
     
@@ -269,7 +269,7 @@ benchmark-pipeline:
     } | tee "$RESULTS_DIR/comprehensive_benchmarks.log"
     
     # Collect metrics
-    curl -s http://localhost:8080/metrics > "$RESULTS_DIR/app_metrics.txt" || true
+    curl -s http://localhost:8880/metrics > "$RESULTS_DIR/app_metrics.txt" || true
     docker stats --no-stream > "$RESULTS_DIR/container_stats.txt"
     
     echo "✅ Comprehensive benchmarking complete!"

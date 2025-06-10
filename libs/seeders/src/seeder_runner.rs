@@ -42,22 +42,16 @@ impl SeederRunner {
 
         for seeder in &self.seeders {
             let seeder_start = Instant::now();
-            info!("🔄 Running seeder: {}", seeder.name());
+            info!("Running seeder: {}", seeder.name());
 
-            if let Some(tracker) = &self.progress_tracker {
-                tracker.update(crate::ProgressUpdate {
-                    seeder_name: seeder.name().to_string(),
-                    current: 0,
-                    total: 1,
-                    message: "Starting...".to_string(),
-                });
-            }
-
-            match seeder.seed().await {
+            match seeder
+                .seed_with_progress(self.progress_tracker.clone())
+                .await
+            {
                 Ok(_) => {
                     let seeder_time = seeder_start.elapsed();
                     info!(
-                        "✅ Seeder '{}' completed successfully in {:.2}s",
+                        "Seeder '{}' completed successfully in {:.2}s",
                         seeder.name(),
                         seeder_time.as_secs_f64()
                     );
@@ -69,7 +63,7 @@ impl SeederRunner {
                 Err(e) => {
                     let seeder_time = seeder_start.elapsed();
                     warn!(
-                        "❌ Seeder '{}' failed after {:.2}s: {}",
+                        "Seeder '{}' failed after {:.2}s: {}",
                         seeder.name(),
                         seeder_time.as_secs_f64(),
                         e

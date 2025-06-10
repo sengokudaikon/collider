@@ -18,7 +18,7 @@ pub fn benchmark_http_requests(c: &mut Criterion) {
             let client = client.clone();
             async move {
                 let response = client
-                    .get("http://localhost:8080/health")
+                    .get("http://localhost:8880/health")
                     .send()
                     .await
                     .unwrap();
@@ -34,7 +34,7 @@ pub fn benchmark_http_requests(c: &mut Criterion) {
             let client = client.clone();
             async move {
                 let response = client
-                    .get("http://localhost:8080/api/users")
+                    .get("http://localhost:8880/api/users")
                     .send()
                     .await
                     .unwrap();
@@ -50,7 +50,7 @@ pub fn benchmark_http_requests(c: &mut Criterion) {
             let client = client.clone();
             async move {
                 let response = client
-                    .get("http://localhost:8080/api/events")
+                    .get("http://localhost:8880/api/events")
                     .send()
                     .await
                     .unwrap();
@@ -79,7 +79,7 @@ pub fn benchmark_http_requests(c: &mut Criterion) {
             let payload = event_payload.clone();
             async move {
                 let response = client
-                    .post("http://localhost:8080/api/events")
+                    .post("http://localhost:8880/api/events")
                     .json(&payload)
                     .send()
                     .await
@@ -96,7 +96,7 @@ pub fn benchmark_http_requests(c: &mut Criterion) {
             let client = client.clone();
             async move {
                 let response = client
-                    .get("http://localhost:8080/api/users/550e8400-e29b-41d4-a716-446655440000/analytics")
+                    .get("http://localhost:8880/api/users/550e8400-e29b-41d4-a716-446655440000/analytics")
                     .send()
                     .await
                     .unwrap();
@@ -110,7 +110,7 @@ pub fn benchmark_http_requests(c: &mut Criterion) {
         b.to_async(&rt).iter(|| {
             async {
                 let response = client
-                    .delete("http://localhost:8080/api/events/550e8400-e29b-41d4-a716-446655440000")
+                    .delete("http://localhost:8880/api/events/550e8400-e29b-41d4-a716-446655440000")
                     .send()
                     .await
                     .unwrap();
@@ -127,7 +127,7 @@ pub fn benchmark_http_requests(c: &mut Criterion) {
                     chrono::Utc::now() - chrono::Duration::hours(1);
                 let response = client
                     .delete(&format!(
-                        "http://localhost:8080/api/events?before={}",
+                        "http://localhost:8880/api/events?before={}",
                         before_date.to_rfc3339()
                     ))
                     .send()
@@ -143,7 +143,7 @@ pub fn benchmark_http_requests(c: &mut Criterion) {
         b.to_async(&rt).iter(|| {
             async {
                 let response = client
-                    .get("http://localhost:8080/api/analytics/stats")
+                    .get("http://localhost:8880/api/analytics/stats")
                     .send()
                     .await
                     .unwrap();
@@ -157,7 +157,7 @@ pub fn benchmark_http_requests(c: &mut Criterion) {
         b.to_async(&rt).iter(|| {
             async {
                 let response = client
-                    .get("http://localhost:8080/api/analytics/metrics/realtime")
+                    .get("http://localhost:8880/api/analytics/metrics/realtime")
                     .send()
                     .await
                     .unwrap();
@@ -190,7 +190,7 @@ pub fn benchmark_concurrent_requests(c: &mut Criterion) {
                             .map(|_| {
                                 async move {
                                     client
-                                        .get("http://localhost:8080/health")
+                                        .get("http://localhost:8880/health")
                                         .send()
                                         .await
                                         .unwrap()
@@ -220,7 +220,7 @@ pub fn benchmark_concurrent_requests(c: &mut Criterion) {
                                 .map(|_| {
                                     async move {
                                         client
-                                .get("http://localhost:8080/api/users")
+                                .get("http://localhost:8880/api/users")
                                 .send()
                                 .await
                                 .unwrap()
@@ -249,7 +249,7 @@ pub fn benchmark_concurrent_requests(c: &mut Criterion) {
                             .map(|_| {
                                 async move {
                                     client
-                                .get("http://localhost:8080/api/events")
+                                .get("http://localhost:8880/api/events")
                                 .send()
                                 .await
                                 .unwrap()
@@ -279,7 +279,7 @@ pub fn benchmark_concurrent_requests(c: &mut Criterion) {
                                 async move {
                                     let before_date = chrono::Utc::now() - chrono::Duration::minutes(30);
                                     client
-                                        .delete(&format!("http://localhost:8080/api/events?before={}", before_date.to_rfc3339()))
+                                        .delete(&format!("http://localhost:8880/api/events?before={}", before_date.to_rfc3339()))
                                         .send()
                                         .await
                                         .unwrap()
@@ -308,7 +308,7 @@ pub fn benchmark_concurrent_requests(c: &mut Criterion) {
                             .map(|_| {
                                 async move {
                                     client
-                                        .get("http://localhost:8080/api/analytics/stats")
+                                        .get("http://localhost:8880/api/analytics/stats")
                                         .send()
                                         .await
                                         .unwrap()

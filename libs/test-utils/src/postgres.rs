@@ -69,8 +69,6 @@ impl TestPostgresContainer {
             db_name,
         };
 
-        instance.setup_extensions().await?;
-
         instance.apply_migrations().await?;
 
         Ok(instance)
@@ -96,20 +94,6 @@ impl TestPostgresContainer {
     pub async fn get_migrator(&self) -> Result<SqlMigrator> {
         let sqlx_pool = self.connection.get_postgres_connection_pool();
         Ok(SqlMigrator::new(sqlx_pool.clone()))
-    }
-
-    async fn setup_extensions(&self) -> Result<()> {
-        let sqlx_pool = self.connection.get_postgres_connection_pool();
-
-        sqlx::query("CREATE EXTENSION IF NOT EXISTS pg_uuidv7")
-            .execute(sqlx_pool)
-            .await
-            .context(
-                "Failed to enable pg_uuidv7 extension. The test PostgreSQL \
-                 container may not have this extension installed.",
-            )?;
-
-        Ok(())
     }
 
     async fn wait_for_postgres_ready(connection_string: &str) -> Result<()> {

@@ -1,7 +1,0 @@
-POST http://localhost:8080/api/events
-Content-Type: application/json
-@scenarios/create_event.json
-
-GET http://localhost:8080/health
-
-GET http://localhost:8080/api/events/count

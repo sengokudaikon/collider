@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS users
 (
-    id         UUID PRIMARY KEY             DEFAULT uuid_generate_v7(),
+    id         UUID PRIMARY KEY,
     name       VARCHAR(100)        NOT NULL,
     created_at TIMESTAMPTZ         NOT NULL DEFAULT NOW()
 );

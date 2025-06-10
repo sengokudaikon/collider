@@ -11,24 +11,24 @@ events-queries = { path = "../queries" }
 
 # Infrastructure
 sql-connection.workspace = true
-domain = { workspace = true }
+domain.workspace = true
 
 # Web framework
-axum = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-uuid = { workspace = true }
-tracing = { workspace = true }
+axum.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+tracing.workspace = true
 chrono.workspace = true
-utoipa = { workspace = true }
+utoipa.workspace = true
 
 [dev-dependencies]
-test-utils = { workspace = true }
+test-utils.workspace = true
 events-dao = { path = "../dao" }
 database-traits.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
-anyhow = { workspace = true }
-serde_json = { workspace = true }
+anyhow.workspace = true
+serde_json.workspace = true
 tower = { workspace = true, features = ["util"] }
 axum = { workspace = true, features = ["macros"] }
 sea-orm.workspace = true

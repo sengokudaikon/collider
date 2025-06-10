@@ -15,6 +15,6 @@ database-traits.workspace = true
 
 [dev-dependencies]
 sea-orm-migration.workspace = true
-test-utils = { workspace = true }
-tokio = { workspace = true }
-serde = { workspace = true }
+test-utils.workspace = true
+tokio.workspace = true
+serde.workspace = true

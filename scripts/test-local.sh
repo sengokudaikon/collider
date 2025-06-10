@@ -11,7 +11,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 # Base URL
-BASE_URL="${BASE_URL:-http://localhost:8080}"
+BASE_URL="${BASE_URL:-http://localhost:8880}"
 
 # Test counter
 TESTS_RUN=0
@@ -173,7 +173,7 @@ if [ "$TESTS_FAILED" -eq 0 ]; then
     echo -e "${GREEN}All tests passed! Your local environment is working correctly.${NC}"
     echo ""
     echo "Available services:"
-    echo "  - Application: http://localhost:8080"
+    echo "  - Application: http://localhost:8880"
     echo "  - PostgreSQL: localhost:5432"
     echo "  - Dragonfly: localhost:6379"
     echo "  - Jaeger: http://localhost:16686"

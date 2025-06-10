@@ -11,7 +11,7 @@ tracing.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
-test-utils = { workspace = true }
+test-utils.workspace = true
 anyhow.workspace = true
-user-commands = { workspace = true }
-user-queries = { workspace = true }
+user-commands.workspace = true
+user-queries.workspace = true

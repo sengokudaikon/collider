@@ -13,7 +13,7 @@ use tracing::{info, instrument, warn};
 use user_models as users;
 use uuid::Uuid;
 
-use crate::Seeder;
+use crate::{ProgressTracker, ProgressUpdate, Seeder};
 
 pub struct EventSeeder {
     db: SqlConnect,
@@ -104,7 +104,7 @@ impl EventSeeder {
             }
             _ => {
                 json!({
-                    "session_id": Uuid::new_v7(uuid::Timestamp::now(uuid::NoContext)),
+                    "session_id": Uuid::now_v7(),
                     "duration_ms": rng.random_range(1000..300000),
                     "device_type": match rng.random_range(0..3) {
                         0 => "mobile",
@@ -116,10 +116,10 @@ impl EventSeeder {
         }
     }
 
-    #[instrument(skip(self, user_ids, event_type_ids), fields(batch_size = self.batch_size))]
+    #[instrument(skip(self, user_ids, event_type_ids, progress_tracker), fields(batch_size = self.batch_size))]
     async fn generate_event_batch(
         &self, user_ids: &[Uuid], event_type_ids: &[i32], batch_start: usize,
-        batch_size: usize,
+        batch_size: usize, progress_tracker: &Option<ProgressTracker>,
     ) -> Result<()> {
         let db = self.db.get_connect();
         let mut batch_events = Vec::with_capacity(batch_size);
@@ -142,7 +142,7 @@ impl EventSeeder {
             let metadata = self.generate_metadata();
 
             let active_event = events::ActiveModel {
-                id: Set(Uuid::new_v7(uuid::Timestamp::now(uuid::NoContext))),
+                id: Set(Uuid::now_v7()),
                 user_id: Set(user_id),
                 event_type_id: Set(event_type_id),
                 timestamp: Set(timestamp),
@@ -155,6 +155,22 @@ impl EventSeeder {
         events::Entity::insert_many(batch_events).exec(db).await?;
 
         let current_total = batch_start + batch_size;
+
+        // Send progress update if tracker is available
+        if let Some(tracker) = progress_tracker {
+            let progress_percentage =
+                (current_total as f64 / self.target_events as f64) * 100.0;
+            tracker.update(ProgressUpdate {
+                seeder_name: "EventSeeder".to_string(),
+                current: current_total,
+                total: self.target_events,
+                message: format!(
+                    "Generated {} events ({:.1}% complete)",
+                    current_total, progress_percentage
+                ),
+            });
+        }
+
         if current_total % 100000 == 0 {
             info!(
                 "Generated {} events ({:.1}% complete)",
@@ -166,13 +182,14 @@ impl EventSeeder {
         Ok(())
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, progress_tracker))]
     async fn generate_events(
         &self, user_ids: Vec<Uuid>, event_type_ids: Vec<i32>,
+        progress_tracker: &Option<ProgressTracker>,
     ) -> Result<()> {
         let generation_start = Instant::now();
         info!(
-            "📊 Starting generation of {} events in batches of {}",
+            "Starting generation of {} events in batches of {}",
             self.target_events, self.batch_size
         );
 
@@ -196,6 +213,7 @@ impl EventSeeder {
                     &event_type_ids,
                     batch_start,
                     current_batch_size,
+                    progress_tracker,
                 )
                 .await
             {
@@ -217,7 +235,7 @@ impl EventSeeder {
                             * 100.0;
 
                         info!(
-                            "📈 Batch {}/{}: {} events/sec (batch), {:.0} \
+                            "Batch {}/{}: {} events/sec (batch), {:.0} \
                              events/sec (overall), {:.1}% complete",
                             batch_num + 1,
                             total_batches,
@@ -229,7 +247,7 @@ impl EventSeeder {
                 }
                 Err(e) => {
                     warn!(
-                        "❌ Failed to generate batch {}: {}",
+                        "Failed to generate batch {}: {}",
                         batch_num + 1,
                         e
                     );
@@ -243,8 +261,7 @@ impl EventSeeder {
             self.target_events as f64 / total_time.as_secs_f64();
 
         info!(
-            "✅ Successfully generated {} events in {:.2}s ({:.0} \
-             events/sec)",
+            "Successfully generated {} events in {:.2}s ({:.0} events/sec)",
             self.target_events,
             total_time.as_secs_f64(),
             overall_rate
@@ -261,7 +278,46 @@ impl Seeder for EventSeeder {
         let user_ids = self.get_available_users().await?;
         let event_type_ids = self.get_available_event_types().await?;
 
-        self.generate_events(user_ids, event_type_ids).await?;
+        self.generate_events(user_ids, event_type_ids, &None)
+            .await?;
+
+        info!("Successfully seeded {} events", self.target_events);
+        Ok(())
+    }
+
+    async fn seed_with_progress(
+        &self, progress_tracker: Option<ProgressTracker>,
+    ) -> Result<()> {
+        info!(
+            "Seeding {} events with progress tracking",
+            self.target_events
+        );
+
+        // Send initial progress update
+        if let Some(ref tracker) = progress_tracker {
+            tracker.update(ProgressUpdate {
+                seeder_name: "EventSeeder".to_string(),
+                current: 0,
+                total: self.target_events,
+                message: "Starting event generation...".to_string(),
+            });
+        }
+
+        let user_ids = self.get_available_users().await?;
+        let event_type_ids = self.get_available_event_types().await?;
+
+        self.generate_events(user_ids, event_type_ids, &progress_tracker)
+            .await?;
+
+        // Send completion update
+        if let Some(ref tracker) = progress_tracker {
+            tracker.update(ProgressUpdate {
+                seeder_name: "EventSeeder".to_string(),
+                current: self.target_events,
+                total: self.target_events,
+                message: "Event generation complete".to_string(),
+            });
+        }
 
         info!("Successfully seeded {} events", self.target_events);
         Ok(())

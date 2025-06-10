@@ -101,6 +101,14 @@ dev-down:
 dev-down-full:
     docker-compose -f docker-compose.yml -f docker-compose.override.yml down
 
+# Start production environment
+prod-up:
+    docker-compose -f docker-compose.production.yml up -d
+
+# Stop production environment  
+prod-down:
+    docker-compose -f docker-compose.production.yml down
+
 # ==== Build ====
 
 # Build release
@@ -131,9 +139,9 @@ dev-setup: dev-up
     @echo "⏳ Waiting for services to be ready..."
     @sleep 5
     @echo "🔄 Running database migrations..."
-    DATABASE_URL="postgres://postgres:postgres@localhost:5432/postgres" cargo run --package migrator --bin migrator -- up
+    DATABASE_URL="postgres://postgres:postgres@localhost:5432/postgres" target/release/migrator up
     @echo "🌱 Seeding database with sample data..."
-    DATABASE_URL="postgres://postgres:postgres@localhost:5432/postgres" cargo run --package seeder --bin seeder -- all --min-users 100 --max-users 1000 --target-events 10000
+    DATABASE_URL="postgres://postgres:postgres@localhost:5432/postgres" target/release/seeder all --min-users 100 --max-users 1000 --target-events 10000000
     @echo "✅ Development environment ready!"
     @just dev
 
@@ -144,11 +152,11 @@ dev-setup-full: dev-up-full
     @echo "⏳ Waiting for services to be ready..."
     @sleep 15
     @echo "🔄 Running database migrations..."
-    docker-compose -f docker-compose.yml -f docker-compose.override.yml exec app cargo run --bin migrator -- up
+    docker-compose -f docker-compose.yml -f docker-compose.production.yml exec app cargo run --bin migrator -- up
     @echo "🌱 Seeding database with sample data..."
-    docker-compose -f docker-compose.yml -f docker-compose.override.yml exec app cargo run --bin seeder -- all --min-users 100 --max-users 1000 --target-events 10000
+    docker-compose -f docker-compose.yml -f docker-compose.production.yml exec app cargo run --bin seeder -- all --min-users 100 --max-users 1000 --target-events 10000000
     @echo "✅ Full development environment ready!"
-    @echo "🌐 App running at http://localhost:8080"
+    @echo "🌐 App running at http://localhost:8880"
 
 # Run all quality checks
 quality: format lint audit udeps geiger
@@ -166,6 +174,8 @@ help:
     @echo "  just dev-up-full      # Start docker environment + app"
     @echo "  just dev-setup        # Setup dev env + migrate + seed (local)"
     @echo "  just dev-setup-full   # Setup dev env + migrate + seed (docker)"
+    @echo "  just prod-up          # Start production docker environment"
+    @echo "  just prod-down        # Stop production docker environment"
     @echo ""
     @echo "Testing:"
     @echo "  just test             # Run all tests"
@@ -181,6 +191,71 @@ help:
     @echo "  just migrate          # Run migrations"
     @echo "  just seed             # Seed data"
     @echo ""
+    @echo "Performance Testing:"
+    @echo "  just perf-smoke       # K6 smoke tests"
+    @echo "  just perf-load        # K6 load tests"
+    @echo "  just perf-stress      # K6 stress tests"
+    @echo "  just perf-10k         # Full 10k+ RPS benchmark"
+    @echo "  just bench            # Criterion benchmarks"
+    @echo ""
     @echo "🔥 For full pipelines:"
     @echo "  just -f justfile.pipeline mega-pipeline    # Complete test + dev + bench workflow"
     @echo "  just -f justfile.k3s-pipeline k3s-pipeline # Same but on K3S"
+
+# ==== Performance Testing ====
+
+# Run K6 smoke tests (quick validation)
+perf-smoke BASE_URL="http://localhost:8880":
+    cd k6-tests && ./run-tests.sh smoke smoke {{BASE_URL}}
+
+# Run K6 load tests 
+perf-load BASE_URL="http://localhost:8880":
+    cd k6-tests && ./run-tests.sh load load {{BASE_URL}}
+
+# Run K6 stress tests
+perf-stress BASE_URL="http://localhost:8880":
+    cd k6-tests && ./run-tests.sh stress stress {{BASE_URL}}
+
+# Run full 10k+ RPS benchmark suite
+perf-10k BASE_URL="http://localhost:8880":
+    @echo "🎯 Running full 10k+ RPS production readiness test"
+    @echo "This will take 60+ minutes and stress test all endpoints"
+    cd k6-tests && ./run-tests.sh 10k-rps stress {{BASE_URL}}
+
+# Run 10 million event seeding test
+perf-seed-10m BASE_URL="http://localhost:8880":
+    @echo "🌱 Starting 10 million event seeding test"
+    @echo "⚠️ This will take 3+ hours to complete"
+    cd k6-tests && ./run-tests.sh seeding 10million {{BASE_URL}}
+
+# Run individual POST events stress test
+perf-post PROFILE="stress" BASE_URL="http://localhost:8880":
+    cd k6-tests && ./run-tests.sh post {{PROFILE}} {{BASE_URL}}
+
+# Run individual GET events stress test  
+perf-get PROFILE="stress" BASE_URL="http://localhost:8880":
+    cd k6-tests && ./run-tests.sh get {{PROFILE}} {{BASE_URL}}
+
+# Run analytics endpoints stress test
+perf-analytics PROFILE="stress" BASE_URL="http://localhost:8880":
+    cd k6-tests && ./run-tests.sh analytics {{PROFILE}} {{BASE_URL}}
+
+# Run delete operations stress test
+perf-delete PROFILE="stress" BASE_URL="http://localhost:8880":
+    cd k6-tests && ./run-tests.sh delete {{PROFILE}} {{BASE_URL}}
+
+# Run full system mixed workload test
+perf-full-system PROFILE="stress" BASE_URL="http://localhost:8880":
+    cd k6-tests && ./run-tests.sh full-system {{PROFILE}} {{BASE_URL}}
+
+# Run Criterion benchmarks
+bench:
+    cd benchmarks && cargo bench
+
+# Run Criterion HTTP benchmarks only
+bench-http:
+    cd benchmarks && cargo bench http_benches
+
+# Run Criterion CLI benchmarks only  
+bench-cli:
+    cd benchmarks && cargo bench cli_benches

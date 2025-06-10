@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS events
 (
-    id            UUID PRIMARY KEY     DEFAULT uuid_generate_v7(),
+    id            UUID PRIMARY KEY,
     user_id       UUID        NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     event_type_id INTEGER     NOT NULL REFERENCES event_types (id) ON DELETE CASCADE,
     metadata      JSONB,

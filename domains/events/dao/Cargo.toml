@@ -13,12 +13,4 @@ uuid.workspace = true
 chrono.workspace = true
 events-models = { path = "../models" }
 database-traits.workspace = true
-sql-connection = { workspace = true }
-
-[dev-dependencies]
-sea-orm-migration.workspace = true
-sql-connection = { workspace = true }
-test-utils = { workspace = true }
-tokio = { workspace = true }
-serde_json = { workspace = true }
-anyhow.workspace = true
+sql-connection.workspace = true

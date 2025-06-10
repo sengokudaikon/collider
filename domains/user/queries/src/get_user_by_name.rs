@@ -109,7 +109,7 @@ mod tests {
         let container =
             test_utils::postgres::TestPostgresContainer::new().await?;
         let redis_container = TestRedisContainer::new().await.unwrap();
-        redis_container.flush_db().await.unwrap();
+        redis_container.flush_db().await?;
         let sql_connect = create_sql_connect(&container);
         let handler = GetUserByNameQueryHandler::new(sql_connect);
         Ok((container, handler))

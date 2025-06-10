@@ -8,18 +8,20 @@ name = "seeder"
 path = "src/main.rs"
 
 [dependencies]
-async-trait = { workspace = true }
-tokio = { workspace = true }
-anyhow = "1.0"
-tracing = { workspace = true }
-tracing-subscriber = "0.3"
+async-trait.workspace = true
+tokio.workspace = true
+tokio-util = "0.7"
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+clap.workspace = true
 
 # CLI and TUI dependencies
-clap = { version = "4.4", features = ["derive"] }
-ratatui = "0.26"
-crossterm = "0.27"
+ratatui = "0.28"
+crossterm = "0.28"
+indicatif = "0.17"
+dialoguer = "0.11"
 
 # Local dependencies
-sql-connection = { path = "../../libs/persistence/sql_connection" }
-database-traits = { path = "../../libs/persistence/database_traits" }
+sql-connection.workspace = true
 seeders = { path = "../../libs/seeders" }

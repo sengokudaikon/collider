@@ -45,12 +45,8 @@ frontend/node_modules/
 frontend/dist/
 frontend/build/
 
-# Kubernetes and deployment configs (not needed in runtime container)
-charts/
-infrastructure/terraform/
+# Infrastructure and deployment configs (not needed in runtime container)
+infrastructure_archived_*/
 *.yml
-*.yaml
-docker-compose*.yml
-
 # Scripts (not needed in runtime container)
 scripts/

@@ -91,14 +91,11 @@ mod tests {
 
     use super::*;
 
-    async fn setup_test_db() -> anyhow::Result<(
-        test_utils::postgres::TestPostgresContainer,
-        ListUsersQueryHandler,
-    )> {
-        let container =
-            test_utils::postgres::TestPostgresContainer::new().await?;
-        let redis_container = TestRedisContainer::new().await.unwrap();
-        redis_container.flush_db().await.unwrap();
+    async fn setup_test_db()
+    -> anyhow::Result<(TestPostgresContainer, ListUsersQueryHandler)> {
+        let container = TestPostgresContainer::new().await?;
+        let redis_container = TestRedisContainer::new().await?;
+        redis_container.flush_db().await?;
         let sql_connect = create_sql_connect(&container);
         let handler = ListUsersQueryHandler::new(sql_connect);
         Ok((container, handler))

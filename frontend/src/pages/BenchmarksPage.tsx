@@ -1,21 +1,21 @@
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {Badge} from "@/components/ui/badge";
+import {Button} from "@/components/ui/button";
+import {Card, CardContent, CardDescription, CardHeader, CardTitle} from "@/components/ui/card";
 import {
-  Activity,
-  AlertTriangle,
-  BarChart3,
-  Cpu,
-  Database,
-  Download,
-  Globe,
-  Play,
-  Settings,
-  Square,
-  TrendingUp,
-  Zap,
+    Activity,
+    AlertTriangle,
+    BarChart3,
+    Cpu,
+    Database,
+    Download,
+    Globe,
+    Play,
+    Settings,
+    Square,
+    TrendingUp,
+    Zap,
 } from "lucide-react";
-import { useState } from "react";
+import {useState} from "react";
 
 interface BenchmarkResult {
   status: string;

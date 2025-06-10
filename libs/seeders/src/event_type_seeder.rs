@@ -8,7 +8,7 @@ use sea_orm::{EntityTrait, Set};
 use sql_connection::SqlConnect;
 use tracing::{info, instrument};
 
-use crate::Seeder;
+use crate::{ProgressTracker, ProgressUpdate, Seeder};
 
 pub struct EventTypeSeeder {
     db: SqlConnect,
@@ -96,9 +96,9 @@ impl EventTypeSeeder {
         Ok(event_names)
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, progress_tracker))]
     async fn generate_event_types(
-        &self, count: usize,
+        &self, count: usize, progress_tracker: &Option<ProgressTracker>,
     ) -> Result<Vec<String>> {
         info!(
             "Generating {} event types in batches of {}",
@@ -123,6 +123,22 @@ impl EventTypeSeeder {
             all_event_names.extend(batch_event_names);
 
             let current_total = batch_start + current_batch_size;
+
+            // Send progress update if tracker is available
+            if let Some(tracker) = progress_tracker {
+                let progress_percentage =
+                    (current_total as f64 / count as f64) * 100.0;
+                tracker.update(ProgressUpdate {
+                    seeder_name: "EventTypeSeeder".to_string(),
+                    current: current_total,
+                    total: count,
+                    message: format!(
+                        "Generated {} event types ({:.1}% complete)",
+                        current_total, progress_percentage
+                    ),
+                });
+            }
+
             if current_total % 100 == 0 || current_total == count {
                 info!("Generated {} event types", current_total);
             }
@@ -142,7 +158,50 @@ impl Seeder for EventTypeSeeder {
 
         info!("Seeding {} event types (random smaller count)", type_count);
 
-        let _event_names = self.generate_event_types(type_count).await?;
+        let _event_names =
+            self.generate_event_types(type_count, &None).await?;
+
+        info!("Successfully seeded {} event types", type_count);
+        Ok(())
+    }
+
+    async fn seed_with_progress(
+        &self, progress_tracker: Option<ProgressTracker>,
+    ) -> Result<()> {
+        let type_count = {
+            let mut rng = rng();
+            rng.random_range(self.min_types..=self.max_types)
+        };
+
+        info!(
+            "Seeding {} event types with progress tracking (random smaller \
+             count)",
+            type_count
+        );
+
+        // Send initial progress update
+        if let Some(ref tracker) = progress_tracker {
+            tracker.update(ProgressUpdate {
+                seeder_name: "EventTypeSeeder".to_string(),
+                current: 0,
+                total: type_count,
+                message: "Starting event type generation...".to_string(),
+            });
+        }
+
+        let _event_names = self
+            .generate_event_types(type_count, &progress_tracker)
+            .await?;
+
+        // Send completion update
+        if let Some(ref tracker) = progress_tracker {
+            tracker.update(ProgressUpdate {
+                seeder_name: "EventTypeSeeder".to_string(),
+                current: type_count,
+                total: type_count,
+                message: "Event type generation complete".to_string(),
+            });
+        }
 
         info!("Successfully seeded {} event types", type_count);
         Ok(())

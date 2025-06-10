@@ -9,14 +9,14 @@ url.workspace = true
 tracing.workspace = true
 async-trait.workspace = true
 tokio.workspace = true
-deadpool-redis = { version = "0.21.1", features = ["serde","connection-manager", "cache-aio", "json", ] }
+deadpool-redis.workspace = true
 redis.workspace = true
 serde_json.workspace = true
-moka = { version = "0.12.10", features = ["sync","quanta","future","logging"] }
-bytes = "1.10.1"
 anyhow.workspace = true
-flume = "0.11"
+moka.workspace = true
+bytes.workspace = true
+flume.workspace = true
 
 [dev-dependencies]
-test-utils = { workspace = true }
+test-utils.workspace = true
 tokio = { workspace = true, features = ["test-util"] }

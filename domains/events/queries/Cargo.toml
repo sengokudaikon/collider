@@ -14,15 +14,15 @@ sql-connection.workspace = true
 redis-connection.workspace = true
 serde_json.workspace = true
 # Core dependencies
-uuid = { workspace = true }
-serde = { workspace = true }
-thiserror = { workspace = true }
-tracing = { workspace = true }
-chrono = { workspace = true }
-sea-orm = { workspace = true }
+uuid.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+chrono.workspace = true
+sea-orm.workspace = true
 
 [dev-dependencies]
-test-utils = { workspace = true }
+test-utils.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
-anyhow = { workspace = true }
-serde_json = { workspace = true }
+anyhow.workspace = true
+serde_json.workspace = true

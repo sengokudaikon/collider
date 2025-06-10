@@ -5,7 +5,7 @@ Collider provides a high-performance REST API for event tracking and analytics b
 ## Base URL
 
 ```
-http://localhost:8080
+http://localhost:8880
 ```
 
 ## Authentication
@@ -16,8 +16,8 @@ Currently, the API operates without authentication. In production, you should im
 
 The API includes interactive documentation powered by RapiDoc:
 
-- **API Docs**: `http://localhost:8080/docs`
-- **OpenAPI Spec**: `http://localhost:8080/api-docs/openapi.json`
+- **API Docs**: `http://localhost:8880/docs`
+- **OpenAPI Spec**: `http://localhost:8880/api-docs/openapi.json`
 
 ## Health Check
 
@@ -45,7 +45,7 @@ Query parameters:
 
 **Example:**
 ```bash
-curl "http://localhost:8080/api/users?include_metrics=true&limit=10"
+curl "http://localhost:8880/api/users?include_metrics=true&limit=10"
 ```
 
 ### Create User
@@ -78,7 +78,7 @@ Query parameters:
 
 **Example:**
 ```bash
-curl "http://localhost:8080/api/users/550e8400-e29b-41d4-a716-446655440000?include_metrics=true"
+curl "http://localhost:8880/api/users/550e8400-e29b-41d4-a716-446655440000?include_metrics=true"
 ```
 
 ### Get User by Username
@@ -87,7 +87,7 @@ curl "http://localhost:8080/api/users/550e8400-e29b-41d4-a716-446655440000?inclu
 
 **Example:**
 ```bash
-curl "http://localhost:8080/api/users/by-name/john_doe"
+curl "http://localhost:8880/api/users/by-name/john_doe"
 ```
 
 ### Update User
@@ -133,7 +133,7 @@ Query parameters:
 
 **Example:**
 ```bash
-curl "http://localhost:8080/api/events?user_id=550e8400-e29b-41d4-a716-446655440000&limit=50"
+curl "http://localhost:8880/api/events?user_id=550e8400-e29b-41d4-a716-446655440000&limit=50"
 ```
 
 ### Create Event
@@ -174,7 +174,7 @@ curl "http://localhost:8080/api/events?user_id=550e8400-e29b-41d4-a716-446655440
 
 **Example:**
 ```bash
-curl "http://localhost:8080/api/events/660e8400-e29b-41d4-a716-446655440001"
+curl "http://localhost:8880/api/events/660e8400-e29b-41d4-a716-446655440001"
 ```
 
 ### Update Event
@@ -212,7 +212,7 @@ Delete events created before a specific timestamp.
 
 **Example:**
 ```bash
-curl -X DELETE "http://localhost:8080/api/events?before=2024-01-01T00:00:00Z"
+curl -X DELETE "http://localhost:8880/api/events?before=2024-01-01T00:00:00Z"
 ```
 
 ## Analytics API
@@ -393,7 +393,7 @@ Currently no rate limiting is implemented. In production, consider implementing 
 ### Track Page Views
 
 ```bash
-curl -X POST "http://localhost:8080/api/events" \
+curl -X POST "http://localhost:8880/api/events" \
   -H "Content-Type: application/json" \
   -d '{
     "user_id": "550e8400-e29b-41d4-a716-446655440000",
@@ -409,11 +409,11 @@ curl -X POST "http://localhost:8080/api/events" \
 ### Get Daily Analytics
 
 ```bash
-curl "http://localhost:8080/api/analytics/stats?from=2024-01-15T00:00:00Z&to=2024-01-15T23:59:59Z"
+curl "http://localhost:8880/api/analytics/stats?from=2024-01-15T00:00:00Z&to=2024-01-15T23:59:59Z"
 ```
 
 ### Monitor Real-time Activity
 
 ```bash
-curl "http://localhost:8080/api/analytics/metrics/realtime?bucket=minute"
+curl "http://localhost:8880/api/analytics/metrics/realtime?bucket=minute"
 ```

@@ -1,17 +1,7 @@
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Activity,
-  BarChart3,
-  Calendar,
-  Clock,
-  Download,
-  RefreshCw,
-  Target,
-  TrendingUp,
-  Users,
-} from "lucide-react";
-import { useState } from "react";
+import {Button} from "@/components/ui/button";
+import {Card, CardContent, CardDescription, CardHeader, CardTitle} from "@/components/ui/card";
+import {Activity, BarChart3, Calendar, Clock, Download, RefreshCw, Target, TrendingUp, Users,} from "lucide-react";
+import {useState} from "react";
 import useSWR from "swr";
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());

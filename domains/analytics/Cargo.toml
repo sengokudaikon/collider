@@ -15,11 +15,11 @@ tokio.workspace = true
 serde_json.workspace = true
 events-models .workspace = true
 events-dao .workspace = true
-redis-connection = { workspace = true }
-sql-connection = { workspace = true }
-hyperloglogplus = "0.4.1"
-fnv = "1.0"
+redis-connection.workspace = true
+sql-connection.workspace = true
+hyperloglogplus.workspace = true
+fnv.workspace = true
 
 [dev-dependencies]
-test-utils = { workspace = true }
+test-utils.workspace = true
 anyhow.workspace = true

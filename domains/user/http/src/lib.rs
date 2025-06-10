@@ -1,4 +1,3 @@
-pub mod analytics_handlers;
 pub mod handlers;
 
 use serde::{Deserialize, Serialize};

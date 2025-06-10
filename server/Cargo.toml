@@ -15,11 +15,11 @@ tokio.workspace = true
 sea-orm.workspace = true
 sqlx.workspace = true
 
-events-http = { path = "../domains/events/http" }
-events-commands = { path = "../domains/events/commands" }
-analytics-http = { path = "../domains/analytics/http" }
-user-http = { path = "../domains/user/http" }
-user-commands = { path = "../domains/user/commands" }
+events-http.workspace = true
+events-commands.workspace = true
+analytics-http.workspace = true
+user-http.workspace = true
+user-commands.workspace = true
 test-utils.workspace = true
 seeders = { path = "../libs/seeders" }
 database-traits.workspace = true
@@ -47,10 +47,3 @@ dotenvy.workspace = true
 # API Documentation
 utoipa.workspace = true
 utoipa-rapidoc.workspace = true
-
-[dev-dependencies]
-criterion.workspace = true
-
-[features]
-default = []
-flamegraph = []

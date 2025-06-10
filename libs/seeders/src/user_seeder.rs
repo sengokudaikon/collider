@@ -10,7 +10,7 @@ use tracing::{info, instrument};
 use user_models as users;
 use uuid::Uuid;
 
-use crate::Seeder;
+use crate::{ProgressTracker, ProgressUpdate, Seeder};
 
 pub struct UserSeeder {
     db: SqlConnect,
@@ -50,7 +50,7 @@ impl UserSeeder {
         let mut user_ids = Vec::with_capacity(batch_size);
 
         for _ in 0..batch_size {
-            let user_id = Uuid::new_v7(uuid::Timestamp::now(uuid::NoContext));
+            let user_id = Uuid::now_v7();
             let fake_name: String = Name().fake();
 
             let active_user = users::ActiveModel {
@@ -67,8 +67,10 @@ impl UserSeeder {
         Ok(user_ids)
     }
 
-    #[instrument(skip(self))]
-    async fn generate_users(&self, count: usize) -> Result<Vec<Uuid>> {
+    #[instrument(skip(self, progress_tracker))]
+    async fn generate_users(
+        &self, count: usize, progress_tracker: &Option<ProgressTracker>,
+    ) -> Result<Vec<Uuid>> {
         info!(
             "Generating {} users in batches of {}",
             count, self.batch_size
@@ -92,6 +94,22 @@ impl UserSeeder {
             all_user_ids.extend(batch_user_ids);
 
             let current_total = batch_start + current_batch_size;
+
+            // Send progress update if tracker is available
+            if let Some(tracker) = progress_tracker {
+                let progress_percentage =
+                    (current_total as f64 / count as f64) * 100.0;
+                tracker.update(ProgressUpdate {
+                    seeder_name: "UserSeeder".to_string(),
+                    current: current_total,
+                    total: count,
+                    message: format!(
+                        "Generated {} users ({:.1}% complete)",
+                        current_total, progress_percentage
+                    ),
+                });
+            }
+
             if current_total % 10000 == 0 || current_total == count {
                 info!("Generated {} users", current_total);
             }
@@ -111,7 +129,47 @@ impl Seeder for UserSeeder {
 
         info!("Seeding {} users (random entropic count)", user_count);
 
-        let _user_ids = self.generate_users(user_count).await?;
+        let _user_ids = self.generate_users(user_count, &None).await?;
+
+        info!("Successfully seeded {} users", user_count);
+        Ok(())
+    }
+
+    async fn seed_with_progress(
+        &self, progress_tracker: Option<ProgressTracker>,
+    ) -> Result<()> {
+        let user_count = {
+            let mut rng = rng();
+            rng.random_range(self.min_users..=self.max_users)
+        };
+
+        info!(
+            "Seeding {} users with progress tracking (random entropic count)",
+            user_count
+        );
+
+        // Send initial progress update
+        if let Some(ref tracker) = progress_tracker {
+            tracker.update(ProgressUpdate {
+                seeder_name: "UserSeeder".to_string(),
+                current: 0,
+                total: user_count,
+                message: "Starting user generation...".to_string(),
+            });
+        }
+
+        let _user_ids =
+            self.generate_users(user_count, &progress_tracker).await?;
+
+        // Send completion update
+        if let Some(ref tracker) = progress_tracker {
+            tracker.update(ProgressUpdate {
+                seeder_name: "UserSeeder".to_string(),
+                current: user_count,
+                total: user_count,
+                message: "User generation complete".to_string(),
+            });
+        }
 
         info!("Successfully seeded {} users", user_count);
         Ok(())

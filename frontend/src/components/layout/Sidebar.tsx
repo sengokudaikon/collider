@@ -1,6 +1,6 @@
-import { cn } from "@/lib/utils";
-import { Activity, BarChart3, Calendar, Home, Users, Zap } from "lucide-react";
-import { Link, useLocation } from "react-router-dom";
+import {cn} from "@/lib/utils";
+import {Activity, BarChart3, Calendar, Home, Users, Zap} from "lucide-react";
+import {Link, useLocation} from "react-router-dom";
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: Home },

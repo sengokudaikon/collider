@@ -105,6 +105,14 @@ dev-setup:
 dev-setup-full:
     just -f justfile.lean dev-setup-full
 
+# Start production docker environment
+prod-up:
+    just -f justfile.lean prod-up
+
+# Stop production docker environment
+prod-down:
+    just -f justfile.lean prod-down
+
 # ==== Build (delegate to justfile.lean) ====
 
 # Build release
@@ -135,39 +143,26 @@ coverage-pipeline:
 benchmark-pipeline:
     just -f justfile.pipeline benchmark-pipeline
 
-# ==== K3S Pipelines (delegate to justfile.k3s-pipeline) ====
+# ==== GCP Deployment ====
 
-# Run complete K3S pipeline (test → coverage → K3S deploy → benchmarks)  
-k3s-mega-pipeline:
-    @echo "☸️ Starting K3S mega pipeline - this will take 3-4 hours"
-    @echo "For more control, use: just -f justfile.k3s-pipeline <command>"
-    just -f justfile.k3s-pipeline k3s-pipeline
+# Setup GCP infrastructure (one-time)
+gcp-setup:
+    cd scripts && ./setup.sh
 
-# Quick K3S pipeline
-quick-k3s-pipeline:
-    just -f justfile.k3s-pipeline quick-k3s-pipeline
+# Deploy to GCP Cloud Run
+gcp-deploy:
+    cd scripts && ./deploy.sh
 
-# K3S benchmark-only pipeline
-k3s-benchmark-pipeline:
-    just -f justfile.k3s-pipeline k3s-benchmark-pipeline
+# Run database migrations on GCP
+gcp-migrate:
+    cd scripts && ./migrate.sh
 
-# K3S load testing with parameters
-k3s-load-test duration="300s" rate="100" users="1000":
-    just -f justfile.k3s-pipeline k3s-load-test {{duration}} {{rate}} {{users}}
-
-# ==== K3S Management (delegate to infrastructure/justfile) ====
-
-# Deploy to K3S locally
-k3s-deploy:
-    cd infrastructure && just deploy-local
-
-# Destroy K3S cluster
-k3s-destroy:
-    cd infrastructure && just destroy-local
-
-# Check K3S status
-k3s-status:
-    cd infrastructure && just status
+# Full GCP deployment (setup + migrate + deploy)
+gcp-full-deploy:
+    @echo "🚀 Full GCP deployment - this may take 10-15 minutes"
+    just gcp-setup
+    just gcp-migrate 
+    just gcp-deploy
 
 # ==== Utilities ====
 
@@ -179,7 +174,6 @@ install-tools:
 clean:
     just -f justfile.lean clean
     just -f justfile.pipeline clean
-    just -f justfile.k3s-pipeline clean
 
 # ==== Help ====
 
@@ -194,6 +188,7 @@ help:
     @echo "  just dev-up-full      # Start docker dev environment + app"
     @echo "  just dev-setup        # Setup dev env + migrate + seed (local)"
     @echo "  just dev-setup-full   # Setup dev env + migrate + seed (docker)"
+    @echo "  just prod-up          # Start production docker environment"
     @echo "  just test             # Run all tests"
     @echo "  just quality          # All quality checks"
     @echo ""
@@ -203,24 +198,18 @@ help:
     @echo "  just coverage-pipeline   # Coverage testing only"
     @echo "  just benchmark-pipeline  # Benchmarking only"
     @echo ""
-    @echo "☸️ K3S Pipelines (→ justfile.k3s-pipeline):"
-    @echo "  just k3s-mega-pipeline   # Complete K3S workflow (3-4h)"
-    @echo "  just quick-k3s-pipeline  # Fast K3S workflow (20min)"
-    @echo "  just k3s-benchmark-pipeline # K3S benchmarking only"
-    @echo "  just k3s-load-test 300s 200 1000  # Custom load test"
-    @echo ""
-    @echo "🔧 K3S Management (→ infrastructure/justfile):"
-    @echo "  just k3s-deploy       # Deploy to local K3S"
-    @echo "  just k3s-status       # Check K3S cluster"
-    @echo "  just k3s-destroy      # Destroy K3S cluster"
+    @echo "☁️ GCP Deployment:"
+    @echo "  just gcp-setup           # One-time GCP infrastructure setup"
+    @echo "  just gcp-deploy          # Deploy app to Cloud Run"
+    @echo "  just gcp-migrate         # Run database migrations on GCP"
+    @echo "  just gcp-full-deploy     # Complete setup + migrate + deploy"
     @echo ""
     @echo "📚 Direct Access to Specialized Justfiles:"
     @echo "  just -f justfile.lean help           # Core utilities help"
     @echo "  just -f justfile.pipeline help       # Docker pipeline help"
-    @echo "  just -f justfile.k3s-pipeline help   # K3S pipeline help"
     @echo ""
     @echo "💡 Examples:"
     @echo "  just dev && just test                # Develop and test"
     @echo "  just mega-pipeline                   # Full docker workflow"
-    @echo "  just k3s-load-test 600s 500 2000    # 10min K3S load test"
+    @echo "  just gcp-full-deploy                 # Deploy to GCP"
     @echo "  just -f justfile.pipeline regression-pipeline baseline_dir"

@@ -5,19 +5,17 @@ edition = "2024"
 
 
 [dependencies]
-async-trait = { workspace = true }
-chrono = { workspace = true }
+async-trait.workspace = true
+chrono.workspace = true
 fake = "4.3.0"
 rand = "0.9.1"
-sea-orm = { workspace = true }
-serde_json = { workspace = true }
-tracing = { workspace = true }
-uuid = { workspace = true }
-tokio = { workspace = true }
+sea-orm.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+tokio.workspace = true
+tokio-util = "0.7"
 anyhow = "1.0"
-clap = { version = "4.4", features = ["derive"] }
-ratatui = "0.26"
-crossterm = "0.27"
 
 events-models = { path = "../../domains/events/models" }
 user-models = { path = "../../domains/user/models" }

@@ -24,12 +24,12 @@ cd collider
 docker-compose up -d
 
 # Check health
-curl http://localhost:8080/health
+curl http://localhost:8880/health
 ```
 
 Services will be available at:
-- **API Server**: http://localhost:8080
-- **API Documentation**: http://localhost:8080/docs
+- **API Server**: http://localhost:8880
+- **API Documentation**: http://localhost:8880/docs
 - **PostgreSQL**: localhost:5432
 - **Redis (Dragonfly)**: localhost:6379
 - **Grafana**: http://localhost:3000 (admin/admin)
@@ -111,32 +111,32 @@ libs/
 ### Events API
 ```bash
 # Create an event
-curl -X POST http://localhost:8080/api/events \
+curl -X POST http://localhost:8880/api/events \
   -H "Content-Type: application/json" \
   -d '{"user_id": "550e8400-e29b-41d4-a716-446655440000", "event_type_id": 1, "metadata": {"page": "/home"}}'
 
 # List events
-curl http://localhost:8080/api/events?limit=10
+curl http://localhost:8880/api/events?limit=10
 ```
 
 ### Analytics API
 ```bash
 # Get real-time statistics
-curl http://localhost:8080/api/analytics/stats
+curl http://localhost:8880/api/analytics/stats
 
 # Get time series data
-curl "http://localhost:8080/api/analytics/metrics/timeseries?from=2024-01-01T00:00:00Z&to=2024-01-02T00:00:00Z"
+curl "http://localhost:8880/api/analytics/metrics/timeseries?from=2024-01-01T00:00:00Z&to=2024-01-02T00:00:00Z"
 ```
 
 ### Users API
 ```bash
 # Create a user
-curl -X POST http://localhost:8080/api/users \
+curl -X POST http://localhost:8880/api/users \
   -H "Content-Type: application/json" \
   -d '{"name": "John Doe"}'
 
 # Get user with metrics
-curl "http://localhost:8080/api/users/550e8400-e29b-41d4-a716-446655440000?include_metrics=true"
+curl "http://localhost:8880/api/users/550e8400-e29b-41d4-a716-446655440000?include_metrics=true"
 ```
 
 ## CLI Tools
@@ -231,7 +231,7 @@ just build
 - `REDIS_HOST` - Redis host (default: 127.0.0.1)
 - `REDIS_PORT` - Redis port (default: 6379)
 - `RUST_LOG` - Logging level (default: info)
-- `PORT` - Server port (default: 8080)
+- `PORT` - Server port (default: 8880)
 
 ### Docker Environment
 

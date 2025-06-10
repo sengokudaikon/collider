@@ -33,7 +33,7 @@ members = [
 sea-orm = { version = "1.1.0", features = ["sqlx-postgres", "runtime-tokio-rustls", "macros", "uuid", "chrono"] }
 sea-orm-migration = { version = "1.1.10", features = ["dotenvy", "runtime-tokio-rustls", "sqlx-postgres", "with-uuid", "with-chrono"] }
 sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-rustls", "uuid", "chrono"] }
-deadpool-redis = { version = "0.21.1", features = ["serde", "connection-manager", "cache-aio", "json", ] }
+deadpool-redis = { version = "0.21.1", features = ["serde","connection-manager", "cache-aio", "json", ] }
 redis = "0.31.0"
 # Web framework
 axum = "0.8.4"
@@ -41,7 +41,11 @@ axum-core = "0.5.2"
 tower = "0.5.2"
 tower-http = { version = "0.6.6", features = ["trace", "compression-gzip", "cors"] }
 http = "1.1.0"
-
+moka = { version = "0.12.10", features = ["sync","quanta","future","logging"] }
+bytes = "1.10.1"
+flume = "0.11"
+hyperloglogplus = "0.4.1"
+fnv = "1.0"
 # API Documentation
 utoipa = { version = "5.3.1", features = ["axum_extras", "chrono", "uuid"] }
 utoipa-rapidoc = { version = "6.0.0", features = ["axum"] }
@@ -66,12 +70,10 @@ thiserror = "2.0.12"
 async-trait = "0.1"
 url = "2.5"
 typed-builder = "0.21.0"
+clap = { version = "4.4", features = ["derive"] }
 # Environment
 dotenvy = "0.15"
 
-# Performance testing
-criterion = { version = "0.6.0", features = ["html_reports"] }
-reqwest = { version = "0.11", features = ["json"] }
 
 test-utils = { path = "libs/test-utils" }
 analytics = { path = "domains/analytics" }

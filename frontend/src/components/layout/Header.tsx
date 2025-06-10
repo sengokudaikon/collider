@@ -1,6 +1,6 @@
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Bell, Search, Settings } from "lucide-react";
+import {Badge} from "@/components/ui/badge";
+import {Button} from "@/components/ui/button";
+import {Bell, Search, Settings} from "lucide-react";
 
 export default function Header() {
   return (
@@ -23,7 +23,7 @@ export default function Header() {
           {/* Server Status */}
           <div className="flex items-center space-x-2">
             <div className="h-2 w-2 bg-green-500 rounded-full" />
-            <span className="text-sm text-gray-600">Server: localhost:8080</span>
+            <span className="text-sm text-gray-600">Server: localhost:8880</span>
           </div>
 
           {/* Quick Stats */}
