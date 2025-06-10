@@ -21,10 +21,8 @@ members = [
     # Shared libs
     "libs/domain",
     "libs/test-utils",
-    "libs/seeders",
     # Binaries
     "binaries/migrator",
-    "binaries/seeder",
 ]
 
 
@@ -93,7 +91,6 @@ events-http = { path = "domains/events/http" }
 database-traits = { path = "libs/persistence/database_traits" }
 sql-connection = { path = "libs/persistence/sql_connection" }
 redis-connection = { path = "libs/persistence/redis_connection" }
-seeders = { path = "libs/seeders" }
 domain = { path = "libs/domain" }
 
 

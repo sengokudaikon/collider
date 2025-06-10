@@ -34,7 +34,6 @@ COPY libs/persistence/sql_connection/Cargo.toml ./libs/persistence/sql_connectio
 COPY libs/persistence/redis_connection/Cargo.toml ./libs/persistence/redis_connection/
 COPY libs/domain/Cargo.toml ./libs/domain/
 COPY libs/test-utils/Cargo.toml ./libs/test-utils/
-COPY libs/seeders/Cargo.toml ./libs/seeders/
 COPY binaries/migrator/Cargo.toml ./binaries/migrator/
 COPY binaries/seeder/Cargo.toml ./binaries/seeder/
 
@@ -57,7 +56,6 @@ RUN mkdir -p server/src && echo "fn main() {}" > server/src/main.rs && \
     mkdir -p libs/persistence/redis_connection/src && echo "" > libs/persistence/redis_connection/src/lib.rs && \
     mkdir -p libs/domain/src && echo "" > libs/domain/src/lib.rs && \
     mkdir -p libs/test-utils/src && echo "" > libs/test-utils/src/lib.rs && \
-    mkdir -p libs/seeders/src && echo "" > libs/seeders/src/lib.rs && \
     mkdir -p binaries/migrator/src && echo "fn main() {}" > binaries/migrator/src/main.rs && \
     mkdir -p binaries/seeder/src && echo "fn main() {}" > binaries/seeder/src/main.rs
 

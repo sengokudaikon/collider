@@ -1,395 +1,442 @@
-mod cli;
-mod cli_progress;
-mod prompts;
-use std::time::Instant;
+use std::{
+    thread,
+    time::{Duration as StdDuration, Instant},
+};
 
-use anyhow::Result;
-use clap::Parser;
-use cli::{Cli, Commands, ProgressMode};
-use cli_progress::CliProgress;
-use prompts::SeederConfig;
-use seeders::{
-    EventSeeder, EventTypeSeeder, ProgressTracker, SeederRunner, UserSeeder,
-};
-use sql_connection::{
-    SqlConnect, config::PostgresDbConfig, connect_postgres_db,
-};
-use tokio::signal;
-use tokio_util::sync::CancellationToken;
-use tracing::{Level, error, info, warn};
+use anyhow::{Context, Result};
+use chrono::{Duration, Utc};
+use flume::{bounded, Receiver, Sender};
+use rand::{rngs::SmallRng, Rng, SeedableRng};
+use rayon::prelude::*;
+use sqlx::{PgPool, Row};
+use tokio::time::sleep;
+use uuid::Uuid;
+
+async fn create_pool_with_retry(database_url: &str) -> Result<PgPool> {
+    const MAX_RETRIES: u32 = 5;
+    const INITIAL_DELAY: u64 = 1000;
+
+    for attempt in 1..=MAX_RETRIES {
+        println!(
+            "🔌 Attempting database connection (attempt {}/{})",
+            attempt, MAX_RETRIES
+        );
+
+        let pool_options = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(20)
+            .min_connections(5)
+            .acquire_timeout(StdDuration::from_secs(30))
+            .idle_timeout(StdDuration::from_secs(600))
+            .max_lifetime(StdDuration::from_secs(1800))
+            .test_before_acquire(true)
+            .after_connect(|conn, _meta| {
+                Box::pin(async move {
+                    sqlx::query("SET statement_timeout = '600s'")
+                        .execute(&mut *conn)
+                        .await?;
+                    sqlx::query("SET lock_timeout = '300s'")
+                        .execute(&mut *conn)
+                        .await?;
+                    sqlx::query(
+                        "SET idle_in_transaction_session_timeout = '300s'",
+                    )
+                    .execute(&mut *conn)
+                    .await?;
+                    Ok(())
+                })
+            });
+
+        match pool_options.connect(database_url).await {
+            Ok(pool) => {
+                match sqlx::query("SELECT 1").fetch_one(&pool).await {
+                    Ok(_) => {
+                        println!(
+                            "✅ Database connection pool established \
+                             successfully"
+                        );
+                        println!(
+                            "📊 Pool config: max_connections=20, \
+                             acquire_timeout=30s"
+                        );
+                        return Ok(pool);
+                    }
+                    Err(e) => {
+                        eprintln!("❌ Connection test failed: {}", e);
+                        if attempt == MAX_RETRIES {
+                            return Err(anyhow::anyhow!(
+                                "Connection test failed after {} attempts: \
+                                 {}",
+                                MAX_RETRIES,
+                                e
+                            ));
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("❌ Connection attempt {} failed: {}", attempt, e);
+                if attempt == MAX_RETRIES {
+                    return Err(anyhow::anyhow!(
+                        "Database connection failed after {} attempts: {}",
+                        MAX_RETRIES,
+                        e
+                    ));
+                }
+            }
+        }
+
+        let delay = INITIAL_DELAY * 2_u64.pow(attempt - 1);
+        println!("⏳ Waiting {}ms before retry...", delay);
+        sleep(StdDuration::from_millis(delay)).await;
+    }
+
+    unreachable!()
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let cli = Cli::parse();
-
-    // Use RUST_LOG env var or default based on build profile
-    let log_level = if cfg!(debug_assertions) {
-        Level::INFO
-    }
-    else {
-        Level::WARN // Less verbose in release builds
-    };
-
-    tracing_subscriber::fmt()
-        .with_max_level(
-            std::env::var("RUST_LOG")
-                .ok()
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(log_level),
-        )
-        .init();
-
     let start_time = Instant::now();
-    info!("Starting database seeding process");
 
-    let config = PostgresDbConfig {
-        uri: cli.get_database_url(),
-        max_conn: Some(100), // Increased for parallel batch processing
-        min_conn: Some(20),  // Higher baseline for bulk operations
-        logger: false,
-    };
+    let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+        "postgres://postgres:postgres@localhost:5432/postgres".to_string()
+    });
 
-    let db_connection_start = Instant::now();
-    connect_postgres_db(&config).await?;
-    let db_connection_time = db_connection_start.elapsed();
-    info!(
-        "Connected to database successfully in {:.2}ms",
-        db_connection_time.as_secs_f64() * 1000.0
+    let pool = create_pool_with_retry(&database_url)
+        .await
+        .context("Failed to establish database connection after retries")?;
+
+    sqlx::query("SET session_replication_role = replica")
+        .execute(&pool)
+        .await?;
+    sqlx::query("ALTER TABLE events DISABLE TRIGGER ALL")
+        .execute(&pool)
+        .await?;
+    sqlx::query("SET synchronous_commit = OFF")
+        .execute(&pool)
+        .await?;
+    sqlx::query("TRUNCATE events, users, event_types CASCADE")
+        .execute(&pool)
+        .await?;
+
+    let user_start = Instant::now();
+    let user_base = Uuid::now_v7();
+    let user_base_bytes = user_base.as_bytes();
+
+    let user_uuids: Vec<Uuid> = (0..100)
+        .map(|i| {
+            let mut bytes = *user_base_bytes;
+            let counter_bytes = (i as u64).to_be_bytes();
+            bytes[8..16].copy_from_slice(&counter_bytes);
+            Uuid::from_bytes(bytes)
+        })
+        .collect();
+
+    let mut user_query = String::with_capacity(5000);
+    user_query.push_str("INSERT INTO users (id, name, created_at) VALUES ");
+    let now = Utc::now().format("%Y-%m-%d %H:%M:%S%.6f");
+
+    for (i, user_id) in user_uuids.iter().enumerate() {
+        if i > 0 {
+            user_query.push(',');
+        }
+        user_query.push_str(&format!(
+            "('{}','User{}','{}')",
+            user_id,
+            i + 1,
+            now
+        ));
+    }
+
+    sqlx::query(&user_query).execute(&pool).await?;
+    println!("Users: {:.2}s", user_start.elapsed().as_secs_f64());
+
+    let event_types = [
+        "page_view",
+        "button_click",
+        "form_submit",
+        "login",
+        "logout",
+        "purchase",
+        "search",
+        "download",
+        "upload",
+        "share",
+        "like",
+        "comment",
+        "follow",
+        "message",
+        "notification",
+        "error",
+        "signup",
+        "profile_update",
+        "settings_change",
+        "session_start",
+    ];
+
+    let mut event_type_query = String::with_capacity(1000);
+    event_type_query.push_str("INSERT INTO event_types (name) VALUES ");
+    for (i, name) in event_types.iter().enumerate() {
+        if i > 0 {
+            event_type_query.push(',');
+        }
+        event_type_query.push_str(&format!("('{}')", name));
+    }
+    sqlx::query(&event_type_query).execute(&pool).await?;
+
+    let event_type_rows =
+        sqlx::query("SELECT id FROM event_types ORDER BY id")
+            .fetch_all(&pool)
+            .await?;
+    let event_type_ids: Vec<i32> = event_type_rows
+        .iter()
+        .map(|row| row.get::<i32, _>("id"))
+        .collect();
+    
+    let target_events = 10_000_000;
+
+    let event_base = Uuid::now_v7();
+    let event_base_bytes = event_base.as_bytes();
+
+    let uuid_gen_start = Instant::now();
+    let event_uuids: Vec<Uuid> = (0..target_events)
+        .into_par_iter()
+        .map(|i| {
+            let mut bytes = *event_base_bytes;
+            let counter_bytes = (i as u64).to_be_bytes();
+            bytes[8..16].copy_from_slice(&counter_bytes);
+            Uuid::from_bytes(bytes)
+        })
+        .collect();
+    println!(
+        "UUID generation: {:.2}s",
+        uuid_gen_start.elapsed().as_secs_f64()
     );
 
-    let db = SqlConnect::from_global();
+    let batch_size = 10_000;
+    let (sender, receiver) = bounded(5);
 
-    let seeding_start = Instant::now();
+    let pool_clone = pool.clone();
+    let consumer_task =
+        tokio::spawn(async move { insert(&pool_clone, receiver).await });
 
-    // Set up cancellation token for graceful shutdown
-    let cancellation_token = CancellationToken::new();
+    let user_uuids_clone = user_uuids.clone();
+    let event_type_ids_clone = event_type_ids.clone();
+    let producer_task = thread::spawn(move || {
+        generate_events(
+            target_events,
+            &event_uuids,
+            &user_uuids_clone,
+            &event_type_ids_clone,
+            sender,
+            batch_size,
+        );
+    });
 
-    // Resolve missing arguments interactively or fail in quiet mode
-    let resolved_command =
-        SeederConfig::from_commands(cli.command, cli.mode.clone())?;
+    producer_task.join().unwrap();
+    let total_inserted = consumer_task.await??;
 
-    // Set up graceful shutdown handling
-    let seeding_future = async {
-        match resolved_command {
-            Commands::All {
-                min_users,
-                max_users,
-                min_event_types,
-                max_event_types,
-                target_events,
-                event_batch_size,
-            } => {
-                run_all_seeders(
-                    db,
-                    min_users.unwrap(),
-                    max_users.unwrap(),
-                    min_event_types.unwrap(),
-                    max_event_types.unwrap(),
-                    target_events.unwrap(),
-                    event_batch_size,
-                    cli.mode,
-                    cancellation_token.clone(),
-                )
-                .await
-            }
-            Commands::Users {
-                min_users,
-                max_users,
-            } => {
-                run_user_seeder(
-                    db,
-                    min_users.unwrap(),
-                    max_users.unwrap(),
-                    cli.mode,
-                    cancellation_token.clone(),
-                )
-                .await
-            }
-            Commands::EventTypes {
-                min_types,
-                max_types,
-            } => {
-                run_event_type_seeder(
-                    db,
-                    min_types.unwrap(),
-                    max_types.unwrap(),
-                    cli.mode,
-                    cancellation_token.clone(),
-                )
-                .await
-            }
-            Commands::Events {
-                target_events,
-                batch_size,
-            } => {
-                run_event_seeder(
-                    db,
-                    target_events.unwrap(),
-                    batch_size,
-                    cli.mode,
-                    cancellation_token.clone(),
-                )
-                .await
-            }
-        }
-    };
-
-    // Set up signal handling for graceful shutdown
-    let shutdown_signal = async {
-        let ctrl_c = signal::ctrl_c();
-
-        #[cfg(unix)]
-        let terminate = async {
-            signal::unix::signal(signal::unix::SignalKind::terminate())
-                .expect("failed to install signal handler")
-                .recv()
-                .await;
-        };
-
-        #[cfg(not(unix))]
-        let terminate = std::future::pending::<()>();
-
-        tokio::select! {
-            _ = ctrl_c => {
-                warn!("Received Ctrl+C signal, initiating graceful shutdown...");
-                cancellation_token.cancel();
-            },
-            _ = terminate => {
-                warn!("Received terminate signal, initiating graceful shutdown...");
-                cancellation_token.cancel();
-            },
-        }
-    };
-
-    // Add timeout for very large operations (2 hours)
-    let timeout_duration = std::time::Duration::from_secs(2 * 60 * 60);
-
-    // Run seeding with signal handling and timeout
-    tokio::select! {
-        result = seeding_future => {
-            result?;
-        },
-        _ = shutdown_signal => {
-            warn!("Seeding interrupted by signal. Data may be partially seeded.");
-            info!("Tip: Use Ctrl+C to gracefully stop seeding");
-            return Ok(());
-        },
-        _ = tokio::time::sleep(timeout_duration) => {
-            error!("Seeding timed out after {} hours. Process may be hanging.", timeout_duration.as_secs() / 3600);
-            warn!("Consider reducing batch size or target events for better performance.");
-            return Err(anyhow::anyhow!("Seeding operation timed out"));
-        },
-    }
-
-    let seeding_time = seeding_start.elapsed();
+    sqlx::query("ALTER TABLE events ENABLE TRIGGER ALL")
+        .execute(&pool)
+        .await?;
+    sqlx::query("SET session_replication_role = DEFAULT")
+        .execute(&pool)
+        .await?;
+    sqlx::query("SET synchronous_commit = ON")
+        .execute(&pool)
+        .await?;
 
     let total_time = start_time.elapsed();
-    info!("Database seeding completed successfully!");
-    info!("Seeding time: {:.2}s", seeding_time.as_secs_f64());
-    info!("Total time: {:.2}s", total_time.as_secs_f64());
-    Ok(())
-}
+    let events_per_sec = total_inserted as f64 / total_time.as_secs_f64();
 
-#[allow(clippy::too_many_arguments)]
-async fn run_all_seeders(
-    db: SqlConnect, min_users: usize, max_users: usize,
-    min_event_types: usize, max_event_types: usize, target_events: usize,
-    event_batch_size: Option<usize>, mode: ProgressMode,
-    cancellation_token: CancellationToken,
-) -> Result<()> {
-    info!("Seeding configuration:");
-    info!("  Users: {} - {}", min_users, max_users);
-    info!("  Event Types: {} - {}", min_event_types, max_event_types);
-    info!("  Target Events: {}", target_events);
-
-    let user_seeder = UserSeeder::new(db.clone(), min_users, max_users);
-    let event_type_seeder =
-        EventTypeSeeder::new(db.clone(), min_event_types, max_event_types);
-    let event_seeder = if let Some(batch_size) = event_batch_size {
-        EventSeeder::new(db.clone(), target_events, batch_size)
-    }
-    else {
-        EventSeeder::new(db.clone(), target_events, 10_000)
-    };
-
-    match mode {
-        ProgressMode::Quiet => {
-            // No progress output, use parallel execution for better
-            // performance
-            let runner = SeederRunner::new(db)
-                .add_seeder(Box::new(user_seeder))
-                .add_seeder(Box::new(event_type_seeder))
-                .add_seeder(Box::new(event_seeder));
-            runner.run_parallel().await?;
-        }
-        ProgressMode::Interactive => {
-            // Use CLI progress bars for interactive mode with parallel
-            // execution
-            let mut cli_progress = CliProgress::new();
-            let (progress_tracker, progress_rx) = ProgressTracker::new();
-
-            let runner = SeederRunner::new(db)
-                .with_progress(progress_tracker.clone())
-                .add_seeder(Box::new(user_seeder))
-                .add_seeder(Box::new(event_type_seeder))
-                .add_seeder(Box::new(event_seeder));
-
-            let runner_handle = tokio::spawn(async move {
-                if let Err(e) = runner.run_parallel().await {
-                    error!("Seeding failed: {}", e);
-                    progress_tracker
-                        .error("Runner".to_string(), e.to_string());
-                }
-                progress_tracker.finish();
-            });
-
-            let progress_result =
-                cli_progress.run(progress_rx, cancellation_token).await;
-            let _ = runner_handle.await;
-
-            if let Err(e) = progress_result {
-                error!("Progress display error: {}", e);
-            }
-        }
-    }
+    println!(
+        "results: {} events | {:.2}s | {:.0}/sec",
+        total_inserted,
+        total_time.as_secs_f64(),
+        events_per_sec
+    );
 
     Ok(())
 }
 
-async fn run_user_seeder(
-    db: SqlConnect, min_users: usize, max_users: usize, mode: ProgressMode,
-    cancellation_token: CancellationToken,
-) -> Result<()> {
-    info!("Seeding users: {} - {}", min_users, max_users);
+fn generate_events(
+    event_count: usize, event_uuids: &[Uuid], user_uuids: &[Uuid],
+    event_type_ids: &[i32], sender: Sender<Vec<String>>, batch_size: usize,
+) {
+    let start_timestamp = (Utc::now() - Duration::days(30)).timestamp();
+    let end_timestamp = Utc::now().timestamp();
+    let time_range = end_timestamp - start_timestamp;
 
-    let user_seeder = UserSeeder::new(db.clone(), min_users, max_users);
+    let chunk_size = 1_000_000;
+    let chunks: Vec<_> = (0..event_count).step_by(chunk_size).collect();
 
-    match mode {
-        ProgressMode::Quiet => {
-            let runner =
-                SeederRunner::new(db).add_seeder(Box::new(user_seeder));
-            runner.run_all().await?;
-        }
-        ProgressMode::Interactive => {
-            let mut cli_progress = CliProgress::new();
-            let (progress_tracker, progress_rx) = ProgressTracker::new();
+    chunks.into_par_iter().for_each(|chunk_start| {
+        let chunk_end = (chunk_start + chunk_size).min(event_count);
+        let mut rng = SmallRng::from_entropy();
+        let mut batch = Vec::with_capacity(batch_size);
 
-            let runner = SeederRunner::new(db)
-                .with_progress(progress_tracker.clone())
-                .add_seeder(Box::new(user_seeder));
+        for i in chunk_start..chunk_end {
+            let user_id = user_uuids[i % user_uuids.len()];
+            let event_type_id = event_type_ids[i % event_type_ids.len()];
+            let random_offset = rng.gen_range(0..time_range);
+            let timestamp = start_timestamp + random_offset;
 
-            let runner_handle = tokio::spawn(async move {
-                if let Err(e) = runner.run_all().await {
-                    error!("Seeding failed: {}", e);
-                    progress_tracker
-                        .error("Runner".to_string(), e.to_string());
+            let metadata = match i % 3 {
+                0 => format!(r#"{{"page":{}}}"#, i + 1),
+                1 => format!(r#"{{"btn":{}}}"#, (i + 1) % 100),
+                _ => format!(r#"{{"id":{}}}"#, i + 1),
+            };
+
+            let row = format!(
+                "('{}','{}',{},to_timestamp({}),'{}'::jsonb)",
+                event_uuids[i],
+                user_id,
+                event_type_id,
+                timestamp,
+                metadata.replace('\'', "''")
+            );
+
+            batch.push(row);
+
+            if batch.len() == batch_size {
+                if sender.send(batch).is_err() {
+                    return;
                 }
-                progress_tracker.finish();
-            });
-
-            let progress_result =
-                cli_progress.run(progress_rx, cancellation_token).await;
-            let _ = runner_handle.await;
-
-            if let Err(e) = progress_result {
-                error!("Progress display error: {}", e);
+                batch = Vec::with_capacity(batch_size);
             }
         }
-    }
 
-    Ok(())
+        if !batch.is_empty() {
+            let _ = sender.send(batch);
+        }
+    });
 }
 
-async fn run_event_type_seeder(
-    db: SqlConnect, min_types: usize, max_types: usize, mode: ProgressMode,
-    cancellation_token: CancellationToken,
-) -> Result<()> {
-    info!("Seeding event types: {} - {}", min_types, max_types);
+async fn insert(
+    pool: &PgPool, receiver: Receiver<Vec<String>>,
+) -> Result<usize> {
+    let mut total_inserted = 0;
+    let mut batch_count = 0;
 
-    let event_type_seeder =
-        EventTypeSeeder::new(db.clone(), min_types, max_types);
+    while let Ok(batch) = receiver.recv() {
+        batch_count += 1;
 
-    match mode {
-        ProgressMode::Quiet => {
-            let runner =
-                SeederRunner::new(db).add_seeder(Box::new(event_type_seeder));
-            runner.run_all().await?;
-        }
-        ProgressMode::Interactive => {
-            let mut cli_progress = CliProgress::new();
-            let (progress_tracker, progress_rx) = ProgressTracker::new();
-
-            let runner = SeederRunner::new(db)
-                .with_progress(progress_tracker.clone())
-                .add_seeder(Box::new(event_type_seeder));
-
-            let runner_handle = tokio::spawn(async move {
-                if let Err(e) = runner.run_all().await {
-                    error!("Seeding failed: {}", e);
-                    progress_tracker
-                        .error("Runner".to_string(), e.to_string());
+        if batch_count % 10 == 0 {
+            match sqlx::query("SELECT 1").fetch_one(pool).await {
+                Ok(_) => {
+                    if batch_count % 50 == 0 {
+                        println!(
+                            "💚 Connection health check passed (batch {})",
+                            batch_count
+                        );
+                    }
                 }
-                progress_tracker.finish();
-            });
-
-            let progress_result =
-                cli_progress.run(progress_rx, cancellation_token).await;
-            let _ = runner_handle.await;
-
-            if let Err(e) = progress_result {
-                error!("Progress display error: {}", e);
+                Err(e) => {
+                    eprintln!(
+                        "🚨 Connection health check failed at batch {}: {}",
+                        batch_count, e
+                    );
+                    return Err(anyhow::anyhow!(
+                        "Connection health check failed: {}",
+                        e
+                    ));
+                }
             }
         }
-    }
 
-    Ok(())
-}
+        let mut query = String::with_capacity(batch.len() * 150 + 100);
+        query.push_str(
+            "INSERT INTO events (id, user_id, event_type_id, timestamp, \
+             metadata) VALUES ",
+        );
 
-async fn run_event_seeder(
-    db: SqlConnect, target_events: usize, batch_size: Option<usize>,
-    mode: ProgressMode, cancellation_token: CancellationToken,
-) -> Result<()> {
-    info!("Seeding {} events", target_events);
-
-    let event_seeder = if let Some(batch_size) = batch_size {
-        EventSeeder::new(db.clone(), target_events, batch_size)
-    }
-    else {
-        EventSeeder::new(db.clone(), target_events, 10_000)
-    };
-
-    match mode {
-        ProgressMode::Quiet => {
-            let runner =
-                SeederRunner::new(db).add_seeder(Box::new(event_seeder));
-            runner.run_all().await?;
+        for (i, row) in batch.iter().enumerate() {
+            if i > 0 {
+                query.push(',');
+            }
+            query.push_str(row);
         }
-        ProgressMode::Interactive => {
-            let mut cli_progress = CliProgress::new();
-            let (progress_tracker, progress_rx) = ProgressTracker::new();
 
-            let runner = SeederRunner::new(db)
-                .with_progress(progress_tracker.clone())
-                .add_seeder(Box::new(event_seeder));
+        const MAX_RETRIES: u32 = 5;
+        let mut last_error = None;
 
-            let runner_handle = tokio::spawn(async move {
-                if let Err(e) = runner.run_all().await {
-                    error!("Seeding failed: {}", e);
-                    progress_tracker
-                        .error("Runner".to_string(), e.to_string());
+        for retry in 0..MAX_RETRIES {
+            match sqlx::query(&query).execute(pool).await {
+                Ok(_) => {
+                    total_inserted += batch.len();
+                    if retry > 0 {
+                        println!(
+                            "🔄 Batch insert succeeded after {} retries \
+                             (batch {})",
+                            retry, batch_count
+                        );
+                    }
+                    break;
                 }
-                progress_tracker.finish();
-            });
+                Err(e) => {
+                    last_error = Some(e);
+                    if retry < MAX_RETRIES - 1 {
+                        let error_msg =
+                            last_error.as_ref().unwrap().to_string();
+                        eprintln!(
+                            "⚠️  Insert retry {}/{} (batch {}): {}",
+                            retry + 1,
+                            MAX_RETRIES,
+                            batch_count,
+                            error_msg
+                        );
 
-            let progress_result =
-                cli_progress.run(progress_rx, cancellation_token).await;
-            let _ = runner_handle.await;
+                        let delay = if error_msg.contains("pool timed out")
+                            || error_msg.contains("EOF")
+                        {
+                            2000 * (retry + 1) as u64
+                        }
+                        else {
+                            500 * (retry + 1) as u64
+                        };
 
-            if let Err(e) = progress_result {
-                error!("Progress display error: {}", e);
+                        sleep(StdDuration::from_millis(delay)).await;
+
+                        if error_msg.contains("pool timed out")
+                            || error_msg.contains("EOF")
+                        {
+                            match sqlx::query("SELECT 1")
+                                .fetch_one(pool)
+                                .await
+                            {
+                                Ok(_) => {
+                                    println!(
+                                        "🔍 Connection recovered for retry"
+                                    )
+                                }
+                                Err(health_err) => {
+                                    eprintln!(
+                                        "💥 Connection still unhealthy: {}",
+                                        health_err
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
+
+        if let Some(err) = last_error {
+            return Err(anyhow::anyhow!(
+                "Insert failed after {} retries (batch {}): {}",
+                MAX_RETRIES,
+                batch_count,
+                err
+            ));
+        }
+
+        if batch_count % 20 == 0 {
+            println!(
+                "📈 Progress: {} batches processed, {} events inserted",
+                batch_count, total_inserted
+            );
+        }
     }
 
-    Ok(())
+    Ok(total_inserted)
 }

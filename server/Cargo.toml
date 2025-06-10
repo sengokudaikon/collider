@@ -21,7 +21,6 @@ analytics-http.workspace = true
 user-http.workspace = true
 user-commands.workspace = true
 test-utils.workspace = true
-seeders = { path = "../libs/seeders" }
 database-traits.workspace = true
 sql-connection.workspace = true
 redis-connection.workspace = true

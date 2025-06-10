@@ -1,5 +1,4 @@
 services:
-  # PostgreSQL Database
   postgres:
     image: postgres:latest
     container_name: collider_postgres
@@ -12,6 +11,8 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./config/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
     networks:
       - collider
     healthcheck:
@@ -21,15 +22,16 @@ services:
       retries: 5
       start_period: 10s
 
-  # Dragonfly Cache (Redis-compatible) - Local instance for development
   dragonfly:
-    image: docker.dragonflydb.io/dragonflydb/dragonfly:v1.25.1
+    image: docker.dragonflydb.io/dragonflydb/dragonfly
     container_name: collider_dragonfly
     ports:
       - "6379:6379"
     volumes:
       - dragonfly_data:/data
-    command: dragonfly --logtostderr --maxmemory=1gb --cache_mode=true --proactor_threads=2
+    ulimits:
+      memlock: -1
+    command: dragonfly --logtostderr --maxmemory=0 --cache_mode=true --proactor_threads=0
     networks:
       - collider
     healthcheck:
