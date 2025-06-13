@@ -1,39 +1,39 @@
 use std::{
-    ops::Range,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
     time::Instant,
 };
 
 use anyhow::Result;
 use chrono::{DateTime, Duration, Utc};
-use flume::{bounded, Receiver, Sender};
+use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod};
 use futures::future::try_join_all;
-use rand::{rngs::SmallRng, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, rngs::SmallRng};
 use rayon::prelude::*;
-use sqlx::{types::Json, PgPool, Postgres, QueryBuilder, Row};
+use serde_json::{self, Value as JsonValue};
+use tokio_postgres::NoTls;
 use uuid::Uuid;
 
-// --- PARAMETERS ---
 const BATCH_SIZE: usize = 10_000;
-const MAX_CONNECTIONS: u32 = 300;
-const NUM_WORKERS: usize = 20;
+const NUM_WORKERS: usize = 14; // Match PHP's MAX_COROUTINES
 
-// --- INSTRUMENTATION ---
-// A struct to hold timing information for one batch processed by one worker.
-struct TimingEvent {
-    worker_id: usize,
-    start_time: Instant,
-    gen_done_time: Instant,
-    db_done_time: Instant,
-}
+async fn create_pool(database_url: &str) -> Result<Pool> {
+    let config = database_url.parse::<tokio_postgres::Config>()?;
 
-// The data struct for the final batch
-struct EventData {
-    id: Uuid,
-    user_id: Uuid,
-    event_type_id: i32,
-    timestamp: DateTime<Utc>,
-    metadata: String,
+    let mgr_config = ManagerConfig {
+        recycling_method: RecyclingMethod::Fast,
+    };
+
+    let mgr = Manager::from_config(config, NoTls, mgr_config);
+
+    let pool = Pool::builder(mgr)
+        .max_size(300)
+        .runtime(deadpool_postgres::Runtime::Tokio1)
+        .build()?;
+
+    Ok(pool)
 }
 
 #[tokio::main]
@@ -46,78 +46,99 @@ async fn main() -> Result<()> {
 
     let pool = create_pool(&database_url).await?;
 
+    // Prepare database for bulk loading
     prepare_database(&pool).await?;
-    let user_uuids = Arc::new(seed_users(&pool, 100).await?);
-    let event_type_ids = Arc::new(seed_event_types(&pool).await?);
 
+    // Seed users
+    let user_uuids = seed_users(&pool, 100).await?;
+
+    // Seed event types
+    let event_type_ids = seed_event_types(&pool).await?;
+
+    // Seed events using optimized batch insert
     let total_events = 10_000_000;
-    seed_events(&pool, total_events, user_uuids, event_type_ids).await?;
+    let actual_inserted =
+        seed_events(&pool, total_events, &user_uuids, &event_type_ids)
+            .await?;
 
+    // Restore database settings
     restore_database(&pool).await?;
 
     let elapsed = start_time.elapsed();
     println!(
         "✅ Seeding completed: {} events in {:.2}s ({:.0} events/sec)",
-        total_events,
+        actual_inserted,
         elapsed.as_secs_f64(),
-        total_events as f64 / elapsed.as_secs_f64()
+        actual_inserted as f64 / elapsed.as_secs_f64()
     );
 
     Ok(())
 }
 
-// --- UNCHANGED SETUP CODE ---
-async fn create_pool(database_url: &str) -> Result<PgPool> {
-    let pool = sqlx::postgres::PgPoolOptions::new()
-        .max_connections(MAX_CONNECTIONS)
-        .min_connections(20)
-        .acquire_timeout(std::time::Duration::from_secs(30))
-        .connect(database_url)
-        .await?;
-    Ok(pool)
-}
+async fn prepare_database(pool: &Pool) -> Result<()> {
+    let client = pool.get().await?;
 
-async fn prepare_database(pool: &PgPool) -> Result<()> {
-    sqlx::query("SET session_replication_role = replica")
-        .execute(pool)
+    client
+        .execute("SET session_replication_role = replica", &[])
         .await?;
-    sqlx::query("ALTER TABLE events DISABLE TRIGGER ALL")
-        .execute(pool)
+    client
+        .execute("ALTER TABLE events DISABLE TRIGGER ALL", &[])
         .await?;
-    sqlx::query("TRUNCATE events, users, event_types CASCADE")
-        .execute(pool)
+    client
+        .execute("TRUNCATE events, users, event_types CASCADE", &[])
         .await?;
+
     Ok(())
 }
 
-async fn restore_database(pool: &PgPool) -> Result<()> {
-    sqlx::query("ALTER TABLE events ENABLE TRIGGER ALL")
-        .execute(pool)
+async fn restore_database(pool: &Pool) -> Result<()> {
+    let client = pool.get().await?;
+
+    client
+        .execute("ALTER TABLE events ENABLE TRIGGER ALL", &[])
         .await?;
-    sqlx::query("SET session_replication_role = DEFAULT")
-        .execute(pool)
+    client
+        .execute("SET session_replication_role = DEFAULT", &[])
         .await?;
+    client.execute("SET synchronous_commit = ON", &[]).await?;
+
     Ok(())
 }
 
-async fn seed_users(pool: &PgPool, count: usize) -> Result<Vec<Uuid>> {
-    let user_uuids: Vec<Uuid> = (0..count).map(|_| Uuid::now_v7()).collect();
-    let mut query_builder =
-        sqlx::QueryBuilder::new("INSERT INTO users (id, name, created_at) ");
-    query_builder.push_values(
-        user_uuids.iter().enumerate(),
-        |mut b, (i, uuid)| {
-            b.push_bind(uuid)
-                .push_bind(format!("User{}", i + 1))
-                .push_bind(Utc::now());
-        },
-    );
-    query_builder.build().execute(pool).await?;
+async fn seed_users(pool: &Pool, count: usize) -> Result<Vec<Uuid>> {
+    let base_uuid = Uuid::now_v7();
+    let base_bytes = base_uuid.as_bytes();
+
+    let user_uuids: Vec<Uuid> = (0..count)
+        .map(|i| {
+            let mut bytes = *base_bytes;
+            let counter_bytes = (i as u64).to_be_bytes();
+            bytes[8..16].copy_from_slice(&counter_bytes);
+            Uuid::from_bytes(bytes)
+        })
+        .collect();
+
+    let client = pool.get().await?;
+
+    // Simple approach: use unnest with arrays
+    let ids: Vec<Uuid> = user_uuids.clone();
+    let names: Vec<String> =
+        (0..count).map(|i| format!("User{}", i + 1)).collect();
+    let timestamps: Vec<DateTime<Utc>> = vec![Utc::now(); count];
+
+    client
+        .execute(
+            "INSERT INTO users (id, name, created_at) SELECT * FROM \
+             unnest($1::uuid[], $2::text[], $3::timestamptz[])",
+            &[&ids, &names, &timestamps],
+        )
+        .await?;
+
     Ok(user_uuids)
 }
 
-async fn seed_event_types(pool: &PgPool) -> Result<Vec<i32>> {
-    let event_types = [
+async fn seed_event_types(pool: &Pool) -> Result<Vec<i32>> {
+    let event_types = vec![
         "page_view",
         "button_click",
         "form_submit",
@@ -139,205 +160,177 @@ async fn seed_event_types(pool: &PgPool) -> Result<Vec<i32>> {
         "settings_change",
         "session_start",
     ];
-    let mut query_builder =
-        sqlx::QueryBuilder::new("INSERT INTO event_types (name) ");
-    query_builder.push_values(event_types, |mut b, name| {
-        b.push_bind(name);
-    });
-    query_builder.build().execute(pool).await?;
-    let rows = sqlx::query("SELECT id FROM event_types ORDER BY id")
-        .fetch_all(pool)
+
+    let client = pool.get().await?;
+
+    client
+        .execute(
+            "INSERT INTO event_types (name) SELECT * FROM unnest($1::text[])",
+            &[&event_types],
+        )
         .await?;
-    Ok(rows.iter().map(|row| row.get("id")).collect())
-}
-// --- END UNCHANGED SETUP CODE ---
 
-fn produce_work_ranges(tx: Sender<Range<usize>>, total_events: usize) {
-    for i in (0..total_events).step_by(BATCH_SIZE) {
-        let end = (i + BATCH_SIZE).min(total_events);
-        if tx.send(i..end).is_err() {
-            break;
-        }
-    }
-}
-
-/// The instrumented worker task.
-async fn worker_task(
-    worker_id: usize,
-    pool: PgPool,
-    rx: Receiver<Range<usize>>,
-    timing_tx: Sender<TimingEvent>, // Channel to send timing data
-    event_uuids: Arc<Vec<Uuid>>,
-    user_uuids: Arc<Vec<Uuid>>,
-    event_type_ids: Arc<Vec<i32>>,
-) -> Result<()> {
-    let sql = "INSERT INTO events (id, user_id, event_type_id, timestamp, \
-               metadata) ";
-    let mut rng = SmallRng::from_entropy();
-
-    while let Ok(range) = rx.recv_async().await {
-        let start_time = Instant::now();
-
-        let start_timestamp = (Utc::now() - Duration::days(30)).timestamp();
-        let end_timestamp = Utc::now().timestamp();
-        let time_range = end_timestamp - start_timestamp;
-
-        let batch: Vec<EventData> = range
-            .map(|i| {
-                EventData {
-                    id: event_uuids[i],
-                    user_id: user_uuids[i % user_uuids.len()],
-                    event_type_id: event_type_ids[i % event_type_ids.len()],
-                    timestamp: DateTime::from_timestamp(
-                        start_timestamp + rng.gen_range(0..time_range),
-                        0,
-                    )
-                    .unwrap(),
-                    metadata: format!(r#"{{"page":{}}}"#, i + 1),
-                }
-            })
-            .collect();
-
-        let gen_done_time = Instant::now();
-
-        if batch.is_empty() {
-            continue;
-        }
-
-        let mut query_builder: QueryBuilder<Postgres> =
-            QueryBuilder::new(sql);
-        query_builder.push_values(batch, |mut b, event| {
-            b.push_bind(event.id)
-                .push_bind(event.user_id)
-                .push_bind(event.event_type_id)
-                .push_bind(event.timestamp)
-                .push_bind(Json(event.metadata));
-        });
-
-        query_builder.build().execute(&pool).await?;
-
-        let db_done_time = Instant::now();
-
-        // Send the timing data. This is a non-blocking send.
-        let _ = timing_tx.send(TimingEvent {
-            worker_id,
-            start_time,
-            gen_done_time,
-            db_done_time,
-        });
-    }
-    Ok(())
+    let rows = client
+        .query("SELECT id FROM event_types ORDER BY id", &[])
+        .await?;
+    let ids: Vec<i32> = rows.iter().map(|row| row.get(0)).collect();
+    Ok(ids)
 }
 
 async fn seed_events(
-    pool: &PgPool, total_events: usize, user_uuids: Arc<Vec<Uuid>>,
-    event_type_ids: Arc<Vec<i32>>,
-) -> Result<()> {
-    let event_uuids: Arc<Vec<Uuid>> = Arc::new(
-        (0..total_events)
-            .into_par_iter()
-            .map(|_| Uuid::now_v7())
-            .collect(),
+    pool: &Pool, total_events: usize, user_uuids: &[Uuid],
+    event_type_ids: &[i32],
+) -> Result<usize> {
+    let start = Instant::now();
+
+    // Pre-generate ALL events first to eliminate generation overhead
+    println!("Pre-generating {} events...", total_events);
+    let gen_start = Instant::now();
+    let all_events: Vec<EventData> =
+        generate_all_events(total_events, user_uuids, event_type_ids);
+    println!(
+        "Generation complete in {:.2}s",
+        gen_start.elapsed().as_secs_f64()
     );
 
-    let (work_tx, work_rx) = bounded::<Range<usize>>(NUM_WORKERS * 2);
-    let (timing_tx, timing_rx) =
-        bounded::<TimingEvent>(total_events / BATCH_SIZE);
+    let inserted = Arc::new(AtomicUsize::new(0));
 
-    // The logger task that collects all timing events.
-    let logger_handle = tokio::spawn(async move {
-        let mut timings = Vec::new();
-        while let Ok(event) = timing_rx.recv_async().await {
-            timings.push(event);
-        }
-        timings
-    });
+    // Create multiple independent workers to avoid synchronization
+    let mut workers = Vec::new();
+    let events_per_worker = total_events / NUM_WORKERS;
 
-    let producer_handle = tokio::spawn(async move {
-        produce_work_ranges(work_tx, total_events);
-    });
-
-    let mut worker_tasks = Vec::with_capacity(NUM_WORKERS);
     for worker_id in 0..NUM_WORKERS {
-        worker_tasks.push(tokio::spawn(worker_task(
-            worker_id,
-            pool.clone(),
-            work_rx.clone(),
-            timing_tx.clone(),
-            event_uuids.clone(),
-            user_uuids.clone(),
-            event_type_ids.clone(),
-        )));
+        let pool = pool.clone();
+        let inserted = inserted.clone();
+
+        let start_idx = worker_id * events_per_worker;
+        let end_idx = if worker_id == NUM_WORKERS - 1 {
+            total_events // Last worker gets remaining events
+        }
+        else {
+            (worker_id + 1) * events_per_worker
+        };
+
+        let worker_events = all_events[start_idx..end_idx].to_vec();
+
+        let task = tokio::spawn(async move {
+            worker_task_independent(worker_id, pool, worker_events, inserted)
+                .await
+        });
+        workers.push(task);
     }
 
-    // Drop the original sender so the logger loop can finish once all workers
-    // are done.
-    drop(timing_tx);
+    try_join_all(workers).await?;
 
-    try_join_all(worker_tasks).await?;
-    producer_handle.await?;
+    let total_inserted = inserted.load(Ordering::Relaxed);
+    println!(
+        "✅ Events seeded: {} in {:.2}s ({:.0} events/sec)",
+        total_inserted,
+        start.elapsed().as_secs_f64(),
+        total_inserted as f64 / start.elapsed().as_secs_f64()
+    );
 
-    // Wait for the logger to finish and get the timing data.
-    let timings = logger_handle.await?;
+    Ok(total_inserted)
+}
 
-    // --- ANALYSIS ---
-    println!("\n--- PERFORMANCE ANALYSIS ---");
-    if timings.is_empty() {
-        println!("No timing data collected.");
-        return Ok(());
-    }
+fn generate_all_events(
+    total_events: usize, user_uuids: &[Uuid], event_type_ids: &[i32],
+) -> Vec<EventData> {
+    let start_timestamp = (Utc::now() - Duration::days(30)).timestamp();
+    let end_timestamp = Utc::now().timestamp();
+    let time_range = end_timestamp - start_timestamp;
 
-    let total_batches = timings.len();
-    let mut total_gen_time_ms = 0.0;
-    let mut total_db_time_ms = 0.0;
-    let mut total_idle_time_ms = 0.0;
+    // Generate UUIDs and events in parallel
+    (0..total_events)
+        .into_par_iter()
+        .map(|i| {
+            let mut rng = SmallRng::from_entropy();
+            EventData {
+                id: Uuid::now_v7(),
+                user_id: user_uuids[i % user_uuids.len()],
+                event_type_id: event_type_ids[i % event_type_ids.len()],
+                timestamp: start_timestamp + rng.gen_range(0..time_range),
+                metadata: format!(r#"{{"page":{}}}"#, i + 1),
+            }
+        })
+        .collect()
+}
 
-    // Sort timings by start time to calculate idle time between batches.
-    let mut sorted_timings = timings;
-    sorted_timings.sort_by_key(|t| t.start_time);
+#[derive(Clone)]
+struct EventData {
+    id: Uuid,
+    user_id: Uuid,
+    event_type_id: i32,
+    timestamp: i64,
+    metadata: String,
+}
 
-    let mut last_finish_time = sorted_timings[0].start_time;
+// New independent worker that doesn't wait for others
+async fn worker_task_independent(
+    worker_id: usize, pool: Pool, events: Vec<EventData>,
+    inserted: Arc<AtomicUsize>,
+) -> Result<()> {
+    println!("Worker {} starting with {} events", worker_id, events.len());
 
-    for event in &sorted_timings {
-        let gen_time = event.gen_done_time.duration_since(event.start_time);
-        let db_time = event.db_done_time.duration_since(event.gen_done_time);
-        let idle_time = event.start_time.duration_since(last_finish_time);
+    // Get a dedicated client for this worker
+    let client = pool.get().await?;
 
-        total_gen_time_ms += gen_time.as_secs_f64() * 1000.0;
-        total_db_time_ms += db_time.as_secs_f64() * 1000.0;
-        // Only count idle time if it's significant (more than a microsecond)
-        if idle_time.as_secs_f64() > 0.0 {
-            total_idle_time_ms += idle_time.as_secs_f64() * 1000.0;
+    let mut batch_count = 0;
+
+    // Process events in batches without waiting for other workers
+    for batch in events.chunks(BATCH_SIZE) {
+        let batch_size = batch.len();
+
+        // Pre-allocate with exact capacity
+        let mut ids = Vec::with_capacity(batch_size);
+        let mut user_ids = Vec::with_capacity(batch_size);
+        let mut event_type_ids = Vec::with_capacity(batch_size);
+        let mut timestamps = Vec::with_capacity(batch_size);
+        let mut metadata = Vec::with_capacity(batch_size);
+
+        for event in batch {
+            ids.push(event.id);
+            user_ids.push(event.user_id);
+            event_type_ids.push(event.event_type_id);
+            timestamps
+                .push(DateTime::from_timestamp(event.timestamp, 0).unwrap());
+            // Convert string to JSON value for JSONB compatibility
+            let json_metadata: JsonValue = serde_json::from_str(
+                &event.metadata,
+            )
+            .unwrap_or_else(|_| serde_json::json!({"error": "invalid_json"}));
+            metadata.push(json_metadata);
         }
 
-        last_finish_time = event.db_done_time;
+        // Execute with unnest - much faster than individual inserts
+        match client.execute(
+            r#"
+            INSERT INTO events (id, user_id, event_type_id, timestamp, metadata)
+            SELECT * FROM unnest($1::uuid[], $2::uuid[], $3::int[], $4::timestamptz[], $5::jsonb[])
+            "#,
+            &[&ids, &user_ids, &event_type_ids, &timestamps, &metadata]
+        ).await {
+            Ok(rows_affected) => {
+                println!("Worker {}: Batch {} inserted {} rows", worker_id, batch_count + 1, rows_affected);
+            }
+            Err(e) => {
+                eprintln!("Worker {}: Database error: {}", worker_id, e);
+                return Err(e.into());
+            }
+        }
+
+        inserted.fetch_add(batch_size, Ordering::Relaxed);
+        batch_count += 1;
+
+        if batch_count % 10 == 0 {
+            let total = inserted.load(Ordering::Relaxed);
+            println!(
+                "Worker {}: {} batches, {} total events",
+                worker_id, batch_count, total
+            );
+        }
     }
 
-    println!("Total batches processed: {}", total_batches);
-    println!(
-        "Avg time per batch (ms): {:.2}",
-        (total_gen_time_ms + total_db_time_ms) / total_batches as f64
-    );
-    println!(
-        "  -> Avg Generation time (ms): {:.2}",
-        total_gen_time_ms / total_batches as f64
-    );
-    println!(
-        "  -> Avg Database wait time (ms): {:.2}",
-        total_db_time_ms / total_batches as f64
-    );
-    println!("\nTotal time spent across all workers:");
-    println!(
-        "  -> In Data Generation: {:.2}s",
-        total_gen_time_ms / 1000.0
-    );
-    println!("  -> In Database Await:  {:.2}s", total_db_time_ms / 1000.0);
-    println!(
-        "  -> In Idle/Wait:       {:.2}s (This is the sum of time between a \
-         worker finishing and starting its next batch)",
-        total_idle_time_ms / 1000.0
-    );
-    println!("--------------------------\n");
-
+    println!("Worker {} completed {} batches", worker_id, batch_count);
     Ok(())
 }
