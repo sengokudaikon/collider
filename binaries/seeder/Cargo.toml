@@ -9,39 +9,28 @@ edition = "2024"
 name = "seeder"
 path = "src/main.rs"
 
-[[bin]]
-name = "copy-seeder"
-path = "src/copy_seeder.rs"
-
-[[bin]]
-name = "ultra-fast"
-path = "src/ultra_fast.rs"
-
-[[bin]]
-name = "hyper-fast"
-path = "src/hyper_fast.rs"
-
 [dependencies]
+mimalloc = { version = "0.1", default-features = false }
 tokio = { version = "1.45", features = ["full"] }
 anyhow = "1.0"
 
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json"] }
-uuid = { version = "1.0", features = ["v4", "v7"] }
+uuid = { version = "1.0", features = ["v7"] }
 chrono = { version = "0.4", features = ["serde"] }
 rand = { version = "0.8", features = ["small_rng"] }
 
-# Extreme performance dependencies
-rayon = "1.8"
-flume = "0.11"
+futures = "0.3"
+flume = "0.11.1"
+rayon = "1.10.0"
 
 [profile.dev]
-opt-level = 1          # Minimal optimization for debug builds  
-debug = 1              # Reduced debug info
-incremental = true     # Faster incremental compilation
+opt-level = 1
+debug = 1
+incremental = true
 
 [profile.release]
-opt-level = 3           # Maximum optimization
-lto = true             # Link Time Optimization
-codegen-units = 1      # Single codegen unit for better optimization
-panic = "abort"        # Smaller binaries, faster panic handling
-strip = true           # Strip symbols for smaller size
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

@@ -1,5 +1,4 @@
 services:
-  # Production application server
   app:
     image: collider-app:latest
     build:
