@@ -1,29 +1,29 @@
-/// THIS RUNS IN 80s on fresh db
-use std::{sync::Arc, time::Instant};
+use std::{
+    sync::Arc,
+    time::Instant,
+};
 
 use anyhow::Result;
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Utc};
 use flume::{bounded, Receiver, Sender};
 use futures::future::try_join_all;
-use itertools::Itertools;
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use rayon::prelude::*;
-use sqlx::{types::Json, PgPool, Postgres, QueryBuilder, Row};
+use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 const BATCH_SIZE: usize = 10_000;
 const MAX_CONNECTIONS: u32 = 20;
 const NUM_WORKERS: usize = 12;
 
-struct EventData {
-    id: Uuid,
-    user_id: Uuid,
-    event_type_id: i32,
-    timestamp: i64,
-    metadata: String,
-}
-
-type EventBatch = Vec<EventData>;
+// The data format is now a Struct of Arrays (SoA) for maximum efficiency.
+type EventBatchSoA = (
+    Vec<Uuid>,
+    Vec<Uuid>,
+    Vec<i32>,
+    Vec<DateTime<Utc>>,
+    Vec<String>,
+);
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -145,13 +145,13 @@ async fn seed_events(
     event_type_ids: &[i32],
 ) -> Result<()> {
     let event_uuids = Arc::new(generate_event_uuids(total_events));
-    let (tx, rx) = bounded::<EventBatch>(NUM_WORKERS * 2);
+    let (tx, rx) = bounded::<EventBatchSoA>(NUM_WORKERS);
 
     let producer_handle = {
         let event_uuids = event_uuids.clone();
         let user_uuids = user_uuids.to_vec();
         let event_type_ids = event_type_ids.to_vec();
-        tokio::spawn(async move {
+        tokio::task::spawn_blocking(move || {
             produce_event_batches(
                 tx,
                 total_events,
@@ -180,7 +180,7 @@ fn generate_event_uuids(count: usize) -> Vec<Uuid> {
 }
 
 fn produce_event_batches(
-    tx: Sender<EventBatch>, total_events: usize, event_uuids: &[Uuid],
+    tx: Sender<EventBatchSoA>, total_events: usize, event_uuids: &[Uuid],
     user_uuids: &[Uuid], event_type_ids: &[i32],
 ) {
     let start_timestamp = (Utc::now() - Duration::days(30)).timestamp();
@@ -188,50 +188,58 @@ fn produce_event_batches(
     let time_range = end_timestamp - start_timestamp;
     let mut rng = SmallRng::from_entropy();
 
-    for chunk in &(0..total_events).chunks(BATCH_SIZE) {
-        let batch: EventBatch = chunk
-            .map(|i| {
-                let event = EventData {
-                    id: event_uuids[i],
-                    user_id: user_uuids[i % user_uuids.len()],
-                    event_type_id: event_type_ids[i % event_type_ids.len()],
-                    timestamp: start_timestamp + rng.gen_range(0..time_range),
-                    metadata: format!(r#"{{"page":{}}}"#, i + 1),
-                };
-                event
-            })
-            .collect();
+    for i in (0..total_events).step_by(BATCH_SIZE) {
+        let batch_end = (i + BATCH_SIZE).min(total_events);
+        let current_batch_size = batch_end - i;
 
-        if tx.send(batch).is_err() {
+        let mut ids = Vec::with_capacity(current_batch_size);
+        let mut user_ids = Vec::with_capacity(current_batch_size);
+        let mut type_ids = Vec::with_capacity(current_batch_size);
+        let mut timestamps = Vec::with_capacity(current_batch_size);
+        let mut metadatas = Vec::with_capacity(current_batch_size);
+
+        for j in i..batch_end {
+            ids.push(event_uuids[j]);
+            user_ids.push(user_uuids[j % user_uuids.len()]);
+            type_ids.push(event_type_ids[j % event_type_ids.len()]);
+            timestamps.push(
+                chrono::DateTime::from_timestamp(
+                    start_timestamp + rng.gen_range(0..time_range),
+                    0,
+                )
+                .unwrap(),
+            );
+            metadatas.push(format!(r#"{{"page":{}}}"#, j + 1));
+        }
+
+        if tx
+            .send((ids, user_ids, type_ids, timestamps, metadatas))
+            .is_err()
+        {
             break;
         }
     }
 }
 
-async fn worker_task(pool: PgPool, rx: Receiver<EventBatch>) -> Result<()> {
-    let sql = "INSERT INTO events (id, user_id, event_type_id, timestamp, \
-               metadata) ";
+async fn worker_task(
+    pool: PgPool, rx: Receiver<EventBatchSoA>,
+) -> Result<()> {
+    let insert_query = r#"
+        INSERT INTO events (id, user_id, event_type_id, timestamp, metadata)
+        SELECT * FROM UNNEST($1::uuid[], $2::uuid[], $3::int[], $4::timestamptz[], $5::jsonb[])
+    "#;
 
-    while let Ok(batch) = rx.recv_async().await {
-        if batch.is_empty() {
-            continue;
-        }
-
-        let mut query_builder: QueryBuilder<Postgres> =
-            QueryBuilder::new(sql);
-
-        query_builder.push_values(batch, |mut b, event| {
-            b.push_bind(event.id)
-                .push_bind(event.user_id)
-                .push_bind(event.event_type_id)
-                .push_bind(
-                    chrono::DateTime::from_timestamp(event.timestamp, 0)
-                        .unwrap(),
-                )
-                .push_bind(Json(event.metadata));
-        });
-
-        query_builder.build().execute(&pool).await?;
+    while let Ok((ids, user_ids, type_ids, timestamps, metadatas)) =
+        rx.recv_async().await
+    {
+        sqlx::query(insert_query)
+            .bind(&ids)
+            .bind(&user_ids)
+            .bind(&type_ids)
+            .bind(&timestamps)
+            .bind(&metadatas)
+            .execute(&pool)
+            .await?;
     }
 
     Ok(())

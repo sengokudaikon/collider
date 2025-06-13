@@ -9,8 +9,22 @@ edition = "2024"
 name = "seeder"
 path = "src/main.rs"
 
+[[bin]]
+name = "seeder-2"
+path = "src/main_2_75s.rs"
+
+[[bin]]
+name = "seeder-3"
+path = "src/main_direct.rs"
+
+[[bin]]
+name = "seeder-4"
+path = "src/main_75s.rs"
+
+[[bin]]
+name = "seeder-5"
+path = "src/main_105.rs"
 [dependencies]
-mimalloc = { version = "0.1", default-features = false }
 tokio = { version = "1.45", features = ["full"] }
 anyhow = "1.0"
 

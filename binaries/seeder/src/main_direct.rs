@@ -1,14 +1,13 @@
-/// THIS RUNS IN 80s on fresh db
+/// THIS RUNS IN 80 on fresh db
 use std::{sync::Arc, time::Instant};
 
 use anyhow::Result;
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Utc};
 use flume::{bounded, Receiver, Sender};
 use futures::future::try_join_all;
-use itertools::Itertools;
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use rayon::prelude::*;
-use sqlx::{types::Json, PgPool, Postgres, QueryBuilder, Row};
+use sqlx::{types::Json, PgPool, Row};
 use uuid::Uuid;
 
 const BATCH_SIZE: usize = 10_000;
@@ -19,7 +18,7 @@ struct EventData {
     id: Uuid,
     user_id: Uuid,
     event_type_id: i32,
-    timestamp: i64,
+    timestamp: DateTime<Utc>,
     metadata: String,
 }
 
@@ -40,7 +39,7 @@ async fn main() -> Result<()> {
     let event_type_ids = seed_event_types(&pool).await?;
 
     let total_events = 10_000_000;
-    seed_events(&pool, total_events, &user_uuids, &event_type_ids)
+    seed_events_optimized(&pool, total_events, &user_uuids, &event_type_ids)
         .await?;
 
     restore_database(&pool).await?;
@@ -140,7 +139,7 @@ async fn seed_event_types(pool: &PgPool) -> Result<Vec<i32>> {
     Ok(rows.iter().map(|row| row.get("id")).collect())
 }
 
-async fn seed_events(
+async fn seed_events_optimized(
     pool: &PgPool, total_events: usize, user_uuids: &[Uuid],
     event_type_ids: &[i32],
 ) -> Result<()> {
@@ -188,20 +187,27 @@ fn produce_event_batches(
     let time_range = end_timestamp - start_timestamp;
     let mut rng = SmallRng::from_entropy();
 
-    for chunk in &(0..total_events).chunks(BATCH_SIZE) {
-        let batch: EventBatch = chunk
-            .map(|i| {
-                let event = EventData {
-                    id: event_uuids[i],
-                    user_id: user_uuids[i % user_uuids.len()],
-                    event_type_id: event_type_ids[i % event_type_ids.len()],
-                    timestamp: start_timestamp + rng.gen_range(0..time_range),
-                    metadata: format!(r#"{{"page":{}}}"#, i + 1),
-                };
-                event
-            })
-            .collect();
+    for chunk_start in (0..total_events).step_by(BATCH_SIZE) {
+        let chunk_end = (chunk_start + BATCH_SIZE).min(total_events);
 
+        let mut batch = Vec::with_capacity(chunk_end - chunk_start);
+
+        for i in chunk_start..chunk_end {
+            let event = EventData {
+                id: event_uuids[i],
+                user_id: user_uuids[i % user_uuids.len()],
+                event_type_id: event_type_ids[i % event_type_ids.len()],
+                timestamp: chrono::DateTime::from_timestamp(
+                    start_timestamp + rng.gen_range(0..time_range),
+                    0,
+                )
+                .unwrap(),
+                metadata: format!(r#"{{"page":{}}}"#, i + 1),
+            };
+            batch.push(event);
+        }
+
+        // Send the completed batch. If the channel is closed, stop producing.
         if tx.send(batch).is_err() {
             break;
         }
@@ -209,29 +215,42 @@ fn produce_event_batches(
 }
 
 async fn worker_task(pool: PgPool, rx: Receiver<EventBatch>) -> Result<()> {
-    let sql = "INSERT INTO events (id, user_id, event_type_id, timestamp, \
-               metadata) ";
-
     while let Ok(batch) = rx.recv_async().await {
-        if batch.is_empty() {
+        let batch_size = batch.len();
+        if batch_size == 0 {
             continue;
         }
 
-        let mut query_builder: QueryBuilder<Postgres> =
-            QueryBuilder::new(sql);
+        let mut sql = String::from(
+            "INSERT INTO events (id, user_id, event_type_id, timestamp, \
+             metadata) VALUES ",
+        );
+        for i in 0..batch_size {
+            let base = i * 5;
+            sql.push_str(&format!(
+                "(${}, ${}, ${}, ${}, ${})",
+                base + 1,
+                base + 2,
+                base + 3,
+                base + 4,
+                base + 5
+            ));
+            if i < batch_size - 1 {
+                sql.push_str(", ");
+            }
+        }
 
-        query_builder.push_values(batch, |mut b, event| {
-            b.push_bind(event.id)
-                .push_bind(event.user_id)
-                .push_bind(event.event_type_id)
-                .push_bind(
-                    chrono::DateTime::from_timestamp(event.timestamp, 0)
-                        .unwrap(),
-                )
-                .push_bind(Json(event.metadata));
-        });
+        let mut query = sqlx::query(&sql);
+        for event in batch {
+            query = query
+                .bind(event.id)
+                .bind(event.user_id)
+                .bind(event.event_type_id)
+                .bind(event.timestamp)
+                .bind(Json(event.metadata));
+        }
 
-        query_builder.build().execute(&pool).await?;
+        query.execute(&pool).await?;
     }
 
     Ok(())
