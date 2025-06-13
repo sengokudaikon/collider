@@ -11,23 +11,12 @@ path = "src/main.rs"
 
 [[bin]]
 name = "seeder-2"
-path = "src/main_2_75s.rs"
+path = "src/main_2.rs"
 
-[[bin]]
-name = "seeder-3"
-path = "src/main_direct.rs"
-
-[[bin]]
-name = "seeder-4"
-path = "src/main_75s.rs"
-
-[[bin]]
-name = "seeder-5"
-path = "src/main_105.rs"
 [dependencies]
 tokio = { version = "1.45", features = ["full"] }
 anyhow = "1.0"
-
+atomic-time = "0.1.5"
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json"] }
 uuid = { version = "1.0", features = ["v7"] }
 chrono = { version = "0.4", features = ["serde"] }
