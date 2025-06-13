@@ -1,7 +1,6 @@
 use database_traits::dao::GenericDao;
 use events_dao::EventDao;
-use events_models::{EventActiveModel, EventModel};
-use sea_orm::ActiveValue::Set;
+use events_models::{Event, UpdateEvent};
 use serde::{Deserialize, Serialize};
 use sql_connection::SqlConnect;
 use thiserror::Error;
@@ -11,8 +10,6 @@ use uuid::Uuid;
 
 #[derive(Debug, Error)]
 pub enum UpdateEventError {
-    #[error("Database error: {0}")]
-    Database(#[from] sea_orm::DbErr),
     #[error("DAO error: {0}")]
     Dao(#[from] events_dao::EventDaoError),
 }
@@ -55,33 +52,15 @@ impl UpdateEventHandler {
     pub async fn execute(
         &self, command: UpdateEventCommand,
     ) -> Result<UpdateEventResult, UpdateEventError> {
-        // Find the existing event to get current values
-        let existing_event =
-            self.event_dao.find_by_id(command.event_id).await?;
-
-        // Create ActiveModel with updates
-        let active_model = EventActiveModel {
-            id: Set(existing_event.id),
-            user_id: Set(existing_event.user_id),
-            event_type_id: if let Some(event_type_id) = command.event_type_id
-            {
-                Set(event_type_id)
-            }
-            else {
-                Set(existing_event.event_type_id)
-            },
-            timestamp: Set(existing_event.timestamp),
-            metadata: if command.metadata.is_some() {
-                Set(command.metadata)
-            }
-            else {
-                Set(existing_event.metadata)
-            },
+        let update_event = UpdateEvent {
+            user_id: None, // Don't change user_id
+            event_type_id: command.event_type_id,
+            metadata: command.metadata,
         };
 
         let updated_event = self
             .event_dao
-            .update(command.event_id, active_model)
+            .update(command.event_id, update_event)
             .await?;
 
         Ok(UpdateEventResult {
@@ -96,8 +75,8 @@ impl UpdateEventHandler {
     }
 }
 
-impl From<EventModel> for UpdateEventResponse {
-    fn from(event: EventModel) -> Self {
+impl From<Event> for UpdateEventResponse {
+    fn from(event: Event) -> Self {
         Self {
             id: event.id,
             user_id: event.user_id,
@@ -113,8 +92,7 @@ mod tests {
     use chrono::Utc;
     use database_traits::dao::GenericDao;
     use events_dao::EventDao;
-    use events_models::EventActiveModel;
-    use sea_orm::ActiveValue::Set;
+    use events_models::NewEvent;
     use test_utils::{postgres::TestPostgresContainer, *};
     use uuid::Uuid;
 
@@ -139,12 +117,12 @@ mod tests {
             create_test_event_types(&container).await.unwrap();
         let user_id = create_test_user(&container).await.unwrap();
 
-        let create_request = EventActiveModel {
-            id: Set(Uuid::now_v7()),
-            user_id: Set(user_id),
-            event_type_id: Set(event_type_id),
-            timestamp: Set(Utc::now()),
-            metadata: Set(Some(serde_json::json!({"original": "data"}))),
+        let create_request = NewEvent {
+            id: Uuid::now_v7(),
+            user_id,
+            event_type_id,
+            timestamp: Utc::now(),
+            metadata: Some(serde_json::json!({"original": "data"})),
         };
         let created_event = dao.create(create_request).await.unwrap();
 
@@ -171,12 +149,12 @@ mod tests {
             create_test_event_types(&container).await.unwrap();
         let user_id = create_test_user(&container).await.unwrap();
 
-        let create_request = EventActiveModel {
-            id: Set(Uuid::now_v7()),
-            user_id: Set(user_id),
-            event_type_id: Set(original_type),
-            timestamp: Set(Utc::now()),
-            metadata: Set(Some(serde_json::json!({"key": "value"}))),
+        let create_request = NewEvent {
+            id: Uuid::now_v7(),
+            user_id,
+            event_type_id: original_type,
+            timestamp: Utc::now(),
+            metadata: Some(serde_json::json!({"key": "value"})),
         };
         let created_event = dao.create(create_request).await.unwrap();
 
@@ -203,12 +181,12 @@ mod tests {
             create_test_event_types(&container).await.unwrap();
         let user_id = create_test_user(&container).await.unwrap();
 
-        let create_request = EventActiveModel {
-            id: Set(Uuid::now_v7()),
-            user_id: Set(user_id),
-            event_type_id: Set(original_type),
-            timestamp: Set(Utc::now()),
-            metadata: Set(Some(serde_json::json!({"original": "data"}))),
+        let create_request = NewEvent {
+            id: Uuid::now_v7(),
+            user_id,
+            event_type_id: original_type,
+            timestamp: Utc::now(),
+            metadata: Some(serde_json::json!({"original": "data"})),
         };
         let created_event = dao.create(create_request).await.unwrap();
 
@@ -237,12 +215,12 @@ mod tests {
             create_test_event_types(&container).await.unwrap();
         let user_id = create_test_user(&container).await.unwrap();
 
-        let create_request = EventActiveModel {
-            id: Set(Uuid::now_v7()),
-            user_id: Set(user_id),
-            event_type_id: Set(event_type_id),
-            timestamp: Set(Utc::now()),
-            metadata: Set(Some(serde_json::json!({"original": "data"}))),
+        let create_request = NewEvent {
+            id: Uuid::now_v7(),
+            user_id,
+            event_type_id,
+            timestamp: Utc::now(),
+            metadata: Some(serde_json::json!({"original": "data"})),
         };
         let created_event = dao.create(create_request).await.unwrap();
 
@@ -285,12 +263,12 @@ mod tests {
             create_test_event_types(&container).await.unwrap();
         let user_id = create_test_user(&container).await.unwrap();
 
-        let create_request = EventActiveModel {
-            id: Set(Uuid::now_v7()),
-            user_id: Set(user_id),
-            event_type_id: Set(event_type_id),
-            timestamp: Set(Utc::now()),
-            metadata: Set(None),
+        let create_request = NewEvent {
+            id: Uuid::now_v7(),
+            user_id,
+            event_type_id,
+            timestamp: Utc::now(),
+            metadata: None,
         };
         let created_event = dao.create(create_request).await.unwrap();
 

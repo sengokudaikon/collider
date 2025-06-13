@@ -36,8 +36,8 @@ pub struct GetUserByNameResponse {
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
-impl From<users::Model> for GetUserByNameResponse {
-    fn from(user: users::Model) -> Self {
+impl From<users::User> for GetUserByNameResponse {
+    fn from(user: users::User) -> Self {
         Self {
             id: user.id,
             name: user.name,

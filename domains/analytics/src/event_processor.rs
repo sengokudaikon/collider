@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use events_dao::EventDao;
-use events_models::{EventActiveModel, EventModel};
-use sql_connection::database_traits::dao::GenericDao;
+use events_models::{NewEvent, Event};
+use database_traits::dao::GenericDao;
 use thiserror::Error;
 use tokio::sync::mpsc;
 use tracing::{error, info, instrument, warn};
@@ -22,7 +22,7 @@ pub enum EventProcessorError {
 pub struct EventProcessor {
     event_dao: EventDao,
     analytics: Arc<dyn EventsAnalytics>,
-    event_sender: mpsc::UnboundedSender<EventModel>,
+    event_sender: mpsc::UnboundedSender<Event>,
 }
 
 impl EventProcessor {
@@ -47,8 +47,8 @@ impl EventProcessor {
 
     #[instrument(skip(self, active_model))]
     pub async fn create_event(
-        &self, active_model: EventActiveModel,
-    ) -> Result<EventModel, EventProcessorError> {
+        &self, active_model: NewEvent,
+    ) -> Result<Event, EventProcessorError> {
         let event = self.event_dao.create(active_model).await?;
 
         if self.event_sender.send(event.clone()).is_err() {
@@ -69,7 +69,7 @@ impl EventProcessor {
 
     async fn process_analytics_events(
         analytics: Arc<dyn EventsAnalytics>,
-        mut receiver: mpsc::UnboundedReceiver<EventModel>,
+        mut receiver: mpsc::UnboundedReceiver<Event>,
     ) {
         while let Some(event) = receiver.recv().await {
             if let Err(e) = analytics.process_event(&event).await {
@@ -85,8 +85,8 @@ impl EventProcessor {
 
     #[instrument(skip(self, active_models))]
     pub async fn create_events_batch(
-        &self, active_models: Vec<EventActiveModel>,
-    ) -> Result<Vec<EventModel>, EventProcessorError> {
+        &self, active_models: Vec<NewEvent>,
+    ) -> Result<Vec<Event>, EventProcessorError> {
         let mut results = Vec::with_capacity(active_models.len());
 
         for chunk in active_models.chunks(100) {
@@ -155,7 +155,7 @@ mod tests {
 
     use async_trait::async_trait;
     use chrono::Utc;
-    use sea_orm::Set;
+    use chrono::Utc;
     use test_utils::{
         create_sql_connect, postgres::TestPostgresContainer,
         redis::TestRedisContainer,
@@ -170,7 +170,7 @@ mod tests {
     };
 
     struct MockAnalytics {
-        processed_events: std::sync::Mutex<Vec<EventModel>>,
+        processed_events: std::sync::Mutex<Vec<Event>>,
     }
 
     impl MockAnalytics {
@@ -180,7 +180,7 @@ mod tests {
             }
         }
 
-        fn get_processed_events(&self) -> Vec<EventModel> {
+        fn get_processed_events(&self) -> Vec<Event> {
             self.processed_events.lock().unwrap().clone()
         }
     }
@@ -188,7 +188,7 @@ mod tests {
     #[async_trait]
     impl EventsAnalytics for MockAnalytics {
         async fn process_event(
-            &self, event: &EventModel,
+            &self, event: &Event,
         ) -> Result<(), AnalyticsError> {
             self.processed_events.lock().unwrap().push(event.clone());
             Ok(())
@@ -297,12 +297,12 @@ mod tests {
         let processor =
             EventProcessor::new(event_dao, mock_analytics.clone());
 
-        let active_model = EventActiveModel {
-            id: Set(Uuid::now_v7()),
-            user_id: Set(user_id),
-            event_type_id: Set(1),
-            timestamp: Set(chrono::Utc::now()),
-            metadata: Set(Some(serde_json::json!({"test": "data"}))),
+        let active_model = NewEvent {
+            id: Uuid::now_v7(),
+            user_id,
+            event_type_id: 1,
+            timestamp: Utc::now(),
+            metadata: Some(serde_json::json!({"test": "data"})),
         };
 
         let result = processor.create_event(active_model).await.unwrap();
@@ -336,26 +336,26 @@ mod tests {
             EventProcessor::new(event_dao, mock_analytics.clone());
 
         let active_models = vec![
-            EventActiveModel {
-                id: Set(Uuid::now_v7()),
-                user_id: Set(user_id),
-                event_type_id: Set(1),
-                timestamp: Set(chrono::Utc::now()),
-                metadata: Set(Some(serde_json::json!({"batch": 1}))),
+            NewEvent {
+                id: Uuid::now_v7(),
+                user_id,
+                event_type_id: 1,
+                timestamp: Utc::now(),
+                metadata: Some(serde_json::json!({"batch": 1})),
             },
-            EventActiveModel {
-                id: Set(Uuid::now_v7()),
-                user_id: Set(user_id),
-                event_type_id: Set(1),
-                timestamp: Set(chrono::Utc::now()),
-                metadata: Set(Some(serde_json::json!({"batch": 2}))),
+            NewEvent {
+                id: Uuid::now_v7(),
+                user_id,
+                event_type_id: 1,
+                timestamp: Utc::now(),
+                metadata: Some(serde_json::json!({"batch": 2})),
             },
-            EventActiveModel {
-                id: Set(Uuid::now_v7()),
-                user_id: Set(user_id),
-                event_type_id: Set(1),
-                timestamp: Set(chrono::Utc::now()),
-                metadata: Set(Some(serde_json::json!({"batch": 3}))),
+            NewEvent {
+                id: Uuid::now_v7(),
+                user_id,
+                event_type_id: 1,
+                timestamp: Utc::now(),
+                metadata: Some(serde_json::json!({"batch": 3})),
             },
         ];
 
@@ -409,14 +409,14 @@ mod tests {
         let processor =
             EventProcessor::new(event_dao, real_analytics.clone());
 
-        let active_model = EventActiveModel {
-            id: Set(Uuid::now_v7()),
-            user_id: Set(user_id),
-            event_type_id: Set(1),
-            timestamp: Set(chrono::Utc::now()),
-            metadata: Set(Some(
+        let active_model = NewEvent {
+            id: Uuid::now_v7(),
+            user_id,
+            event_type_id: 1,
+            timestamp: Utc::now(),
+            metadata: Some(
                 serde_json::json!({"page": "login", "source": "web"}),
-            )),
+            ),
         };
 
         let result = processor.create_event(active_model).await.unwrap();

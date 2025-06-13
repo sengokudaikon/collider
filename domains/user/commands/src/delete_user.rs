@@ -1,5 +1,4 @@
 use database_traits::dao::GenericDao;
-use sea_orm::DbErr;
 use serde::Deserialize;
 use sql_connection::SqlConnect;
 use thiserror::Error;
@@ -9,8 +8,6 @@ use uuid::Uuid;
 
 #[derive(Debug, Error)]
 pub enum DeleteUserError {
-    #[error("Database error: {0}")]
-    Database(#[from] DbErr),
     #[error("DAO error: {0}")]
     Dao(#[from] user_dao::UserDaoError),
     #[error("User not found: {user_id}")]

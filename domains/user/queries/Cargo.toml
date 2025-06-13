@@ -22,5 +22,6 @@ utoipa.workspace = true
 [dev-dependencies]
 test-utils.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
-sea-orm.workspace = true
+tokio-postgres.workspace = true
+deadpool-postgres.workspace = true
 anyhow.workspace = true

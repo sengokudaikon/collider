@@ -2,11 +2,9 @@ pub mod event_types;
 pub mod events;
 
 pub use event_types::{
-    ActiveModel as EventTypeActiveModel, Column as EventTypeColumn,
-    CreateEventTypeRequest, Entity as EventTypeEntity, EventTypeResponse,
-    Model as EventTypeModel, UpdateEventTypeRequest,
+    CreateEventTypeRequest, EventType, EventTypeResponse,
+    NewEventType, UpdateEventTypeRequest,
 };
 pub use events::{
-    ActiveModel as EventActiveModel, Column as EventColumn,
-    Entity as EventEntity, Model as EventModel,
+    Event, NewEvent, UpdateEvent,
 };

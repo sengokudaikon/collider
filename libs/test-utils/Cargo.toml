@@ -6,9 +6,9 @@ edition = "2024"
 [dependencies]
 tokio.workspace = true
 anyhow.workspace = true
-sqlx.workspace = true
+tokio-postgres.workspace = true
+deadpool-postgres.workspace = true
 deadpool-redis.workspace = true
-sea-orm.workspace = true
 sql-connection.workspace = true
 redis-connection.workspace = true
 serde.workspace = true

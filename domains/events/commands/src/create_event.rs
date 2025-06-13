@@ -1,8 +1,7 @@
 use chrono::Utc;
 use database_traits::dao::GenericDao;
 use events_dao::{EventDao, EventTypeDao};
-use events_models::{EventActiveModel, EventModel};
-use sea_orm::ActiveValue::Set;
+use events_models::{Event, NewEvent};
 use serde::{Deserialize, Serialize};
 use sql_connection::SqlConnect;
 use thiserror::Error;
@@ -12,8 +11,6 @@ use uuid::Uuid;
 
 #[derive(Debug, Error)]
 pub enum CreateEventError {
-    #[error("Database error: {0}")]
-    Database(#[from] sea_orm::DbErr),
     #[error("Event DAO error: {0}")]
     EventDao(#[from] events_dao::EventDaoError),
     #[error("Event type DAO error: {0}")]
@@ -65,15 +62,15 @@ impl CreateEventHandler {
             .find_by_name(&command.event_type)
             .await?;
 
-        let active_model = EventActiveModel {
-            id: Set(Uuid::now_v7()),
-            user_id: Set(command.user_id),
-            event_type_id: Set(event_type.id),
-            timestamp: Set(command.timestamp.unwrap_or_else(Utc::now)),
-            metadata: Set(command.metadata),
+        let new_event = NewEvent {
+            id: Uuid::now_v7(),
+            user_id: command.user_id,
+            event_type_id: event_type.id,
+            timestamp: command.timestamp.unwrap_or_else(Utc::now),
+            metadata: command.metadata,
         };
 
-        let saved_event = self.event_dao.create(active_model).await?;
+        let saved_event = self.event_dao.create(new_event).await?;
 
         Ok(CreateEventResult {
             event: CreateEventResponse {
@@ -87,8 +84,8 @@ impl CreateEventHandler {
     }
 }
 
-impl From<EventModel> for CreateEventResponse {
-    fn from(event: EventModel) -> Self {
+impl From<Event> for CreateEventResponse {
+    fn from(event: Event) -> Self {
         Self {
             id: event.id,
             user_id: event.user_id,

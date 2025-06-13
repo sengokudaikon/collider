@@ -1,9 +1,6 @@
-use database_traits::transaction::{GetDatabaseTransaction, TransactionOps};
 use events_models::{
-    CreateEventTypeRequest, EventTypeActiveModel, EventTypeColumn,
-    EventTypeEntity, EventTypeResponse, UpdateEventTypeRequest,
+    CreateEventTypeRequest, EventTypeResponse, UpdateEventTypeRequest,
 };
-use sea_orm::{sea_query::IntoCondition, *};
 use sql_connection::SqlConnect;
 use thiserror::Error;
 use tracing::instrument;
@@ -11,7 +8,9 @@ use tracing::instrument;
 #[derive(Debug, Error)]
 pub enum EventTypeDaoError {
     #[error("Database error: {0}")]
-    Database(#[from] DbErr),
+    Database(#[from] tokio_postgres::Error),
+    #[error("Connection error: {0}")]
+    Connection(#[from] deadpool_postgres::PoolError),
     #[error("Event type not found")]
     NotFound,
     #[error("Event type with this name already exists")]
@@ -29,127 +28,145 @@ impl EventTypeDao {
 
 impl EventTypeDao {
     #[instrument(skip_all)]
-    async fn query_one(
-        &self,
-        condition: impl Into<Option<Condition>> + Send + Sync + 'static,
-        db: &impl ConnectionTrait,
-    ) -> Result<EventTypeResponse, EventTypeDaoError> {
-        let condition = condition.into().unwrap_or_else(Condition::all);
-        let model = {
-            let query = EventTypeEntity::find().filter(condition);
-            let model = query.one(db).await?;
-            model.ok_or(EventTypeDaoError::NotFound)?
-        };
-
-        Ok(model.into())
-    }
-
-    #[instrument(skip_all)]
-    async fn query_all(
-        &self,
-        condition: impl Into<Option<Condition>> + Send + Sync + 'static,
-        db: &impl ConnectionTrait,
-    ) -> Result<Vec<EventTypeResponse>, EventTypeDaoError> {
-        let condition = condition.into().unwrap_or_else(Condition::all);
-        let models = EventTypeEntity::find()
-            .filter(condition)
-            .order_by_asc(EventTypeColumn::Name)
-            .all(db)
-            .await?;
-        Ok(models.into_iter().map(Into::into).collect())
-    }
-
     pub async fn find_by_id(
         &self, id: i32,
     ) -> Result<EventTypeResponse, EventTypeDaoError> {
-        let ctx = self.db.get_transaction().await?;
-        let condition = EventTypeColumn::Id.eq(id).into_condition();
-        let result = self.query_one(condition, &ctx).await;
-        ctx.submit().await?;
-        result
+        let client = self.db.get_client().await?;
+        let stmt = client.prepare("SELECT id, name FROM event_types WHERE id = $1").await?;
+        let rows = client.query(&stmt, &[&id]).await?;
+        
+        let event_type = rows.first()
+            .map(|row| EventTypeResponse {
+                id: row.get(0),
+                name: row.get(1),
+            })
+            .ok_or(EventTypeDaoError::NotFound)?;
+        
+        Ok(event_type)
     }
 
+    #[instrument(skip_all)]
     pub async fn all(
         &self,
     ) -> Result<Vec<EventTypeResponse>, EventTypeDaoError> {
-        let ctx = self.db.get_transaction().await?;
-        let result = self.query_all(Condition::all(), &ctx).await;
-        ctx.submit().await?;
-        result
+        let client = self.db.get_client().await?;
+        let stmt = client.prepare("SELECT id, name FROM event_types ORDER BY name ASC").await?;
+        let rows = client.query(&stmt, &[]).await?;
+        
+        let event_types = rows.iter()
+            .map(|row| EventTypeResponse {
+                id: row.get(0),
+                name: row.get(1),
+            })
+            .collect();
+        
+        Ok(event_types)
     }
 
+    #[instrument(skip_all)]
     pub async fn create(
         &self, req: CreateEventTypeRequest,
     ) -> Result<EventTypeResponse, EventTypeDaoError> {
-        let ctx = self.db.get_transaction().await?;
+        let client = self.db.get_client().await?;
 
-        if EventTypeEntity::find()
-            .filter(EventTypeColumn::Name.eq(&req.name))
-            .one(&ctx)
-            .await?
-            .is_some()
-        {
+        // Check if name already exists
+        let check_stmt = client.prepare("SELECT id FROM event_types WHERE name = $1").await?;
+        let check_rows = client.query(&check_stmt, &[&req.name]).await?;
+        if !check_rows.is_empty() {
             return Err(EventTypeDaoError::AlreadyExists);
         }
 
-        let event_type_model = EventTypeActiveModel {
-            id: NotSet,
-            name: Set(req.name),
-        };
-
-        let result = event_type_model.insert(&ctx).await?;
-        ctx.submit().await?;
-        Ok(result.into())
+        let stmt = client.prepare("INSERT INTO event_types (name) VALUES ($1) RETURNING id, name").await?;
+        let rows = client.query(&stmt, &[&req.name]).await?;
+        
+        let event_type = rows.first()
+            .map(|row| EventTypeResponse {
+                id: row.get(0),
+                name: row.get(1),
+            })
+            .ok_or_else(|| EventTypeDaoError::Database(
+                tokio_postgres::Error::__private_api_timeout()
+            ))?;
+        
+        Ok(event_type)
     }
 
+    #[instrument(skip_all)]
     pub async fn update(
         &self, id: i32, req: UpdateEventTypeRequest,
     ) -> Result<EventTypeResponse, EventTypeDaoError> {
-        let ctx = self.db.get_transaction().await?;
+        let client = self.db.get_client().await?;
 
-        let event_type = EventTypeEntity::find_by_id(id)
-            .one(&ctx)
-            .await?
-            .ok_or(EventTypeDaoError::NotFound)?;
-
-        let mut event_type_active: EventTypeActiveModel = event_type.into();
-
-        if let Some(name) = req.name {
-            if let Some(_existing) = EventTypeEntity::find()
-                .filter(
-                    Condition::all()
-                        .add(EventTypeColumn::Name.eq(&name))
-                        .add(EventTypeColumn::Id.ne(id)),
-                )
-                .one(&ctx)
-                .await?
-            {
-                return Err(EventTypeDaoError::AlreadyExists);
-            }
-            event_type_active.name = Set(name);
+        // Check if event type exists
+        let check_stmt = client.prepare("SELECT id FROM event_types WHERE id = $1").await?;
+        let check_rows = client.query(&check_stmt, &[&id]).await?;
+        if check_rows.is_empty() {
+            return Err(EventTypeDaoError::NotFound);
         }
 
-        let updated_event_type = event_type_active.update(&ctx).await?;
-        ctx.submit().await?;
-        Ok(updated_event_type.into())
+        if let Some(name) = req.name {
+            // Check if new name already exists for a different event type
+            let check_name_stmt = client.prepare("SELECT id FROM event_types WHERE name = $1 AND id != $2").await?;
+            let check_name_rows = client.query(&check_name_stmt, &[&name, &id]).await?;
+            if !check_name_rows.is_empty() {
+                return Err(EventTypeDaoError::AlreadyExists);
+            }
+
+            let stmt = client.prepare("UPDATE event_types SET name = $1 WHERE id = $2 RETURNING id, name").await?;
+            let rows = client.query(&stmt, &[&name, &id]).await?;
+            
+            let event_type = rows.first()
+                .map(|row| EventTypeResponse {
+                    id: row.get(0),
+                    name: row.get(1),
+                })
+                .ok_or(EventTypeDaoError::NotFound)?;
+            
+            Ok(event_type)
+        } else {
+            // No update needed, just return the existing event type
+            let stmt = client.prepare("SELECT id, name FROM event_types WHERE id = $1").await?;
+            let rows = client.query(&stmt, &[&id]).await?;
+            
+            let event_type = rows.first()
+                .map(|row| EventTypeResponse {
+                    id: row.get(0),
+                    name: row.get(1),
+                })
+                .ok_or(EventTypeDaoError::NotFound)?;
+            
+            Ok(event_type)
+        }
     }
 
+    #[instrument(skip_all)]
     pub async fn delete(&self, id: i32) -> Result<(), EventTypeDaoError> {
-        let ctx = self.db.get_transaction().await?;
-        EventTypeEntity::delete_by_id(id).exec(&ctx).await?;
-        ctx.submit().await?;
+        let client = self.db.get_client().await?;
+        let stmt = client.prepare("DELETE FROM event_types WHERE id = $1").await?;
+        let affected = client.execute(&stmt, &[&id]).await?;
+        
+        if affected == 0 {
+            return Err(EventTypeDaoError::NotFound);
+        }
+        
         Ok(())
     }
-}
 
-impl EventTypeDao {
+    #[instrument(skip_all)]
     pub async fn find_by_name(
         &self, name: &str,
     ) -> Result<EventTypeResponse, EventTypeDaoError> {
-        let ctx = self.db.get_transaction().await?;
-        let condition = EventTypeColumn::Name.eq(name).into_condition();
-        let result = self.query_one(condition, &ctx).await;
-        ctx.submit().await?;
-        result
+        let client = self.db.get_client().await?;
+        let stmt = client.prepare("SELECT id, name FROM event_types WHERE name = $1").await?;
+        let rows = client.query(&stmt, &[&name]).await?;
+        
+        let event_type = rows.first()
+            .map(|row| EventTypeResponse {
+                id: row.get(0),
+                name: row.get(1),
+            })
+            .ok_or(EventTypeDaoError::NotFound)?;
+        
+        Ok(event_type)
     }
 }

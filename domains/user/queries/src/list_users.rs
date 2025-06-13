@@ -43,7 +43,7 @@ impl ListUsersQueryHandler {
     #[instrument(skip(self))]
     pub async fn execute(
         &self, query: ListUsersQuery,
-    ) -> Result<Vec<users::Model>, ListUsersError> {
+    ) -> Result<Vec<users::User>, ListUsersError> {
         // For paginated queries, we'll cache with a specific key including
         // limit/offset For now, we'll only cache the default list (no
         // pagination)

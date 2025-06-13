@@ -46,7 +46,7 @@ impl GetUserQueryHandler {
     #[instrument(skip(self))]
     pub async fn execute(
         &self, query: GetUserQuery,
-    ) -> Result<users::Model, GetUserError> {
+    ) -> Result<users::User, GetUserError> {
         let redis = RedisConnectionManager::from_static();
         let mut conn = redis.get_connection().await?;
 

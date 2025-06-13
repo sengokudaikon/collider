@@ -12,8 +12,8 @@ tower-http.workspace = true
 tokio.workspace = true
 
 # Database
-sea-orm.workspace = true
-sqlx.workspace = true
+tokio-postgres.workspace = true
+deadpool-postgres.workspace = true
 
 events-http.workspace = true
 events-commands.workspace = true

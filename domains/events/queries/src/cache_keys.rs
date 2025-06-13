@@ -1,14 +1,14 @@
-use events_models::EventModel;
+use events_models::Event;
 use redis_connection::{json::Json, redis_key};
 use uuid::Uuid;
 
 // Tiered cache keys for events domain
 
 // Event entity caching - shorter TTL since events are updated frequently
-redis_key!(tier EventCacheKey::<Json<EventModel>> => "event:{}"[id: Uuid]);
-redis_key!(tier EventListCacheKey::<Json<Vec<EventModel>>> => "events:list:{}"[filter_hash: String]);
-redis_key!(tier UserEventsCacheKey::<Json<Vec<EventModel>>> => "events:user:{}"[user_id: Uuid]);
-redis_key!(tier UserEventsLimitCacheKey::<Json<Vec<EventModel>>> => "events:user:{}:limit:{}"[user_id: Uuid, limit: u64]);
+redis_key!(tier EventCacheKey::<Json<Event>> => "event:{}"[id: Uuid]);
+redis_key!(tier EventListCacheKey::<Json<Vec<Event>>> => "events:list:{}"[filter_hash: String]);
+redis_key!(tier UserEventsCacheKey::<Json<Vec<Event>>> => "events:user:{}"[user_id: Uuid]);
+redis_key!(tier UserEventsLimitCacheKey::<Json<Vec<Event>>> => "events:user:{}:limit:{}"[user_id: Uuid, limit: u64]);
 
 // Event type caching - longer TTL since types rarely change
 redis_key!(tier EventTypeCacheKey::<Json<String>> => "event_type:{}"[id: Uuid]);

@@ -4,14 +4,12 @@ use sql_connection::SqlConnect;
 use thiserror::Error;
 use tracing::instrument;
 use user_dao::UserDao;
-use user_models as users;
+use user_models::NewUser;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 #[derive(Debug, Error)]
 pub enum CreateUserError {
-    #[error("Database error: {0}")]
-    Database(#[from] sea_orm::DbErr),
     #[error("DAO error: {0}")]
     Dao(#[from] user_dao::UserDaoError),
 }
@@ -56,13 +54,12 @@ impl CreateUserHandler {
     pub async fn execute(
         &self, command: CreateUserCommand,
     ) -> Result<CreateUserResult, CreateUserError> {
-        let user_active = users::ActiveModel {
-            id: sea_orm::ActiveValue::Set(Uuid::now_v7()),
-            name: sea_orm::ActiveValue::Set(command.name),
-            created_at: sea_orm::ActiveValue::Set(chrono::Utc::now()),
+        let new_user = NewUser {
+            id: Uuid::now_v7(),
+            name: command.name,
         };
 
-        let saved_user = self.user_dao.create(user_active).await?;
+        let saved_user = self.user_dao.create(new_user).await?;
 
         let events = vec![UserEvent {
             event_type: "user_created".to_string(),

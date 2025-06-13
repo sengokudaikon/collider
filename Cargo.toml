@@ -28,9 +28,8 @@ members = [
 
 [workspace.dependencies]
 # Database
-sea-orm = { version = "1.1.0", features = ["sqlx-postgres", "runtime-tokio-rustls", "macros", "uuid", "chrono"] }
-sea-orm-migration = { version = "1.1.10", features = ["dotenvy", "runtime-tokio-rustls", "sqlx-postgres", "with-uuid", "with-chrono"] }
-sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-rustls", "uuid", "chrono"] }
+tokio-postgres = { version = "0.7", features = ["with-uuid-1", "with-chrono-0_4", "with-serde_json-1"] }
+deadpool-postgres = "0.14"
 deadpool-redis = { version = "0.21.1", features = ["serde","connection-manager", "cache-aio", "json", ] }
 redis = "0.31.0"
 # Web framework

@@ -1,14 +1,14 @@
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use sea_orm::{Database, DatabaseConnection};
-use sqlx::postgres::PgPoolOptions;
+use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod};
+use tokio_postgres::NoTls;
 use tokio::time::sleep;
 
 use crate::sql_migrator::SqlMigrator;
 
 pub struct TestPostgresContainer {
-    pub connection: DatabaseConnection,
+    pub pool: Pool,
     pub connection_string: String,
     is_unique_db: bool,
     db_name: Option<String>,
@@ -28,19 +28,14 @@ impl TestPostgresContainer {
         // Connect to default postgres database to create the unique test
         // database
         Self::wait_for_postgres_ready(base_connection).await?;
-        let admin_pool = sqlx::postgres::PgPoolOptions::new()
-            .max_connections(1)
-            .connect(base_connection)
-            .await
-            .context("Failed to connect to postgres admin database")?;
+        let admin_pool = Self::create_pool(base_connection).await?;
 
         // Create the unique test database
-        sqlx::query(&format!("CREATE DATABASE {}", unique_db_name))
-            .execute(&admin_pool)
+        let client = admin_pool.get().await?;
+        client
+            .execute(&format!("CREATE DATABASE {}", unique_db_name), &[])
             .await
             .context("Failed to create unique test database")?;
-
-        admin_pool.close().await;
 
         // Now connect to the unique database and set it up
         Self::new_with_connection_string(
@@ -58,12 +53,10 @@ impl TestPostgresContainer {
 
         Self::wait_for_postgres_ready(&connection_string).await?;
 
-        let connection = Database::connect(&connection_string)
-            .await
-            .context("Failed to create database connection")?;
+        let pool = Self::create_pool(&connection_string).await?;
 
         let instance = Self {
-            connection,
+            pool,
             connection_string,
             is_unique_db,
             db_name,
@@ -74,10 +67,25 @@ impl TestPostgresContainer {
         Ok(instance)
     }
 
+    async fn create_pool(connection_string: &str) -> Result<Pool> {
+        let pg_config = connection_string.parse::<tokio_postgres::Config>()?;
+        
+        let mgr_config = ManagerConfig {
+            recycling_method: RecyclingMethod::Fast,
+        };
+        let mgr = Manager::from_config(pg_config, NoTls, mgr_config);
+        
+        let pool = Pool::builder(mgr)
+            .max_size(10)
+            .build()?;
+            
+        Ok(pool)
+    }
+
     pub async fn execute_sql(&self, sql: &str) -> Result<()> {
-        let sqlx_pool = self.connection.get_postgres_connection_pool();
-        sqlx::query(sql)
-            .execute(sqlx_pool)
+        let client = self.pool.get().await?;
+        client
+            .execute(sql, &[])
             .await
             .context("Failed to execute SQL")?;
         Ok(())
@@ -92,8 +100,7 @@ impl TestPostgresContainer {
     }
 
     pub async fn get_migrator(&self) -> Result<SqlMigrator> {
-        let sqlx_pool = self.connection.get_postgres_connection_pool();
-        Ok(SqlMigrator::new(sqlx_pool.clone()))
+        Ok(SqlMigrator::new(self.pool.clone()))
     }
 
     async fn wait_for_postgres_ready(connection_string: &str) -> Result<()> {
@@ -103,21 +110,29 @@ impl TestPostgresContainer {
 
     async fn wait_for_connection(
         connection_string: &str,
-    ) -> Result<sqlx::PgPool> {
+    ) -> Result<Pool> {
         const MAX_ATTEMPTS: u32 = 20;
         const DELAY: Duration = Duration::from_millis(500);
 
         for attempt in 1..=MAX_ATTEMPTS {
-            match PgPoolOptions::new()
-                .max_connections(1)
-                .acquire_timeout(Duration::from_secs(5))
-                .connect(connection_string)
-                .await
-            {
+            match Self::create_pool(connection_string).await {
                 Ok(pool) => {
-                    if sqlx::query("SELECT 1").fetch_one(&pool).await.is_ok()
-                    {
-                        return Ok(pool);
+                    match pool.get().await {
+                        Ok(client) => {
+                            if client.query_one("SELECT 1", &[]).await.is_ok() {
+                                return Ok(pool);
+                            }
+                        }
+                        Err(_) if attempt < MAX_ATTEMPTS => {
+                            sleep(DELAY).await;
+                            continue;
+                        }
+                        Err(e) => {
+                            return Err(e).context(format!(
+                                "PostgreSQL not ready after {} attempts",
+                                MAX_ATTEMPTS
+                            ));
+                        }
                     }
                 }
                 Err(_) if attempt < MAX_ATTEMPTS => {
@@ -170,29 +185,23 @@ async fn cleanup_unique_database(db_name: &str) -> Result<()> {
     let base_connection =
         "postgres://postgres:postgres@localhost:5433/postgres";
 
-    match PgPoolOptions::new()
-        .max_connections(1)
-        .connect(base_connection)
-        .await
-    {
+    match TestPostgresContainer::create_pool(base_connection).await {
         Ok(admin_pool) => {
+            let client = admin_pool.get().await?;
+            
             // Terminate all connections to the database first
             let terminate_query = format!(
                 "SELECT pg_terminate_backend(pid) FROM pg_stat_activity \
                  WHERE datname = '{}' AND pid <> pg_backend_pid()",
                 db_name
             );
-            let _ = sqlx::query(&terminate_query).execute(&admin_pool).await;
+            let _ = client.execute(&terminate_query, &[]).await;
 
             // Drop the database
             let drop_query = format!("DROP DATABASE IF EXISTS {}", db_name);
-            if let Err(e) =
-                sqlx::query(&drop_query).execute(&admin_pool).await
-            {
+            if let Err(e) = client.execute(&drop_query, &[]).await {
                 eprintln!("Failed to drop database {}: {}", db_name, e);
             }
-
-            admin_pool.close().await;
         }
         Err(e) => {
             eprintln!(
@@ -210,21 +219,20 @@ pub async fn cleanup_all_test_databases() -> Result<()> {
     let base_connection =
         "postgres://postgres:postgres@localhost:5433/postgres";
 
-    match PgPoolOptions::new()
-        .max_connections(1)
-        .connect(base_connection)
-        .await
-    {
+    match TestPostgresContainer::create_pool(base_connection).await {
         Ok(admin_pool) => {
+            let client = admin_pool.get().await?;
+            
             // Get all databases that match our test pattern
             let query = "SELECT datname FROM pg_database WHERE datname LIKE \
                          'test_db_%'";
-            let rows: Vec<(String,)> = sqlx::query_as(query)
-                .fetch_all(&admin_pool)
+            let rows = client
+                .query(query, &[])
                 .await
                 .context("Failed to list test databases")?;
 
-            for (db_name,) in rows {
+            for row in rows {
+                let db_name: String = row.get(0);
                 println!("Cleaning up test database: {}", db_name);
 
                 // Terminate all connections to the database first
@@ -233,23 +241,18 @@ pub async fn cleanup_all_test_databases() -> Result<()> {
                      WHERE datname = '{}' AND pid <> pg_backend_pid()",
                     db_name
                 );
-                let _ =
-                    sqlx::query(&terminate_query).execute(&admin_pool).await;
+                let _ = client.execute(&terminate_query, &[]).await;
 
                 // Drop the database
                 let drop_query =
                     format!("DROP DATABASE IF EXISTS {}", db_name);
-                if let Err(e) =
-                    sqlx::query(&drop_query).execute(&admin_pool).await
-                {
+                if let Err(e) = client.execute(&drop_query, &[]).await {
                     eprintln!("Failed to drop database {}: {}", db_name, e);
                 }
                 else {
                     println!("Successfully cleaned up database: {}", db_name);
                 }
             }
-
-            admin_pool.close().await;
         }
         Err(e) => {
             eprintln!(

@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use database_traits::dao::GenericDao;
 use events_dao::EventDao;
-use events_models::EventModel;
+use events_models::Event;
 use redis_connection::{
     connection::RedisConnectionManager, json::Json, type_bind::RedisTypeBind,
 };
@@ -46,7 +46,7 @@ impl GetEventQueryHandler {
     #[instrument(skip(self))]
     pub async fn execute(
         &self, query: GetEventQuery,
-    ) -> Result<EventModel, GetEventError> {
+    ) -> Result<Event, GetEventError> {
         let redis = RedisConnectionManager::from_static();
         let mut conn = redis.get_connection().await?;
 

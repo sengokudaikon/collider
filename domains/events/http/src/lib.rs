@@ -2,7 +2,7 @@ pub mod handlers;
 
 use axum::Router;
 use chrono::{DateTime, Utc};
-use events_models::EventModel;
+use events_models::Event;
 use serde::{Deserialize, Serialize};
 use sql_connection::SqlConnect;
 use utoipa::ToSchema;
@@ -17,8 +17,8 @@ pub struct EventResponse {
     pub metadata: Option<serde_json::Value>,
 }
 
-impl From<EventModel> for EventResponse {
-    fn from(event: EventModel) -> Self {
+impl From<Event> for EventResponse {
+    fn from(event: Event) -> Self {
         Self {
             id: event.id,
             user_id: event.user_id,

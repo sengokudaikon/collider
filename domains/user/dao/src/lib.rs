@@ -1,19 +1,19 @@
 use async_trait::async_trait;
-use database_traits::{
-    dao::GenericDao,
-    transaction::{GetDatabaseTransaction, TransactionOps},
-};
-use sea_orm::{sea_query::IntoCondition, *};
+use database_traits::dao::GenericDao;
 use sql_connection::SqlConnect;
 use thiserror::Error;
+use tokio_postgres::Error as PgError;
 use tracing::instrument;
-use user_models as users;
+use user_models::{User, NewUser, UpdateUser};
 use uuid::Uuid;
+use chrono::Utc;
 
 #[derive(Debug, Error)]
 pub enum UserDaoError {
     #[error("Database error: {0}")]
-    Database(#[from] DbErr),
+    Database(#[from] PgError),
+    #[error("Connection error: {0}")]
+    Connection(#[from] deadpool_postgres::PoolError),
     #[error("User not found")]
     NotFound,
     #[error("Name already exists")]
@@ -33,105 +33,140 @@ impl UserDao {
     #[instrument(skip(self))]
     pub async fn find_by_name(
         &self, name: &str,
-    ) -> Result<Option<users::Model>, UserDaoError> {
-        let ctx = self.db.get_transaction().await?;
-        let user = users::Entity::find()
-            .filter(users::Column::Name.eq(name))
-            .one(&ctx)
-            .await?;
-        ctx.submit().await?;
+    ) -> Result<Option<User>, UserDaoError> {
+        let client = self.db.get_client().await?;
+        let stmt = client.prepare("SELECT id, name, created_at FROM users WHERE name = $1").await?;
+        let rows = client.query(&stmt, &[&name]).await?;
+        
+        let user = if let Some(row) = rows.first() {
+            Some(User {
+                id: row.get(0),
+                name: row.get(1),
+                created_at: row.get(2),
+            })
+        } else {
+            None
+        };
+        
         Ok(user)
     }
 }
 
 #[async_trait]
 impl GenericDao for UserDao {
-    type ActiveModel = users::ActiveModel;
-    type CreateRequest = users::ActiveModel;
-    type Entity = users::Entity;
+    type Model = User;
+    type Response = User;
+    type CreateRequest = NewUser;
+    type UpdateRequest = UpdateUser;
     type Error = UserDaoError;
     type ID = Uuid;
-    type Model = users::Model;
-    type Response = users::Model;
-    type UpdateRequest = users::ActiveModel;
 
-    #[instrument(skip_all)]
-    async fn query_one(
-        &self,
-        condition: impl Into<Option<Condition>> + Send + Sync + 'static,
-        db: &impl ConnectionTrait,
-    ) -> Result<Self::Response, Self::Error> {
-        let condition = condition.into().unwrap_or_else(Condition::all);
-        let model = users::Entity::find()
-            .filter(condition)
-            .one(db)
-            .await?
-            .ok_or(UserDaoError::NotFound)?;
-
-        Ok(model)
-    }
-
-    #[instrument(skip_all)]
-    async fn query_all(
-        &self,
-        condition: impl Into<Option<Condition>> + Send + Sync + 'static,
-        db: &impl ConnectionTrait,
-    ) -> Result<Vec<Self::Response>, Self::Error> {
-        let condition = condition.into().unwrap_or_else(Condition::all);
-        let models = users::Entity::find()
-            .filter(condition)
-            .order_by_asc(users::Column::Name)
-            .all(db)
-            .await?;
-
-        Ok(models)
-    }
 
     async fn find_by_id(
         &self, id: Self::ID,
     ) -> Result<Self::Response, Self::Error> {
-        let ctx = self.db.get_transaction().await?;
-        let condition = users::Column::Id.eq(id).into_condition();
-        let result = self.query_one(condition, &ctx).await;
-        ctx.submit().await?;
-        result
+        let client = self.db.get_client().await?;
+        let stmt = client.prepare("SELECT id, name, created_at FROM users WHERE id = $1").await?;
+        let rows = client.query(&stmt, &[&id]).await?;
+        
+        let user = rows.first()
+            .map(|row| User {
+                id: row.get(0),
+                name: row.get(1),
+                created_at: row.get(2),
+            })
+            .ok_or(UserDaoError::NotFound)?;
+        
+        Ok(user)
     }
 
     async fn all(&self) -> Result<Vec<Self::Response>, Self::Error> {
-        let ctx = self.db.get_transaction().await?;
-        let result = self.query_all(Condition::all(), &ctx).await;
-        ctx.submit().await?;
-        result
+        let client = self.db.get_client().await?;
+        let stmt = client.prepare("SELECT id, name, created_at FROM users ORDER BY name ASC").await?;
+        let rows = client.query(&stmt, &[]).await?;
+        
+        let users = rows.iter()
+            .map(|row| User {
+                id: row.get(0),
+                name: row.get(1),
+                created_at: row.get(2),
+            })
+            .collect();
+        
+        Ok(users)
     }
 
     async fn create(
         &self, req: Self::CreateRequest,
     ) -> Result<Self::Response, Self::Error> {
-        let ctx = self.db.get_transaction().await?;
-        let result = req.insert(&ctx).await?;
-        ctx.submit().await?;
-        Ok(result)
+        let client = self.db.get_client().await?;
+        let created_at = Utc::now();
+        let stmt = client.prepare("INSERT INTO users (id, name, created_at) VALUES ($1, $2, $3) RETURNING id, name, created_at").await?;
+        let rows = client.query(&stmt, &[&req.id, &req.name, &created_at]).await?;
+        
+        let user = rows.first()
+            .map(|row| User {
+                id: row.get(0),
+                name: row.get(1),
+                created_at: row.get(2),
+            })
+            .ok_or_else(|| UserDaoError::Database(PgError::__private_api_timeout()))?;
+        
+        Ok(user)
     }
 
     async fn update(
         &self, id: Self::ID, req: Self::UpdateRequest,
     ) -> Result<Self::Response, Self::Error> {
-        let ctx = self.db.get_transaction().await?;
+        let client = self.db.get_client().await?;
 
-        let _existing = users::Entity::find_by_id(id)
-            .one(&ctx)
-            .await?
-            .ok_or(UserDaoError::NotFound)?;
+        // Check if user exists first
+        let check_stmt = client.prepare("SELECT id FROM users WHERE id = $1").await?;
+        let check_rows = client.query(&check_stmt, &[&id]).await?;
+        if check_rows.is_empty() {
+            return Err(UserDaoError::NotFound);
+        }
 
-        let result = req.update(&ctx).await?;
-        ctx.submit().await?;
-        Ok(result)
+        // Update the user
+        if let Some(name) = req.name {
+            let stmt = client.prepare("UPDATE users SET name = $1 WHERE id = $2 RETURNING id, name, created_at").await?;
+            let rows = client.query(&stmt, &[&name, &id]).await?;
+            
+            let user = rows.first()
+                .map(|row| User {
+                    id: row.get(0),
+                    name: row.get(1),
+                    created_at: row.get(2),
+                })
+                .ok_or(UserDaoError::NotFound)?;
+            
+            Ok(user)
+        } else {
+            // No update needed, just return the existing user
+            let stmt = client.prepare("SELECT id, name, created_at FROM users WHERE id = $1").await?;
+            let rows = client.query(&stmt, &[&id]).await?;
+            
+            let user = rows.first()
+                .map(|row| User {
+                    id: row.get(0),
+                    name: row.get(1),
+                    created_at: row.get(2),
+                })
+                .ok_or(UserDaoError::NotFound)?;
+            
+            Ok(user)
+        }
     }
 
     async fn delete(&self, id: Self::ID) -> Result<(), Self::Error> {
-        let ctx = self.db.get_transaction().await?;
-        users::Entity::delete_by_id(id).exec(&ctx).await?;
-        ctx.submit().await?;
+        let client = self.db.get_client().await?;
+        let stmt = client.prepare("DELETE FROM users WHERE id = $1").await?;
+        let affected = client.execute(&stmt, &[&id]).await?;
+        
+        if affected == 0 {
+            return Err(UserDaoError::NotFound);
+        }
+        
         Ok(())
     }
 }
@@ -140,33 +175,54 @@ impl UserDao {
     #[instrument(skip_all)]
     pub async fn find_with_pagination(
         &self, limit: Option<u64>, offset: Option<u64>,
-    ) -> Result<Vec<users::Model>, UserDaoError> {
-        let ctx = self.db.get_transaction().await?;
+    ) -> Result<Vec<User>, UserDaoError> {
+        let client = self.db.get_client().await?;
 
-        let mut query =
-            users::Entity::find().order_by_asc(users::Column::Name);
+        let (query, limit_i64, offset_i64) = match (limit, offset) {
+            (Some(l), Some(o)) => {
+                ("SELECT id, name, created_at FROM users ORDER BY name ASC LIMIT $1 OFFSET $2".to_string(), 
+                 Some(l as i64), Some(o as i64))
+            },
+            (Some(l), None) => {
+                ("SELECT id, name, created_at FROM users ORDER BY name ASC LIMIT $1".to_string(), 
+                 Some(l as i64), None)
+            },
+            (None, Some(o)) => {
+                ("SELECT id, name, created_at FROM users ORDER BY name ASC OFFSET $1".to_string(), 
+                 None, Some(o as i64))
+            },
+            (None, None) => {
+                ("SELECT id, name, created_at FROM users ORDER BY name ASC".to_string(), 
+                 None, None)
+            },
+        };
 
-        if let Some(offset) = offset {
-            query = query.offset(offset);
-        }
-
-        if let Some(limit) = limit {
-            query = query.limit(limit);
-        }
-
-        let models = query.all(&ctx).await?;
-        ctx.submit().await?;
-
-        Ok(models)
+        let stmt = client.prepare(&query).await?;
+        let rows = match (limit_i64, offset_i64) {
+            (Some(l), Some(o)) => client.query(&stmt, &[&l, &o]).await?,
+            (Some(l), None) => client.query(&stmt, &[&l]).await?,
+            (None, Some(o)) => client.query(&stmt, &[&o]).await?,
+            (None, None) => client.query(&stmt, &[]).await?,
+        };
+        
+        let users = rows.iter()
+            .map(|row| User {
+                id: row.get(0),
+                name: row.get(1),
+                created_at: row.get(2),
+            })
+            .collect();
+        
+        Ok(users)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use database_traits::dao::GenericDao;
-    use sea_orm::{ActiveValue, sqlx::types::chrono};
+    use chrono::Utc;
     use test_utils::*;
-    use user_models as users;
+    use user_models::{User, NewUser, UpdateUser};
     use uuid::Uuid;
 
     use crate::{UserDao, UserDaoError};
@@ -175,11 +231,10 @@ mod tests {
         TestPostgresContainer::new().await.unwrap()
     }
 
-    fn create_test_user(name: &str) -> users::ActiveModel {
-        users::ActiveModel {
-            id: ActiveValue::Set(Uuid::now_v7()),
-            name: ActiveValue::Set(name.to_string()),
-            created_at: ActiveValue::Set(chrono::Utc::now()),
+    fn create_test_user(name: &str) -> NewUser {
+        NewUser {
+            id: Uuid::now_v7(),
+            name: name.to_string(),
         }
     }
 
@@ -286,10 +341,8 @@ mod tests {
         let user_model = create_test_user("original_name");
         let created_user = dao.create(user_model).await.unwrap();
 
-        let update_model = users::ActiveModel {
-            id: ActiveValue::Set(created_user.id),
-            name: ActiveValue::Set("updated_name".to_string()),
-            created_at: ActiveValue::NotSet,
+        let update_model = UpdateUser {
+            name: Some("updated_name".to_string()),
         };
 
         let updated_user =
@@ -304,10 +357,8 @@ mod tests {
         let sql_connect = create_sql_connect(&container);
         let dao = UserDao::new(sql_connect);
 
-        let update_model = users::ActiveModel {
-            id: ActiveValue::Set(Uuid::now_v7()),
-            name: ActiveValue::Set("updated_name".to_string()),
-            created_at: ActiveValue::NotSet,
+        let update_model = UpdateUser {
+            name: Some("updated_name".to_string()),
         };
 
         let result = dao.update(Uuid::now_v7(), update_model).await;

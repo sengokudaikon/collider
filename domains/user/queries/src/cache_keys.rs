@@ -1,5 +1,5 @@
 use redis_connection::{json::Json, redis_key};
-use user_models::Model as User;
+use user_models::User;
 use uuid::Uuid;
 
 use crate::user_analytics::{EventTypeCount, UserEventMetrics};

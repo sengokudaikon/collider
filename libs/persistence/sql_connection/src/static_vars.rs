@@ -1,57 +1,50 @@
 use std::sync::OnceLock;
 
-use sea_orm::{
-    ConnectOptions, Database, DatabaseConnection, DatabaseTransaction, DbErr,
-    TransactionTrait,
-};
-use tracing::{info, instrument, log};
+use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod};
+use tokio_postgres::NoTls;
+use tracing::{info, instrument};
 
 use crate::config::{DbConnectConfig, DbOptionsConfig};
 
-static SQL_DATABASE_CONNECTION: OnceLock<DatabaseConnection> =
-    OnceLock::new();
+static SQL_DATABASE_POOL: OnceLock<Pool> = OnceLock::new();
 
 #[instrument(skip_all, name = "connect-pgsql")]
-pub async fn connect_postgres_db<C>(config: &C) -> Result<(), DbErr>
+pub async fn connect_postgres_db<C>(config: &C) -> Result<(), anyhow::Error>
 where
     C: DbConnectConfig + DbOptionsConfig,
 {
     let db_url = config.uri();
 
     info!(
-        mysql.url = db_url,
-        mysql.max_conn = ?config.max_conn(),
-        mysql.min_conn = ?config.min_conn(),
-        mysql.sqlx.log = config.sql_logger()
+        postgres.url = db_url,
+        postgres.max_conn = ?config.max_conn(),
+        postgres.min_conn = ?config.min_conn(),
+        postgres.sql_logger = config.sql_logger()
     );
 
-    let mut db_options = ConnectOptions::new(db_url);
+    let pg_config = db_url.parse::<tokio_postgres::Config>()?;
+    
+    let mgr_config = ManagerConfig {
+        recycling_method: RecyclingMethod::Fast,
+    };
+    let mgr = Manager::from_config(pg_config, NoTls, mgr_config);
+    
+    let mut pool_builder = Pool::builder(mgr);
+    
     if let Some(max_conn) = config.max_conn() {
-        db_options.max_connections(max_conn);
+        pool_builder = pool_builder.max_size(max_conn as usize);
     }
-    if let Some(min_conn) = config.min_conn() {
-        db_options.min_connections(min_conn);
-    }
-    db_options
-        .sqlx_logging(config.sql_logger())
-        .sqlx_logging_level(log::LevelFilter::Info)
-        .set_schema_search_path("public");
+    
+    let pool = pool_builder.build()?;
 
-    let connect = Database::connect(db_options).await?;
-
-    if SQL_DATABASE_CONNECTION.set(connect).is_err() {
-        panic!("SQL database connection already established")
+    if SQL_DATABASE_POOL.set(pool).is_err() {
+        panic!("SQL database pool already established")
     }
     Ok(())
 }
 
-pub fn get_sql_database() -> &'static DatabaseConnection {
-    SQL_DATABASE_CONNECTION
+pub fn get_sql_pool() -> &'static Pool {
+    SQL_DATABASE_POOL
         .get()
-        .expect("SQL database connection not established")
-}
-
-#[allow(dead_code)]
-pub async fn get_sql_transaction() -> Result<DatabaseTransaction, DbErr> {
-    get_sql_database().begin().await
+        .expect("SQL database pool not established")
 }

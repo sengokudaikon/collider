@@ -11,8 +11,6 @@ use uuid::Uuid;
 
 #[derive(Debug, Error)]
 pub enum UpdateUserError {
-    #[error("Database error: {0}")]
-    Database(#[from] sea_orm::DbErr),
     #[error("DAO error: {0}")]
     Dao(#[from] user_dao::UserDaoError),
     #[error("User not found: {user_id}")]
@@ -69,17 +67,15 @@ impl UpdateUserHandler {
                     }
                 },
             )?;
-        let mut user_active: users::ActiveModel =
-            existing_user.clone().into();
-
         let name_updated = command.name.is_some();
         let user_id = command.user_id;
 
-        if let Some(name) = command.name {
-            user_active.name = sea_orm::ActiveValue::Set(name);
-        }
+        let update_request = users::UpdateUser {
+            name: command.name,
+        };
+        
         let updated_user =
-            self.user_dao.update(command.user_id, user_active).await?;
+            self.user_dao.update(command.user_id, update_request).await?;
 
         let mut events = vec![];
 

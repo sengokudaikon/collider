@@ -1,11 +1,12 @@
-use sqlx::{PgPool, Postgres, Transaction};
+use deadpool_postgres::Pool;
+use tokio_postgres::Transaction;
 
 pub struct SqlMigrator {
-    pool: PgPool,
+    pool: Pool,
 }
 
 impl SqlMigrator {
-    pub fn new(pool: PgPool) -> Self { Self { pool } }
+    pub fn new(pool: Pool) -> Self { Self { pool } }
 
     pub async fn run_all_migrations(&self) -> anyhow::Result<()> {
         self.create_migration_table().await?;
@@ -45,9 +46,10 @@ impl SqlMigrator {
             if !self.is_migration_applied(migration_name).await? {
                 println!("Running migration: {}", migration_name);
 
-                let mut tx = self.pool.begin().await?;
+                let mut client = self.pool.get().await?;
+                let tx = client.transaction().await?;
 
-                self.execute_migration_sql(&mut tx, migration_sql)
+                self.execute_migration_sql(&tx, migration_sql)
                     .await
                     .map_err(|e| {
                         anyhow::anyhow!(
@@ -57,12 +59,11 @@ impl SqlMigrator {
                         )
                     })?;
 
-                sqlx::query(
+                tx.execute(
                     "INSERT INTO _migrations (name, applied_at) VALUES ($1, \
                      NOW())",
+                    &[&migration_name],
                 )
-                .bind(migration_name)
-                .execute(&mut *tx)
                 .await?;
 
                 tx.commit().await?;
@@ -83,31 +84,35 @@ impl SqlMigrator {
     }
 
     async fn create_migration_table(&self) -> anyhow::Result<()> {
-        sqlx::query(
-            r#"
+        let client = self.pool.get().await?;
+        client
+            .execute(
+                r#"
             CREATE TABLE IF NOT EXISTS _migrations (
                 id SERIAL PRIMARY KEY,
                 name VARCHAR(255) NOT NULL UNIQUE,
                 applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )
             "#,
-        )
-        .execute(&self.pool)
-        .await?;
+                &[],
+            )
+            .await?;
         Ok(())
     }
 
     async fn is_migration_applied(
         &self, migration_name: &str,
     ) -> anyhow::Result<bool> {
-        let count: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM _migrations WHERE name = $1",
-        )
-        .bind(migration_name)
-        .fetch_one(&self.pool)
-        .await?;
-
-        Ok(count.0 > 0)
+        let client = self.pool.get().await?;
+        let row = client
+            .query_one(
+                "SELECT COUNT(*) FROM _migrations WHERE name = $1",
+                &[&migration_name],
+            )
+            .await?;
+        
+        let count: i64 = row.get(0);
+        Ok(count > 0)
     }
 
     pub async fn run_migration(
@@ -116,9 +121,10 @@ impl SqlMigrator {
         self.create_migration_table().await?;
 
         if !self.is_migration_applied(migration_name).await? {
-            let mut tx = self.pool.begin().await?;
+            let mut client = self.pool.get().await?;
+            let tx = client.transaction().await?;
 
-            self.execute_migration_sql(&mut tx, migration_sql)
+            self.execute_migration_sql(&tx, migration_sql)
                 .await
                 .map_err(|e| {
                     anyhow::anyhow!(
@@ -128,12 +134,11 @@ impl SqlMigrator {
                     )
                 })?;
 
-            sqlx::query(
+            tx.execute(
                 "INSERT INTO _migrations (name, applied_at) VALUES ($1, \
                  NOW())",
+                &[&migration_name],
             )
-            .bind(migration_name)
-            .execute(&mut *tx)
             .await?;
 
             tx.commit().await?;
@@ -147,17 +152,19 @@ impl SqlMigrator {
     ) -> anyhow::Result<Vec<String>> {
         self.create_migration_table().await?;
 
-        let rows: Vec<(String,)> = sqlx::query_as(
-            "SELECT name FROM _migrations ORDER BY applied_at",
-        )
-        .fetch_all(&self.pool)
-        .await?;
+        let client = self.pool.get().await?;
+        let rows = client
+            .query(
+                "SELECT name FROM _migrations ORDER BY applied_at",
+                &[],
+            )
+            .await?;
 
-        Ok(rows.into_iter().map(|(name,)| name).collect())
+        Ok(rows.into_iter().map(|row| row.get(0)).collect())
     }
 
-    async fn execute_migration_sql(
-        &self, tx: &mut Transaction<'_, Postgres>, migration_sql: &str,
+    async fn execute_migration_sql<'a>(
+        &self, tx: &Transaction<'a>, migration_sql: &str,
     ) -> anyhow::Result<()> {
         let statements = self.split_sql_statements(migration_sql);
 
@@ -173,7 +180,7 @@ impl SqlMigrator {
                 && !trimmed.starts_with("/*")
             {
                 println!("Executing SQL: {}", trimmed);
-                sqlx::query(trimmed).execute(&mut **tx).await.map_err(
+                tx.execute(trimmed, &[]).await.map_err(
                     |e| {
                         anyhow::anyhow!(
                             "Failed to execute SQL statement '{}': {}",
@@ -270,9 +277,10 @@ impl SqlMigrator {
             if migrations_to_rollback.contains(&migration_name) {
                 println!("Rolling back migration: {}", migration_name);
 
-                let mut tx = self.pool.begin().await?;
+                let mut client = self.pool.get().await?;
+                let tx = client.transaction().await?;
 
-                self.execute_migration_sql(&mut tx, down_sql)
+                self.execute_migration_sql(&tx, down_sql)
                     .await
                     .map_err(|e| {
                         anyhow::anyhow!(
@@ -282,10 +290,11 @@ impl SqlMigrator {
                         )
                     })?;
 
-                sqlx::query("DELETE FROM _migrations WHERE name = $1")
-                    .bind(migration_name)
-                    .execute(&mut *tx)
-                    .await?;
+                tx.execute(
+                    "DELETE FROM _migrations WHERE name = $1",
+                    &[&migration_name],
+                )
+                .await?;
 
                 tx.commit().await?;
                 println!(
@@ -309,8 +318,9 @@ impl SqlMigrator {
 
         self.run_down_migrations(&migrations_to_rollback).await?;
 
-        sqlx::query("DROP TABLE IF EXISTS _migrations CASCADE")
-            .execute(&self.pool)
+        let client = self.pool.get().await?;
+        client
+            .execute("DROP TABLE IF EXISTS _migrations CASCADE", &[])
             .await?;
 
         println!("All migrations reset successfully");

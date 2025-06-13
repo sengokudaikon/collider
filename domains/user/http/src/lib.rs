@@ -22,8 +22,8 @@ pub use user_queries::{
     EventTypeCount, GetUserByNameResponse, UserEventMetrics,
 };
 
-impl From<user_models::Model> for UserResponse {
-    fn from(user: user_models::Model) -> Self {
+impl From<user_models::User> for UserResponse {
+    fn from(user: user_models::User) -> Self {
         Self {
             id: user.id,
             name: user.name,
@@ -46,7 +46,7 @@ impl From<GetUserByNameResponse> for UserResponse {
 
 impl UserResponse {
     pub fn with_metrics(
-        user: user_models::Model, metrics: UserEventMetrics,
+        user: user_models::User, metrics: UserEventMetrics,
     ) -> Self {
         Self {
             id: user.id,
@@ -57,7 +57,7 @@ impl UserResponse {
     }
 
     pub fn with_event_ids(
-        user: user_models::Model, event_ids: Vec<Uuid>,
+        user: user_models::User, event_ids: Vec<Uuid>,
     ) -> Self {
         Self {
             id: user.id,

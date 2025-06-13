@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use events_models::EventModel;
+use events_models::Event;
 use sql_connection::SqlConnect;
 use thiserror::Error;
 use tracing::{error, info, instrument};
@@ -31,7 +31,7 @@ pub enum AnalyticsError {
 #[async_trait]
 pub trait EventsAnalytics: Send + Sync {
     async fn process_event(
-        &self, event: &EventModel,
+        &self, event: &Event,
     ) -> Result<(), AnalyticsError>;
     async fn get_real_time_metrics(
         &self, bucket: TimeBucket, timestamp: DateTime<Utc>,
@@ -85,7 +85,7 @@ impl EventsAnalyticsService {
 impl EventsAnalytics for EventsAnalyticsService {
     #[instrument(skip(self, event))]
     async fn process_event(
-        &self, event: &EventModel,
+        &self, event: &Event,
     ) -> Result<(), AnalyticsError> {
         let aggregation = EventAggregation {
             event_type: format!("type_{}", event.event_type_id),

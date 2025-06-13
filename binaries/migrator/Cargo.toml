@@ -10,13 +10,12 @@ path = "src/main.rs"
 [dependencies]
 tokio.workspace = true
 anyhow.workspace = true
-sqlx.workspace = true
-sea-orm.workspace = true
+tokio-postgres.workspace = true
+deadpool-postgres.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 
 # Migration dependencies
-sea-orm-migration.workspace = true
 async-trait.workspace = true
 
 # CLI and TUI dependencies

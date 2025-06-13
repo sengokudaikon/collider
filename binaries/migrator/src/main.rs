@@ -2,9 +2,8 @@ use std::env;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use database_traits::connection::GetDatabaseConnect;
 use sql_connection::{
-    SqlConnect, config::PostgresDbConfig, connect_postgres_db,
+    config::PostgresDbConfig, connect_postgres_db, get_sql_pool,
 };
 use test_utils::SqlMigrator;
 use tracing::{Level, info};
@@ -61,10 +60,8 @@ async fn main() -> Result<()> {
     connect_postgres_db(&config).await?;
     info!("Connected to database successfully");
 
-    let db = SqlConnect::from_global();
-    let db_conn = db.get_connect();
-    let sqlx_pool = db_conn.get_postgres_connection_pool();
-    let migrator = SqlMigrator::new(sqlx_pool.clone());
+    let pool = get_sql_pool();
+    let migrator = SqlMigrator::new(pool.clone());
 
     match cli.command {
         Some(Commands::Up) => {

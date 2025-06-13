@@ -167,7 +167,7 @@ pub async fn get_stats(
         UserEventsQuery
     ),
     responses(
-        (status = 200, description = "User events", body = Vec<events_models::EventModel>),
+        (status = 200, description = "User events", body = Vec<events_models::Event>),
         (status = 404, description = "User not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -176,7 +176,7 @@ pub async fn get_stats(
 #[instrument(skip_all)]
 pub async fn get_user_events(
     Path(user_id): Path<Uuid>, Query(params): Query<UserEventsQuery>,
-) -> Result<Json<Vec<events_models::EventModel>>, AppError> {
+) -> Result<Json<Vec<events_models::Event>>, AppError> {
     use events_dao::EventDao;
 
     let db = SqlConnect::from_global();

@@ -4,17 +4,19 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-sea-orm.workspace = true
+tokio-postgres.workspace = true
+deadpool-postgres.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 async-trait.workspace = true
 uuid.workspace = true
+chrono.workspace = true
 sql-connection.workspace = true
 user-models = { path = "../models" }
 database-traits.workspace = true
 
 [dev-dependencies]
-sea-orm-migration.workspace = true
+# sea-orm-migration.workspace = true # removed for tokio-postgres migration
 test-utils.workspace = true
 tokio.workspace = true
 serde.workspace = true

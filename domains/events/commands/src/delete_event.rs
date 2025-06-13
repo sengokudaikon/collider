@@ -8,8 +8,6 @@ use uuid::Uuid;
 
 #[derive(Debug, Error)]
 pub enum DeleteEventError {
-    #[error("Database error: {0}")]
-    Database(#[from] sea_orm::DbErr),
     #[error("DAO error: {0}")]
     Dao(#[from] events_dao::EventDaoError),
 }
@@ -45,8 +43,7 @@ mod tests {
     use chrono::Utc;
     use database_traits::dao::GenericDao;
     use events_dao::{EventDao, EventDaoError};
-    use events_models::EventActiveModel;
-    use sea_orm::ActiveValue::Set;
+    use events_models::NewEvent;
     use test_utils::{postgres::TestPostgresContainer, *};
     use uuid::Uuid;
 
@@ -70,14 +67,14 @@ mod tests {
         let event_type_id = create_test_event_type(&container).await.unwrap();
         let user_id = create_test_user(&container).await.unwrap();
 
-        let active_model = EventActiveModel {
-            id: Set(Uuid::now_v7()),
-            user_id: Set(user_id),
-            event_type_id: Set(event_type_id),
-            timestamp: Set(Utc::now()),
-            metadata: Set(Some(serde_json::json!({"test": "data"}))),
+        let new_event = NewEvent {
+            id: Uuid::now_v7(),
+            user_id,
+            event_type_id,
+            timestamp: Utc::now(),
+            metadata: Some(serde_json::json!({"test": "data"})),
         };
-        let created_event = dao.create(active_model).await.unwrap();
+        let created_event = dao.create(new_event).await.unwrap();
 
         let found_event = dao.find_by_id(created_event.id).await.unwrap();
         assert_eq!(found_event.id, created_event.id);
@@ -113,14 +110,14 @@ mod tests {
 
         let mut event_ids = Vec::new();
         for i in 0..3 {
-            let active_model = EventActiveModel {
-                id: Set(Uuid::now_v7()),
-                user_id: Set(user_id),
-                event_type_id: Set(event_type_id),
-                timestamp: Set(Utc::now()),
-                metadata: Set(Some(serde_json::json!({"sequence": i}))),
+            let new_event = NewEvent {
+                id: Uuid::now_v7(),
+                user_id,
+                event_type_id,
+                timestamp: Utc::now(),
+                metadata: Some(serde_json::json!({"sequence": i})),
             };
-            let created_event = dao.create(active_model).await.unwrap();
+            let created_event = dao.create(new_event).await.unwrap();
             event_ids.push(created_event.id);
         }
 
@@ -154,14 +151,14 @@ mod tests {
             "large_text": "a".repeat(1000)
         });
 
-        let active_model = EventActiveModel {
-            id: Set(Uuid::now_v7()),
-            user_id: Set(user_id),
-            event_type_id: Set(event_type_id),
-            timestamp: Set(Utc::now()),
-            metadata: Set(Some(complex_metadata)),
+        let new_event = NewEvent {
+            id: Uuid::now_v7(),
+            user_id,
+            event_type_id,
+            timestamp: Utc::now(),
+            metadata: Some(complex_metadata),
         };
-        let created_event = dao.create(active_model).await.unwrap();
+        let created_event = dao.create(new_event).await.unwrap();
 
         let command = DeleteEventCommand {
             event_id: created_event.id,

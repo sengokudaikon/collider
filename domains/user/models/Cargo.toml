@@ -4,7 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-sea-orm.workspace = true
+tokio-postgres.workspace = true
+deadpool-postgres.workspace = true
 uuid.workspace = true
 chrono.workspace = true
 serde.workspace = true
