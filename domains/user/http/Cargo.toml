@@ -4,8 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-# Domain dependencies
+# Domain dependencies  
 user-commands = { path = "../commands" }
+user-events = { path = "../events" }
 user-queries = { path = "../queries" }
 user-models.workspace = true
 
@@ -21,6 +22,14 @@ serde_json.workspace = true
 chrono.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+tokio.workspace = true
+
+# Events integration
+events-commands.workspace = true
+flume.workspace = true
+
+# Analytics integration
+analytics.workspace = true
 
 # HTTP
 http.workspace = true
@@ -29,3 +38,10 @@ user-dao.workspace = true
 sql-connection.workspace = true
 domain.workspace = true
 utoipa.workspace = true
+database-traits.workspace = true
+async-trait.workspace = true
+
+[dev-dependencies]
+test-utils.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
+anyhow.workspace = true

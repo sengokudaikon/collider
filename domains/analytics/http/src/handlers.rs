@@ -1,30 +1,38 @@
-use std::{collections::HashMap, sync::Arc};
-
-use analytics::{EventsAnalytics, EventsAnalyticsService};
+use std::collections::HashMap;
+use std::sync::Arc;
+use analytics::RedisAnalyticsMetricsUpdater;
+use analytics_dao::AnalyticsViewsDao;
+use analytics_models::{
+    EventHourlySummary, EventMetrics, PopularEvent, UserDailyActivity, UserMetrics,
+};
+use analytics_queries::{
+    DashboardMetrics, EventMetricsQuery, HourlySummariesQuery, PopularEventsQuery,
+    RealtimeMetricsQuery, RefreshViewsQuery, RefreshViewsResponse, UserActivityQuery,
+    UserMetricsQuery,
+};
 use axum::{
-    Router,
     extract::{Path, Query, State},
-    http::StatusCode,
     response::Json,
     routing::{get, post},
+    Router,
 };
-use chrono::{DateTime, Utc};
-use domain::AppError;
-use serde::{Deserialize, Serialize};
+use chrono::Utc;
+use domain::{AppError, AppResult};
 use sql_connection::SqlConnect;
 use tracing::instrument;
-use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct AnalyticsServices {
-    pub analytics: Arc<EventsAnalyticsService>,
+    pub dao: Arc<AnalyticsViewsDao>,
+    pub redis_updater: Arc<tokio::sync::Mutex<RedisAnalyticsMetricsUpdater>>,
 }
 
 impl AnalyticsServices {
-    pub fn new(db: SqlConnect) -> Self {
+    pub fn new(db: SqlConnect, redis_updater: RedisAnalyticsMetricsUpdater) -> Self {
         Self {
-            analytics: Arc::new(EventsAnalyticsService::new(db)),
+            dao: Arc::new(AnalyticsViewsDao::new(db)),
+            redis_updater: Arc::new(tokio::sync::Mutex::new(redis_updater)),
         }
     }
 }
@@ -34,404 +42,288 @@ pub struct AnalyticsHandlers;
 impl AnalyticsHandlers {
     pub fn routes() -> Router<AnalyticsServices> {
         Router::new()
-            .route("/stats", get(get_stats))
-            .route("/users/{user_id}/events", get(get_user_events))
-            .route("/metrics/realtime", get(get_realtime_metrics))
-            .route("/metrics/timeseries", get(get_time_series))
-            .route("/summaries/hourly", get(get_hourly_summaries))
-            .route("/activity/users", get(get_user_activity))
-            .route("/events/popular", get(get_popular_events_endpoint))
-            .route("/refresh", post(refresh_materialized_views))
+            // View endpoints
+            .route("/views/hourly-summaries", get(get_hourly_summaries))
+            .route("/views/user-activity", get(get_user_activity))
+            .route("/views/popular-events", get(get_popular_events))
+            .route("/views/refresh", post(refresh_views))
+            // Metrics endpoints  
+            .route("/metrics/events", get(get_event_metrics))
+            .route("/metrics/users/:user_id", get(get_user_metrics))
+            .route("/metrics/realtime/:bucket_type", get(get_realtime_metrics))
+            .route("/metrics/dashboard", get(get_dashboard_metrics))
     }
 }
 
-#[derive(Debug, Deserialize, ToSchema, IntoParams)]
-pub struct StatsQuery {
-    pub from: Option<DateTime<Utc>>,
-    pub to: Option<DateTime<Utc>>,
-    #[serde(rename = "type")]
-    pub event_type: Option<String>,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct StatsResponse {
-    pub total_events: u64,
-    pub unique_users: u64,
-    pub top_pages: HashMap<String, u64>,
-    pub period: StatsTimePeriod,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct StatsTimePeriod {
-    pub from: DateTime<Utc>,
-    pub to: DateTime<Utc>,
-}
-
-#[derive(Debug, Deserialize, ToSchema, IntoParams)]
-pub struct UserEventsQuery {
-    pub limit: Option<u64>,
-}
+// ============================================================================
+// View Handlers
+// ============================================================================
 
 #[utoipa::path(
     get,
-    path = "/api/analytics/stats",
-    params(
-        StatsQuery
-    ),
+    path = "/api/analytics/views/hourly-summaries",
+    params(HourlySummariesQuery),
     responses(
-        (status = 200, description = "Analytics statistics", body = StatsResponse),
+        (status = 200, description = "Event hourly summaries", body = Vec<EventHourlySummary>),
         (status = 400, description = "Invalid query parameters"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "analytics"
-)]
-#[instrument(skip_all)]
-pub async fn get_stats(
-    State(services): State<AnalyticsServices>,
-    Query(params): Query<StatsQuery>,
-) -> Result<Json<StatsResponse>, AppError> {
-    let now = Utc::now();
-    let from = params.from.unwrap_or(now - chrono::Duration::hours(24));
-    let to = params.to.unwrap_or(now);
-
-    // Get time series data for the period
-    let time_series = services
-        .analytics
-        .get_time_series(
-            analytics::TimeBucket::Hour,
-            from,
-            to,
-            params.event_type.map(|et| {
-                analytics::AggregationFilters {
-                    event_types: Some(vec![et]),
-                    user_ids: None,
-                    metadata_filters: None,
-                }
-            }),
-        )
-        .await
-        .map_err(AppError::from_error)?;
-
-    // Aggregate totals from time series
-    let total_events = time_series
-        .iter()
-        .map(|(_, metrics)| metrics.total_events)
-        .sum();
-
-    let unique_users = time_series
-        .iter()
-        .map(|(_, metrics)| metrics.unique_users)
-        .max()
-        .unwrap_or(0);
-
-    // Get popular events for top pages
-    let popular_events = services
-        .analytics
-        .get_popular_events("daily", Some(10))
-        .await
-        .map_err(AppError::from_error)?;
-
-    let mut top_pages = HashMap::new();
-    for event in popular_events {
-        // Map event types to page-like names for the top_pages response
-        let page_name = match event.event_type.as_str() {
-            "type_1" => "/home",
-            "type_2" => "/about",
-            "page_view" => "/page",
-            "click_event" => "/click",
-            _ => "/other",
-        };
-        top_pages.insert(page_name.to_string(), event.total_count as u64);
-    }
-
-    // If no popular events, create some example data based on aggregated
-    // totals
-    if top_pages.is_empty() {
-        top_pages.insert("/home".to_string(), total_events / 2);
-        top_pages.insert("/about".to_string(), total_events / 4);
-    }
-
-    Ok(Json(StatsResponse {
-        total_events,
-        unique_users,
-        top_pages,
-        period: StatsTimePeriod { from, to },
-    }))
-}
-
-#[utoipa::path(
-    get,
-    path = "/api/analytics/users/{user_id}/events",
-    params(
-        ("user_id" = Uuid, Path, description = "User ID"),
-        UserEventsQuery
-    ),
-    responses(
-        (status = 200, description = "User events", body = Vec<events_models::Event>),
-        (status = 404, description = "User not found"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "analytics"
-)]
-#[instrument(skip_all)]
-pub async fn get_user_events(
-    Path(user_id): Path<Uuid>, Query(params): Query<UserEventsQuery>,
-) -> Result<Json<Vec<events_models::Event>>, AppError> {
-    use events_dao::EventDao;
-
-    let db = SqlConnect::from_global();
-    let event_dao = EventDao::new(db);
-
-    let limit = params.limit.unwrap_or(1000).min(1000);
-
-    let events = event_dao
-        .find_by_user_id(user_id, Some(limit))
-        .await
-        .map_err(AppError::from_error)?;
-
-    Ok(Json(events))
-}
-
-// Additional query types for new endpoints
-#[derive(Debug, Deserialize, ToSchema, IntoParams)]
-pub struct RealtimeMetricsQuery {
-    bucket: Option<String>,
-    timestamp: Option<DateTime<Utc>>,
-    event_type: Option<String>,
-    user_ids: Option<String>,
-}
-
-#[derive(Debug, Deserialize, ToSchema, IntoParams)]
-pub struct TimeSeriesQuery {
-    bucket: Option<String>,
-    from: DateTime<Utc>,
-    to: DateTime<Utc>,
-    event_type: Option<String>,
-}
-
-#[derive(Debug, Deserialize, ToSchema, IntoParams)]
-pub struct HourlySummariesQuery {
-    from: DateTime<Utc>,
-    to: DateTime<Utc>,
-    event_type_ids: Option<String>,
-}
-
-#[derive(Debug, Deserialize, ToSchema, IntoParams)]
-pub struct UserActivityQuery {
-    user_id: Option<Uuid>,
-    from: DateTime<Utc>,
-    to: DateTime<Utc>,
-}
-
-#[derive(Debug, Deserialize, ToSchema, IntoParams)]
-pub struct PopularEventsQuery {
-    period: Option<String>,
-    limit: Option<i64>,
-}
-
-#[utoipa::path(
-    get,
-    path = "/api/analytics/metrics/realtime",
-    params(
-        RealtimeMetricsQuery
-    ),
-    responses(
-        (status = 200, description = "Real-time metrics"),
-        (status = 400, description = "Invalid query parameters"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "analytics"
-)]
-#[instrument(skip_all)]
-pub async fn get_realtime_metrics(
-    State(services): State<AnalyticsServices>,
-    Query(params): Query<RealtimeMetricsQuery>,
-) -> Result<Json<analytics::BucketMetrics>, AppError> {
-    let bucket = params.bucket.as_deref().unwrap_or("hour");
-    let timestamp = params.timestamp.unwrap_or_else(Utc::now);
-
-    let time_bucket = match bucket {
-        "minute" => analytics::TimeBucket::Minute,
-        "hour" => analytics::TimeBucket::Hour,
-        "day" => analytics::TimeBucket::Day,
-        _ => analytics::TimeBucket::Hour,
-    };
-
-    let filters = if params.event_type.is_some() || params.user_ids.is_some()
-    {
-        Some(analytics::AggregationFilters {
-            event_types: params.event_type.map(|et| vec![et]),
-            user_ids: params.user_ids.map(|ids| {
-                ids.split(',')
-                    .filter_map(|s| s.trim().parse().ok())
-                    .collect()
-            }),
-            metadata_filters: None,
-        })
-    }
-    else {
-        None
-    };
-
-    let metrics = services
-        .analytics
-        .get_real_time_metrics(time_bucket, timestamp, filters)
-        .await
-        .map_err(AppError::from_error)?;
-
-    Ok(Json(metrics))
-}
-
-#[utoipa::path(
-    get,
-    path = "/api/analytics/metrics/timeseries",
-    params(
-        TimeSeriesQuery
-    ),
-    responses(
-        (status = 200, description = "Time series data"),
-        (status = 400, description = "Invalid query parameters"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "analytics"
-)]
-#[instrument(skip_all)]
-pub async fn get_time_series(
-    State(services): State<AnalyticsServices>,
-    Query(params): Query<TimeSeriesQuery>,
-) -> Result<Json<Vec<(String, analytics::BucketMetrics)>>, AppError> {
-    let bucket = params.bucket.as_deref().unwrap_or("hour");
-
-    let time_bucket = match bucket {
-        "minute" => analytics::TimeBucket::Minute,
-        "hour" => analytics::TimeBucket::Hour,
-        "day" => analytics::TimeBucket::Day,
-        _ => analytics::TimeBucket::Hour,
-    };
-
-    let filters = params.event_type.map(|et| {
-        analytics::AggregationFilters {
-            event_types: Some(vec![et]),
-            user_ids: None,
-            metadata_filters: None,
-        }
-    });
-
-    let time_series = services
-        .analytics
-        .get_time_series(time_bucket, params.from, params.to, filters)
-        .await
-        .map_err(AppError::from_error)?;
-
-    Ok(Json(time_series))
-}
-
-#[utoipa::path(
-    get,
-    path = "/api/analytics/summaries/hourly",
-    params(
-        HourlySummariesQuery
-    ),
-    responses(
-        (status = 200, description = "Hourly summaries"),
-        (status = 400, description = "Invalid query parameters"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "analytics"
+    tag = "analytics-views"
 )]
 #[instrument(skip_all)]
 pub async fn get_hourly_summaries(
     State(services): State<AnalyticsServices>,
     Query(params): Query<HourlySummariesQuery>,
-) -> Result<Json<Vec<analytics::EventSummary>>, AppError> {
-    let event_type_ids = params.event_type_ids.map(|ids| {
-        ids.split(',')
-            .filter_map(|s| s.trim().parse::<i32>().ok())
-            .collect()
+) -> Result<Json<Vec<EventHourlySummary>>, AppError> {
+    let event_types = params.event_types.map(|types| {
+        types.split(',').map(|s| s.trim().to_string()).collect()
     });
 
     let summaries = services
-        .analytics
-        .get_hourly_summaries(params.from, params.to, event_type_ids)
-        .await
-        .map_err(AppError::from_error)?;
+        .dao
+        .get_event_hourly_summaries(
+            params.start_time,
+            params.end_time,
+            event_types,
+            params.limit,
+        )
+        .await?;
 
     Ok(Json(summaries))
 }
 
 #[utoipa::path(
     get,
-    path = "/api/analytics/activity/users",
-    params(
-        UserActivityQuery
-    ),
+    path = "/api/analytics/views/user-activity",
+    params(UserActivityQuery),
     responses(
-        (status = 200, description = "User activity data"),
+        (status = 200, description = "User daily activity", body = Vec<UserDailyActivity>),
         (status = 400, description = "Invalid query parameters"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "analytics"
+    tag = "analytics-views"
 )]
 #[instrument(skip_all)]
 pub async fn get_user_activity(
     State(services): State<AnalyticsServices>,
     Query(params): Query<UserActivityQuery>,
-) -> Result<Json<Vec<analytics::UserActivity>>, AppError> {
-    let activity = services
-        .analytics
-        .get_user_activity(params.user_id, params.from, params.to)
-        .await
-        .map_err(AppError::from_error)?;
+) -> Result<Json<Vec<UserDailyActivity>>, AppError> {
+    let activities = services
+        .dao
+        .get_user_daily_activity(
+            params.user_id,
+            params.start_date,
+            params.end_date,
+            params.limit,
+        )
+        .await?;
 
-    Ok(Json(activity))
+    Ok(Json(activities))
 }
 
 #[utoipa::path(
     get,
-    path = "/api/analytics/events/popular",
-    params(
-        PopularEventsQuery
-    ),
+    path = "/api/analytics/views/popular-events",
+    params(PopularEventsQuery),
     responses(
-        (status = 200, description = "Popular events"),
+        (status = 200, description = "Popular events", body = Vec<PopularEvent>),
         (status = 400, description = "Invalid query parameters"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "analytics"
+    tag = "analytics-views"
 )]
 #[instrument(skip_all)]
-pub async fn get_popular_events_endpoint(
+pub async fn get_popular_events(
     State(services): State<AnalyticsServices>,
     Query(params): Query<PopularEventsQuery>,
-) -> Result<Json<Vec<analytics::PopularEvents>>, AppError> {
-    let period = params.period.as_deref().unwrap_or("daily");
-    let popular_events = services
-        .analytics
-        .get_popular_events(period, params.limit)
-        .await
-        .map_err(AppError::from_error)?;
+) -> Result<Json<Vec<PopularEvent>>, AppError> {
+    let events = services
+        .dao
+        .get_popular_events(params.period, params.limit)
+        .await?;
 
-    Ok(Json(popular_events))
+    Ok(Json(events))
 }
 
 #[utoipa::path(
     post,
-    path = "/api/analytics/refresh",
+    path = "/api/analytics/views/refresh",
+    params(RefreshViewsQuery),
     responses(
-        (status = 200, description = "Materialized views refreshed successfully"),
+        (status = 200, description = "Views refreshed successfully", body = RefreshViewsResponse),
         (status = 500, description = "Internal server error")
     ),
-    tag = "analytics"
+    tag = "analytics-views"
 )]
 #[instrument(skip_all)]
-pub async fn refresh_materialized_views(
+pub async fn refresh_views(
     State(services): State<AnalyticsServices>,
-) -> Result<StatusCode, AppError> {
-    services
-        .analytics
-        .refresh_materialized_views()
-        .await
-        .map_err(AppError::from_error)?;
+    Query(params): Query<RefreshViewsQuery>,
+) -> Result<Json<RefreshViewsResponse>, AppError> {
+    let command = analytics_commands::RefreshViewsCommand {
+        view_name: params.view_name,
+        concurrent: params.concurrent.unwrap_or(true),
+    };
 
-    Ok(StatusCode::OK)
+    let response = services
+        .dao
+        .refresh_views(command)
+        .await?;
+
+    Ok(Json(RefreshViewsResponse {
+        refreshed_views: response.refreshed_views,
+        duration_ms: response.duration_ms,
+    }))
+}
+
+// ============================================================================
+// Metrics Handlers
+// ============================================================================
+
+#[utoipa::path(
+    get,
+    path = "/api/analytics/metrics/events",
+    params(EventMetricsQuery),
+    responses(
+        (status = 200, description = "Event metrics", body = EventMetrics),
+        (status = 400, description = "Invalid query parameters"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "analytics-metrics"
+)]
+#[instrument(skip_all)]
+pub async fn get_event_metrics(
+    State(services): State<AnalyticsServices>,
+    Query(params): Query<EventMetricsQuery>,
+) -> AppResult<Json<EventMetrics>> {
+    let metrics = services
+        .dao
+        .get_event_metrics(params.start, params.end, params.event_type_filter)
+        .await?;
+
+    Ok(Json(metrics))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/analytics/metrics/users/{user_id}",
+    params(
+        ("user_id" = Uuid, Path, description = "User ID"),
+        UserMetricsQuery
+    ),
+    responses(
+        (status = 200, description = "User metrics", body = UserMetrics),
+        (status = 404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "analytics-metrics"
+)]
+#[instrument(skip_all)]
+pub async fn get_user_metrics(
+    State(services): State<AnalyticsServices>,
+    Path(user_id): Path<Uuid>,
+    Query(params): Query<UserMetricsQuery>,
+) -> AppResult<Json<UserMetrics>> {
+    // First try to get cached metrics from Redis
+    let mut redis_updater = services.redis_updater.lock().await;
+    if let Ok(Some(cached_metrics)) = redis_updater.get_user_metrics(&user_id).await {
+        return Ok(Json(cached_metrics));
+    }
+    drop(redis_updater);
+
+    // Fall back to database query
+    let metrics = services
+        .dao
+        .get_user_metrics(user_id, params.start, params.end)
+        .await?;
+
+    Ok(Json(metrics))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/analytics/metrics/realtime/{bucket_type}",
+    params(
+        ("bucket_type" = String, Path, description = "Time bucket type (minute, hour, day)"),
+        RealtimeMetricsQuery
+    ),
+    responses(
+        (status = 200, description = "Realtime metrics", body = HashMap<String, i64>),
+        (status = 400, description = "Invalid bucket type"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "analytics-metrics"
+)]
+#[instrument(skip_all)]
+pub async fn get_realtime_metrics(
+    State(services): State<AnalyticsServices>,
+    Path(bucket_type): Path<String>,
+    Query(params): Query<RealtimeMetricsQuery>,
+) -> AppResult<Json<HashMap<String, i64>>> {
+    let timestamp = params.timestamp.unwrap_or_else(Utc::now);
+
+    if !["minute", "hour", "day"].contains(&bucket_type.as_str()) {
+        return Err(anyhow::anyhow!(
+            "Invalid bucket type. Must be 'minute', 'hour', or 'day'"
+        ).into());
+    }
+
+    let redis_updater = services.redis_updater.lock().await;
+    let metrics = redis_updater
+        .get_real_time_metrics(&bucket_type, timestamp)
+        .await?;
+
+    Ok(Json(metrics))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/analytics/metrics/dashboard",
+    responses(
+        (status = 200, description = "Dashboard metrics overview", body = DashboardMetrics),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "analytics-metrics"
+)]
+#[instrument(skip_all)]
+pub async fn get_dashboard_metrics(
+    State(services): State<AnalyticsServices>,
+) -> AppResult<Json<DashboardMetrics>> {
+    let now = Utc::now();
+    let today_start = now.date_naive().and_hms_opt(0, 0, 0).unwrap().and_utc();
+    let week_start = now - chrono::Duration::days(7);
+
+    // Get today's event metrics
+    let event_metrics = services
+        .dao
+        .get_event_metrics(today_start, now, None)
+        .await?;
+
+    // Get realtime activity from Redis
+    let redis_updater = services.redis_updater.lock().await;
+    let realtime_activity = redis_updater
+        .get_real_time_metrics("hour", now)
+        .await?;
+
+    // Get weekly event metrics for growth calculation
+    let week_metrics = services
+        .dao
+        .get_event_metrics(week_start, now, None)
+        .await?;
+
+    let dashboard = DashboardMetrics {
+        total_events_today: event_metrics.total_events,
+        unique_users_today: event_metrics.unique_users,
+        total_sessions_today: *realtime_activity
+            .get("session_start:count")
+            .unwrap_or(&0),
+        avg_session_duration: (*realtime_activity
+            .get("session_end:metadata")
+            .unwrap_or(&0)) as f64,
+        popular_events: event_metrics.top_events,
+        user_growth_this_week: week_metrics.unique_users - event_metrics.unique_users,
+        realtime_activity,
+    };
+
+    Ok(Json(dashboard))
 }

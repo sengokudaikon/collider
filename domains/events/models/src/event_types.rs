@@ -2,13 +2,7 @@ use serde::{Deserialize, Serialize};
 use typed_builder::TypedBuilder;
 
 #[derive(
-    Clone,
-    Debug,
-    PartialEq,
-    Eq,
-    Serialize,
-    Deserialize,
-    TypedBuilder,
+    Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TypedBuilder,
 )]
 pub struct EventType {
     #[builder(default)]

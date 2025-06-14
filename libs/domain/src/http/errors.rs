@@ -14,6 +14,24 @@ impl From<Box<dyn std::error::Error + Send + Sync>> for AppError {
     }
 }
 
+impl From<anyhow::Error> for AppError {
+    fn from(err: anyhow::Error) -> Self {
+        Self(err.into())
+    }
+}
+
+impl From<analytics_dao::AnalyticsViewsDaoError> for AppError {
+    fn from(err: analytics_dao::AnalyticsViewsDaoError) -> Self {
+        Self(Box::new(err))
+    }
+}
+
+impl From<analytics::RedisMetricsUpdaterError> for AppError {
+    fn from(err: analytics::RedisMetricsUpdaterError) -> Self {
+        Self(Box::new(err))
+    }
+}
+
 impl AppError {
     pub fn from_error<E>(err: E) -> Self
     where

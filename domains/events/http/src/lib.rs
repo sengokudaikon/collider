@@ -1,3 +1,4 @@
+pub mod command_handlers;
 pub mod handlers;
 
 use axum::Router;
@@ -29,6 +30,11 @@ impl From<Event> for EventResponse {
     }
 }
 
+pub use command_handlers::{
+    BulkDeleteEventsError, BulkDeleteEventsHandler, CreateEventError,
+    CreateEventHandler, DeleteEventError, DeleteEventHandler,
+    UpdateEventError, UpdateEventHandler,
+};
 pub use handlers::*;
 
 pub fn event_routes() -> Router {

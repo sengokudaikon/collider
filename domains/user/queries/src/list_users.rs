@@ -1,7 +1,8 @@
 use std::time::Duration;
 
 use redis_connection::{
-    connection::RedisConnectionManager, json::Json, type_bind::RedisTypeBind,
+    connection::RedisConnectionManager,
+    core::{value::Json, RedisTypeBind},
 };
 use serde::Deserialize;
 use sql_connection::SqlConnect;
@@ -68,7 +69,7 @@ impl ListUsersQueryHandler {
             // individual users
             let _ = cache
                 .set_with_expire::<()>(
-                    Json(users.clone()).serde().unwrap(),
+                    Json(users.clone()),
                     Duration::from_secs(120),
                 )
                 .await;
@@ -126,7 +127,7 @@ mod tests {
         };
         let result = handler.execute(query).await.unwrap();
 
-        assert!(result.len() >= 1);
+        assert!(!result.is_empty());
     }
 
     #[tokio::test]

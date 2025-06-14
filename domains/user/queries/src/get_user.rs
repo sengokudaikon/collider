@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use database_traits::dao::GenericDao;
 use redis_connection::{
-    connection::RedisConnectionManager, json::Json, type_bind::RedisTypeBind,
+    connection::RedisConnectionManager, core::{value::Json, RedisTypeBind},
 };
 use serde::Deserialize;
 use sql_connection::SqlConnect;
@@ -74,7 +74,7 @@ impl GetUserQueryHandler {
         // Cache for 5 minutes - user data doesn't change often
         let _ = cache
             .set_with_expire::<()>(
-                Json(user.clone()).serde().unwrap(),
+                Json(user.clone()),
                 Duration::from_secs(300),
             )
             .await;

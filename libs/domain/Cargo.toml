@@ -6,3 +6,6 @@ edition = "2024"
 [dependencies]
 axum.workspace = true
 uuid.workspace = true
+anyhow.workspace = true
+analytics-dao = { path = "../../domains/analytics/dao" }
+analytics = { path = "../../domains/analytics" }

@@ -25,4 +25,8 @@ pub trait GenericDao {
     ) -> Result<Self::Response, Self::Error>;
 
     async fn delete(&self, id: Self::ID) -> Result<(), Self::Error>;
+
+    async fn count(&self) -> Result<i64, Self::Error>;
+
+    fn map_row(&self, row: &tokio_postgres::Row) -> Self::Model;
 }

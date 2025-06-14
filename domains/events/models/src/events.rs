@@ -23,19 +23,3 @@ pub struct Event {
     pub timestamp: DateTime<Utc>,
     pub metadata: Option<serde_json::Value>,
 }
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NewEvent {
-    pub id: Uuid,
-    pub user_id: Uuid,
-    pub event_type_id: i32,
-    pub timestamp: DateTime<Utc>,
-    pub metadata: Option<serde_json::Value>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UpdateEvent {
-    pub user_id: Option<Uuid>,
-    pub event_type_id: Option<i32>,
-    pub metadata: Option<serde_json::Value>,
-}

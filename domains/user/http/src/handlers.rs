@@ -5,17 +5,22 @@ use axum::{
     response::Json,
     routing::{delete, get, post, put},
 };
+use crate::analytics_integration::UserAnalyticsFactory;
 use domain::AppError;
+use events_commands::CreateEventCommand;
+use flume::Sender;
 use serde::Deserialize;
 use tracing::instrument;
 use user_commands::{
-    CreateUserCommand, CreateUserHandler, CreateUserResponse,
-    DeleteUserCommand, DeleteUserHandler, UpdateUserCommand,
-    UpdateUserHandler, UpdateUserResponse,
+    CreateUserCommand, CreateUserResponse, DeleteUserCommand, 
+    UpdateUserCommand, UpdateUserResponse,
 };
+use crate::command_handlers::{
+    CreateUserHandler, UpdateUserHandler, DeleteUserHandler,
+};
+use user_events::UserAnalyticsEvent;
 use user_queries::{
     GetUserByNameQueryHandler, GetUserQueryHandler, ListUsersQueryHandler,
-    UserAnalyticsService,
 };
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
@@ -31,7 +36,6 @@ pub struct UserServices {
     pub get_user: GetUserQueryHandler,
     pub get_user_by_name: GetUserByNameQueryHandler,
     pub list_users: ListUsersQueryHandler,
-    pub analytics: UserAnalyticsService,
 }
 
 impl UserServices {
@@ -43,8 +47,31 @@ impl UserServices {
             get_user: GetUserQueryHandler::new(db.clone()),
             get_user_by_name: GetUserByNameQueryHandler::new(db.clone()),
             list_users: ListUsersQueryHandler::new(db),
-            analytics: UserAnalyticsService::new(),
         }
+    }
+
+    pub fn with_event_sender(mut self, event_sender: Sender<CreateEventCommand>) -> Self {
+        self.create_user = self.create_user.with_event_sender(event_sender.clone());
+        self.update_user = self.update_user.with_event_sender(event_sender.clone());
+        self.delete_user = self.delete_user.with_event_sender(event_sender);
+        self
+    }
+
+    /// Create UserServices with analytics integration enabled
+    pub fn new_with_analytics(db: sql_connection::SqlConnect) -> (Self, tokio::task::JoinHandle<()>) {
+        let (analytics_sender, analytics_task) = UserAnalyticsFactory::create_integration();
+        
+        let services = Self::new(db).with_analytics_sender(analytics_sender);
+        
+        (services, analytics_task)
+    }
+
+    /// Configure command handlers with analytics event sender
+    pub fn with_analytics_sender(mut self, analytics_sender: Sender<UserAnalyticsEvent>) -> Self {
+        self.create_user = self.create_user.with_analytics_event_sender(analytics_sender.clone());
+        self.update_user = self.update_user.with_analytics_event_sender(analytics_sender.clone());
+        self.delete_user = self.delete_user.with_analytics_event_sender(analytics_sender);
+        self
     }
 }
 
@@ -85,7 +112,6 @@ pub async fn create_user(
         .await
         .map_err(AppError::from_error)?;
 
-    // TODO: Add event bus integration
     tracing::info!("User created: {}", result.user.id);
 
     Ok((StatusCode::CREATED, Json(result.user)))
@@ -118,7 +144,6 @@ pub async fn update_user(
         .await
         .map_err(AppError::from_error)?;
 
-    // TODO: Add event bus integration
     tracing::info!("User updated: {}", id);
 
     Ok(Json(result.user))
@@ -148,7 +173,6 @@ pub async fn delete_user(
         .await
         .map_err(AppError::from_error)?;
 
-    // TODO: Add event bus integration
     tracing::info!("User deleted: {}", id);
 
     Ok(StatusCode::NO_CONTENT)
@@ -179,7 +203,7 @@ pub struct UserQueryParams {
 #[instrument(skip_all)]
 pub async fn get_user(
     State(services): State<UserServices>, Path(id): Path<Uuid>,
-    Query(params): Query<UserQueryParams>,
+    Query(_params): Query<UserQueryParams>,
 ) -> Result<Json<UserResponse>, AppError> {
     let query = user_queries::GetUserQuery { user_id: id };
     let user = services
@@ -188,18 +212,9 @@ pub async fn get_user(
         .await
         .map_err(AppError::from_error)?;
 
-    if params.include_metrics {
-        match services.analytics.get_user_metrics(id).await {
-            Ok(metrics) => {
-                let response = UserResponse::with_metrics(user, metrics);
-                Ok(Json(response))
-            }
-            Err(_) => Ok(Json(user.into())),
-        }
-    }
-    else {
-        Ok(Json(user.into()))
-    }
+    // Analytics functionality removed - using pure user domain now
+    // Metrics are handled by the analytics domain via background events
+    Ok(Json(user.into()))
 }
 
 #[utoipa::path(
@@ -218,11 +233,11 @@ pub async fn get_user(
 #[instrument(skip_all)]
 pub async fn list_users(
     State(services): State<UserServices>,
-    Query(params): Query<UserQueryParams>,
+    Query(_params): Query<UserQueryParams>,
 ) -> Result<Json<Vec<UserResponse>>, AppError> {
     let query = user_queries::ListUsersQuery {
-        limit: params.limit,
-        offset: params.offset,
+        limit: _params.limit,
+        offset: _params.offset,
     };
     let users = services
         .list_users
@@ -230,31 +245,9 @@ pub async fn list_users(
         .await
         .map_err(AppError::from_error)?;
 
-    if params.include_metrics {
-        let user_ids: Vec<Uuid> = users.iter().map(|u| u.id).collect();
-        match services.analytics.get_batch_user_metrics(user_ids).await {
-            Ok(metrics_map) => {
-                let responses = users
-                    .into_iter()
-                    .map(|user| {
-                        if let Some((_, metrics)) =
-                            metrics_map.iter().find(|(id, _)| *id == user.id)
-                        {
-                            UserResponse::with_metrics(user, metrics.clone())
-                        }
-                        else {
-                            user.into()
-                        }
-                    })
-                    .collect();
-                Ok(Json(responses))
-            }
-            Err(_) => Ok(Json(users.into_iter().map(Into::into).collect())),
-        }
-    }
-    else {
-        Ok(Json(users.into_iter().map(Into::into).collect()))
-    }
+    // Analytics functionality removed - using pure user domain now
+    // Metrics are handled by the analytics domain via background events
+    Ok(Json(users.into_iter().map(Into::into).collect()))
 }
 
 #[utoipa::path(
@@ -307,11 +300,7 @@ pub async fn get_user_with_metrics(
         .await
         .map_err(AppError::from_error)?;
 
-    match services.analytics.get_user_metrics(id).await {
-        Ok(metrics) => {
-            let response = UserResponse::with_metrics(user, metrics);
-            Ok(Json(response))
-        }
-        Err(_) => Ok(Json(user.into())),
-    }
+    // Analytics functionality removed - using pure user domain now
+    // Metrics are handled by the analytics domain via background events
+    Ok(Json(user.into()))
 }

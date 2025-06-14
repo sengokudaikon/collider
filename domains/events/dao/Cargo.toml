@@ -10,8 +10,11 @@ thiserror.workspace = true
 tracing.workspace = true
 async-trait.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 uuid.workspace = true
 chrono.workspace = true
 events-models = { path = "../models" }
+events-commands = { path = "../commands" }
 database-traits.workspace = true
 sql-connection.workspace = true
+dao-utils.workspace = true

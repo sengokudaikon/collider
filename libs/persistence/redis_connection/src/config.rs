@@ -31,6 +31,14 @@ pub struct TieredConfig {
     pub overflow_strategy: OverflowStrategy,
 }
 
+#[cfg(feature = "file-cache")]
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct FileConfig {
+    pub path: std::path::PathBuf,
+    #[serde(default = "default_file_cache_size")]
+    pub max_size_mb: u64,
+}
+
 #[derive(Debug, Clone, Copy, serde::Deserialize, PartialEq)]
 pub enum OverflowStrategy {
     Drop,
@@ -53,6 +61,9 @@ fn db_default() -> u8 { 0 }
 fn default_memory_capacity() -> u64 { 10_000 }
 fn default_memory_ttl_secs() -> u64 { 300 }
 fn default_overflow_strategy() -> OverflowStrategy { OverflowStrategy::Drop }
+
+#[cfg(feature = "file-cache")]
+fn default_file_cache_size() -> u64 { 1024 } // 1GB default
 
 impl MemoryConfig {
     pub fn ttl(&self) -> std::time::Duration {

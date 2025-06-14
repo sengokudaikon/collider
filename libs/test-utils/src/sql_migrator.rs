@@ -22,8 +22,7 @@ impl SqlMigrator {
             (
                 "002_create_event_types",
                 include_str!(
-                    "../../../domains/events/migrations/sql/\
-                     002_create_event_types.sql"
+                    "../../../domains/events/migrations/sql/001_create_event_types.sql"
                 ),
             ),
             (
@@ -36,8 +35,7 @@ impl SqlMigrator {
             (
                 "004_create_analytics_views",
                 include_str!(
-                    "../../../domains/analytics/migrations/sql/\
-                     004_create_analytics_views.sql"
+                    "../../../domains/analytics/migrations/sql/002_analytics_views.sql"
                 ),
             ),
         ];
@@ -110,7 +108,7 @@ impl SqlMigrator {
                 &[&migration_name],
             )
             .await?;
-        
+
         let count: i64 = row.get(0);
         Ok(count > 0)
     }
@@ -154,10 +152,7 @@ impl SqlMigrator {
 
         let client = self.pool.get().await?;
         let rows = client
-            .query(
-                "SELECT name FROM _migrations ORDER BY applied_at",
-                &[],
-            )
+            .query("SELECT name FROM _migrations ORDER BY applied_at", &[])
             .await?;
 
         Ok(rows.into_iter().map(|row| row.get(0)).collect())
@@ -180,15 +175,13 @@ impl SqlMigrator {
                 && !trimmed.starts_with("/*")
             {
                 println!("Executing SQL: {}", trimmed);
-                tx.execute(trimmed, &[]).await.map_err(
-                    |e| {
-                        anyhow::anyhow!(
-                            "Failed to execute SQL statement '{}': {}",
-                            trimmed,
-                            e
-                        )
-                    },
-                )?;
+                tx.execute(trimmed, &[]).await.map_err(|e| {
+                    anyhow::anyhow!(
+                        "Failed to execute SQL statement '{}': {}",
+                        trimmed,
+                        e
+                    )
+                })?;
             }
         }
 
@@ -246,22 +239,19 @@ impl SqlMigrator {
             (
                 "004_create_analytics_views",
                 include_str!(
-                    "../../../domains/analytics/migrations/sql/\
-                     004_create_analytics_views.down.sql"
+                    "../../../domains/analytics/migrations/sql/002_analytics_views.down.sql"
                 ),
             ),
             (
                 "003_create_events",
                 include_str!(
-                    "../../../domains/events/migrations/sql/\
-                     003_create_events.down.sql"
+                    "../../../domains/events/migrations/sql/002_create_events.down.sql"
                 ),
             ),
             (
                 "002_create_event_types",
                 include_str!(
-                    "../../../domains/events/migrations/sql/\
-                     002_create_event_types.down.sql"
+                    "../../../domains/events/migrations/sql/001_create_event_types.down.sql"
                 ),
             ),
             (
@@ -280,15 +270,15 @@ impl SqlMigrator {
                 let mut client = self.pool.get().await?;
                 let tx = client.transaction().await?;
 
-                self.execute_migration_sql(&tx, down_sql)
-                    .await
-                    .map_err(|e| {
+                self.execute_migration_sql(&tx, down_sql).await.map_err(
+                    |e| {
                         anyhow::anyhow!(
                             "Failed to rollback migration {}: {}",
                             migration_name,
                             e
                         )
-                    })?;
+                    },
+                )?;
 
                 tx.execute(
                     "DELETE FROM _migrations WHERE name = $1",

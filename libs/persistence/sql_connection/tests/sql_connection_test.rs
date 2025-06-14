@@ -1,280 +1,97 @@
-use sea_orm::{ConnectionTrait, Statement, TransactionTrait};
+use sql_connection::SqlConnect;
 use test_utils::postgres::TestPostgresContainer;
 
-async fn setup_test_connection() -> anyhow::Result<TestPostgresContainer> {
-    TestPostgresContainer::new().await
+#[tokio::test]
+async fn test_sql_connect_creation() {
+    let container = TestPostgresContainer::new().await.unwrap();
+    let pool = container.pool.clone();
+    
+    let sql_connect = SqlConnect::new(pool);
+    
+    // Test that we can get a client
+    let client = sql_connect.get_client().await;
+    assert!(client.is_ok());
 }
 
 #[tokio::test]
-async fn test_sql_connect_with_test_database() {
-    let container = setup_test_connection().await.unwrap();
-
-    let backend = container.connection.get_database_backend();
-    assert!(matches!(backend, sea_orm::DatabaseBackend::Postgres));
+async fn test_sql_connect_clone() {
+    let container = TestPostgresContainer::new().await.unwrap();
+    let pool = container.pool.clone();
+    
+    let sql_connect1 = SqlConnect::new(pool);
+    let sql_connect2 = sql_connect1.clone();
+    
+    // Both should be able to get clients
+    let client1 = sql_connect1.get_client().await;
+    let client2 = sql_connect2.get_client().await;
+    
+    assert!(client1.is_ok());
+    assert!(client2.is_ok());
 }
 
 #[tokio::test]
-async fn test_database_connection_execute() {
-    let container = setup_test_connection().await.unwrap();
-
-    let result = container
-        .connection
-        .execute(Statement::from_string(
-            sea_orm::DatabaseBackend::Postgres,
-            "SELECT 1 as test_value".to_string(),
-        ))
-        .await;
-
+async fn test_database_operations() {
+    let container = TestPostgresContainer::new().await.unwrap();
+    let pool = container.pool.clone();
+    let sql_connect = SqlConnect::new(pool);
+    
+    let client = sql_connect.get_client().await.unwrap();
+    
+    // Test basic query
+    let result = client.query("SELECT 1 as test_value", &[]).await;
     assert!(result.is_ok());
-    let exec_result = result.unwrap();
-    assert_eq!(exec_result.rows_affected(), 1);
-}
-
-#[tokio::test]
-async fn test_database_connection_query_one() {
-    let container = setup_test_connection().await.unwrap();
-
-    let result = container
-        .connection
-        .query_one(Statement::from_string(
-            sea_orm::DatabaseBackend::Postgres,
-            "SELECT 42 as answer".to_string(),
-        ))
-        .await;
-
-    assert!(result.is_ok());
-    let query_result = result.unwrap();
-    assert!(query_result.is_some());
-
-    let row = query_result.unwrap();
-    let value: i32 = row.try_get("", "answer").unwrap();
-    assert_eq!(value, 42);
-}
-
-#[tokio::test]
-async fn test_database_connection_query_all() {
-    let container = setup_test_connection().await.unwrap();
-
-    container
-        .execute_sql(
-            "CREATE TABLE IF NOT EXISTS test_table (id SERIAL PRIMARY KEY, \
-             value INTEGER)",
-        )
-        .await
-        .unwrap();
-
-    // Clear any existing data
-    container
-        .execute_sql("TRUNCATE TABLE test_table")
-        .await
-        .unwrap();
-
-    container
-        .execute_sql("INSERT INTO test_table (value) VALUES (1), (2), (3)")
-        .await
-        .unwrap();
-
-    let result = container
-        .connection
-        .query_all(Statement::from_string(
-            sea_orm::DatabaseBackend::Postgres,
-            "SELECT value FROM test_table ORDER BY value".to_string(),
-        ))
-        .await;
-
-    assert!(result.is_ok());
+    
     let rows = result.unwrap();
-    assert_eq!(rows.len(), 3);
-
-    let values: Vec<i32> = rows
-        .iter()
-        .map(|row| row.try_get("", "value").unwrap())
-        .collect();
-    assert_eq!(values, vec![1, 2, 3]);
+    assert_eq!(rows.len(), 1);
+    
+    let value: i32 = rows[0].get("test_value");
+    assert_eq!(value, 1);
 }
 
 #[tokio::test]
-async fn test_transaction_commit() {
-    let container = setup_test_connection().await.unwrap();
-
-    container
-        .execute_sql(
-            "CREATE TABLE IF NOT EXISTS tx_test (id SERIAL PRIMARY KEY, \
-             value INTEGER)",
-        )
-        .await
-        .unwrap();
-
-    // Clear any existing data
-    container
-        .execute_sql("TRUNCATE TABLE tx_test")
-        .await
-        .unwrap();
-
-    let txn = container.connection.begin().await.unwrap();
-
-    txn.execute(Statement::from_string(
-        sea_orm::DatabaseBackend::Postgres,
-        "INSERT INTO tx_test (value) VALUES (100)".to_string(),
-    ))
-    .await
-    .unwrap();
-
-    txn.commit().await.unwrap();
-
-    let result = container
-        .connection
-        .query_one(Statement::from_string(
-            sea_orm::DatabaseBackend::Postgres,
-            "SELECT COUNT(*) as count FROM tx_test WHERE value = 100"
-                .to_string(),
-        ))
-        .await
-        .unwrap()
-        .unwrap();
-
-    let count: i64 = result.try_get("", "count").unwrap();
-    assert_eq!(count, 1);
+async fn test_multiple_connections() {
+    let container = TestPostgresContainer::new().await.unwrap();
+    let pool = container.pool.clone();
+    let sql_connect = SqlConnect::new(pool);
+    
+    // Get multiple clients from the same connection
+    let client1 = sql_connect.get_client().await.unwrap();
+    let client2 = sql_connect.get_client().await.unwrap();
+    
+    // Both should work independently
+    let result1 = client1.query("SELECT 'client1' as source", &[]).await.unwrap();
+    let result2 = client2.query("SELECT 'client2' as source", &[]).await.unwrap();
+    
+    let source1: String = result1[0].get("source");
+    let source2: String = result2[0].get("source");
+    
+    assert_eq!(source1, "client1");
+    assert_eq!(source2, "client2");
 }
 
 #[tokio::test]
-async fn test_transaction_rollback() {
-    let container = setup_test_connection().await.unwrap();
-
-    container
-        .execute_sql(
-            "CREATE TABLE IF NOT EXISTS tx_rollback_test (id SERIAL PRIMARY \
-             KEY, value INTEGER)",
-        )
-        .await
-        .unwrap();
-
-    // Clear any existing data
-    container
-        .execute_sql("TRUNCATE TABLE tx_rollback_test")
-        .await
-        .unwrap();
-
-    let txn = container.connection.begin().await.unwrap();
-
-    txn.execute(Statement::from_string(
-        sea_orm::DatabaseBackend::Postgres,
-        "INSERT INTO tx_rollback_test (value) VALUES (200)".to_string(),
-    ))
-    .await
-    .unwrap();
-
-    txn.rollback().await.unwrap();
-
-    let result = container
-        .connection
-        .query_one(Statement::from_string(
-            sea_orm::DatabaseBackend::Postgres,
-            "SELECT COUNT(*) as count FROM tx_rollback_test WHERE value = \
-             200"
-            .to_string(),
-        ))
-        .await
-        .unwrap()
-        .unwrap();
-
-    let count: i64 = result.try_get("", "count").unwrap();
-    assert_eq!(count, 0);
-}
-
-#[tokio::test]
-async fn test_database_connection_multiple_queries() {
-    let container = setup_test_connection().await.unwrap();
-
-    for i in 1..=5 {
-        let result = container
-            .connection
-            .query_one(Statement::from_string(
-                sea_orm::DatabaseBackend::Postgres,
-                format!("SELECT {} as number", i),
-            ))
-            .await;
-
-        assert!(result.is_ok());
-        let query_result = result.unwrap().unwrap();
-        let value: i32 = query_result.try_get("", "number").unwrap();
-        assert_eq!(value, i);
-    }
-}
-
-#[tokio::test]
-async fn test_database_backend_detection() {
-    let container = setup_test_connection().await.unwrap();
-
-    let backend = container.connection.get_database_backend();
-    assert!(matches!(backend, sea_orm::DatabaseBackend::Postgres));
-}
-
-#[tokio::test]
-async fn test_sequential_queries() {
-    let container = setup_test_connection().await.unwrap();
-
+async fn test_concurrent_operations() {
+    let container = TestPostgresContainer::new().await.unwrap();
+    let pool = container.pool.clone();
+    let sql_connect = SqlConnect::new(pool);
+    
+    // Create multiple concurrent operations
+    let mut handles = vec![];
+    
     for i in 0..5 {
-        let result = container
-            .connection
-            .query_one(Statement::from_string(
-                sea_orm::DatabaseBackend::Postgres,
-                format!("SELECT {} as sequential_value", i),
-            ))
-            .await;
-
-        assert!(result.is_ok());
-        let query_result = result.unwrap();
-        assert!(query_result.is_some());
-
-        let row = query_result.unwrap();
-        let value: i32 = row.try_get("", "sequential_value").unwrap();
-        assert_eq!(value, i);
+        let sql_connect_clone = sql_connect.clone();
+        let handle = tokio::spawn(async move {
+            let client = sql_connect_clone.get_client().await.unwrap();
+            let result = client.query(&format!("SELECT {} as value", i), &[]).await.unwrap();
+            let value: i32 = result[0].get("value");
+            value
+        });
+        handles.push(handle);
     }
-}
-
-#[tokio::test]
-async fn test_table_operations() {
-    let container = setup_test_connection().await.unwrap();
-
-    container
-        .execute_sql(
-            "CREATE TABLE IF NOT EXISTS operations_test (
-                id SERIAL PRIMARY KEY, 
-                name VARCHAR(100) NOT NULL,
-                created_at TIMESTAMP DEFAULT NOW()
-            )",
-        )
-        .await
-        .unwrap();
-
-    // Clear any existing data
-    container
-        .execute_sql("TRUNCATE TABLE operations_test")
-        .await
-        .unwrap();
-
-    container
-        .execute_sql(
-            "INSERT INTO operations_test (name) VALUES ('test1'), ('test2')",
-        )
-        .await
-        .unwrap();
-
-    let result = container
-        .connection
-        .query_all(Statement::from_string(
-            sea_orm::DatabaseBackend::Postgres,
-            "SELECT id, name FROM operations_test ORDER BY id".to_string(),
-        ))
-        .await
-        .unwrap();
-
-    assert_eq!(result.len(), 2);
-
-    let first_name: String = result[0].try_get("", "name").unwrap();
-    let second_name: String = result[1].try_get("", "name").unwrap();
-
-    assert_eq!(first_name, "test1");
-    assert_eq!(second_name, "test2");
+    
+    // Wait for all operations to complete
+    for (i, handle) in handles.into_iter().enumerate() {
+        let result = handle.await.unwrap();
+        assert_eq!(result, i as i32);
+    }
 }

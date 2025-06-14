@@ -10,12 +10,20 @@ tracing.workspace = true
 async-trait.workspace = true
 tokio.workspace = true
 deadpool-redis.workspace = true
-redis.workspace = true
+redis = { workspace = true, features = ["streams"] }
 serde_json.workspace = true
 anyhow.workspace = true
 moka.workspace = true
 bytes.workspace = true
 flume.workspace = true
+sled = { version = "0.34", optional = true }
+bincode = { version = "2.0.1",features = ["std"] }
+thiserror = "1.0.69"
+
+[features]
+default = ["memory-cache"]
+memory-cache = []
+file-cache = ["sled"]
 
 [dev-dependencies]
 test-utils.workspace = true

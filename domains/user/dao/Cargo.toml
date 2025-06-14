@@ -11,9 +11,12 @@ tracing.workspace = true
 async-trait.workspace = true
 uuid.workspace = true
 chrono.workspace = true
+serde.workspace = true
 sql-connection.workspace = true
 user-models = { path = "../models" }
+user-commands = { path = "../commands" }
 database-traits.workspace = true
+dao-utils = { path = "../../../libs/persistence/dao_utils" }
 
 [dev-dependencies]
 # sea-orm-migration.workspace = true # removed for tokio-postgres migration

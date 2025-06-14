@@ -36,16 +36,46 @@ checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 name = "analytics"
 version = "0.1.0"
 dependencies = [
+ "analytics-models",
+ "analytics-queries",
+ "anyhow",
+ "chrono",
+ "dashmap",
+ "redis-connection",
+ "serde_json",
+ "test-utils",
+ "thiserror 2.0.12",
+ "tokio",
+ "tracing",
+ "user-events",
+ "uuid",
+]
+
+[[package]]
+name = "analytics-commands"
+version = "0.1.0"
+dependencies = [
+ "analytics-models",
+ "chrono",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.12",
+ "utoipa",
+ "uuid",
+]
+
+[[package]]
+name = "analytics-dao"
+version = "0.1.0"
+dependencies = [
+ "analytics-commands",
+ "analytics-models",
  "anyhow",
  "async-trait",
  "chrono",
+ "dao-utils",
  "database-traits",
  "deadpool-postgres",
- "events-dao",
- "events-models",
- "fnv",
- "hyperloglogplus",
- "redis-connection",
  "serde",
  "serde_json",
  "sql-connection",
@@ -62,20 +92,47 @@ name = "analytics-http"
 version = "0.1.0"
 dependencies = [
  "analytics",
+ "analytics-commands",
+ "analytics-dao",
+ "analytics-models",
+ "analytics-queries",
+ "anyhow",
  "axum",
  "chrono",
- "database-traits",
  "domain",
- "events-dao",
- "events-models",
  "serde",
  "serde_json",
  "sql-connection",
  "test-utils",
  "thiserror 2.0.12",
  "tokio",
- "tower-http",
  "tracing",
+ "utoipa",
+ "uuid",
+]
+
+[[package]]
+name = "analytics-models"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "utoipa",
+ "uuid",
+]
+
+[[package]]
+name = "analytics-queries"
+version = "0.1.0"
+dependencies = [
+ "analytics-models",
+ "anyhow",
+ "chrono",
+ "redis-connection",
+ "serde",
+ "serde_json",
+ "test-utils",
+ "tokio",
  "utoipa",
  "uuid",
 ]
@@ -293,6 +350,32 @@ name = "base64"
 version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
+
+[[package]]
+name = "bincode"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "36eaf5d7b090263e8150820482d5d93cd964a81e4019913c972f4edcc6edb740"
+dependencies = [
+ "bincode_derive",
+ "serde",
+ "unty",
+]
+
+[[package]]
+name = "bincode_derive"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf95709a440f45e986983918d0e8a1f30a9b1df04918fc828670606804ac3c09"
+dependencies = [
+ "virtue",
+]
+
+[[package]]
+name = "bitflags"
+version = "1.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
 name = "bitflags"
@@ -540,10 +623,10 @@ version = "0.28.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "829d955a0bb380ef178a640b91779e3987da38c9aea133b20614cfed8cdea9c6"
 dependencies = [
- "bitflags",
+ "bitflags 2.9.1",
  "crossterm_winapi",
  "mio",
- "parking_lot",
+ "parking_lot 0.12.4",
  "rustix",
  "signal-hook",
  "signal-hook-mio",
@@ -567,6 +650,16 @@ checksum = "1bfb12502f3fc46cca1bb51ac28df9d618d813cdc3d2f25b9fe775a34af26bb3"
 dependencies = [
  "generic-array",
  "typenum",
+]
+
+[[package]]
+name = "dao-utils"
+version = "0.1.0"
+dependencies = [
+ "deadpool-postgres",
+ "thiserror 2.0.12",
+ "tokio-postgres",
+ "uuid",
 ]
 
 [[package]]
@@ -602,6 +695,20 @@ dependencies = [
  "darling_core",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "dashmap"
+version = "7.0.0-rc2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e4a1e35a65fe0538a60167f0ada6e195ad5d477f6ddae273943596d4a1a5730b"
+dependencies = [
+ "cfg-if",
+ "crossbeam-utils",
+ "equivalent",
+ "hashbrown",
+ "lock_api",
+ "parking_lot_core 0.9.11",
 ]
 
 [[package]]
@@ -693,6 +800,9 @@ dependencies = [
 name = "domain"
 version = "0.1.0"
 dependencies = [
+ "analytics",
+ "analytics-dao",
+ "anyhow",
  "axum",
  "uuid",
 ]
@@ -750,20 +860,9 @@ dependencies = [
 name = "events-commands"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "chrono",
- "database-traits",
- "deadpool-postgres",
- "events-dao",
- "events-models",
  "serde",
  "serde_json",
- "sql-connection",
- "test-utils",
- "thiserror 2.0.12",
- "tokio",
- "tokio-postgres",
- "tracing",
  "utoipa",
  "uuid",
 ]
@@ -774,10 +873,13 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "dao-utils",
  "database-traits",
  "deadpool-postgres",
+ "events-commands",
  "events-models",
  "serde",
+ "serde_json",
  "sql-connection",
  "thiserror 2.0.12",
  "tokio-postgres",
@@ -790,6 +892,7 @@ name = "events-http"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "axum",
  "chrono",
  "database-traits",
@@ -799,10 +902,12 @@ dependencies = [
  "events-dao",
  "events-models",
  "events-queries",
+ "flume",
  "serde",
  "serde_json",
  "sql-connection",
  "test-utils",
+ "thiserror 2.0.12",
  "tokio",
  "tokio-postgres",
  "tower",
@@ -904,6 +1009,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fs2"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9564fc758e15025b46aa6643b1b77d047d1a56a1aea6e01002ac0c7026876213"
+dependencies = [
+ "libc",
+ "winapi",
+]
+
+[[package]]
 name = "futures"
 version = "0.3.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -990,6 +1105,15 @@ dependencies = [
  "pin-project-lite",
  "pin-utils",
  "slab",
+]
+
+[[package]]
+name = "fxhash"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c31b6d751ae2c7f11320402d34e41349dd1016f8d5d45e48c4312bc8625af50c"
+dependencies = [
+ "byteorder",
 ]
 
 [[package]]
@@ -1161,15 +1285,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hyperloglogplus"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "621debdf94dcac33e50475fdd76d34d5ea9c0362a834b9db08c3024696c1fbe3"
-dependencies = [
- "serde",
-]
-
-[[package]]
 name = "iana-time-zone"
 version = "0.1.63"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1334,6 +1449,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "instant"
+version = "0.1.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e0242819d153cba4b4b05a5a8f2a7e9bbf97b6055b2a002b395c96b5ff3c0222"
+dependencies = [
+ "cfg-if",
 ]
 
 [[package]]
@@ -1529,7 +1653,7 @@ dependencies = [
  "futures-util",
  "log",
  "loom",
- "parking_lot",
+ "parking_lot 0.12.4",
  "portable-atomic",
  "quanta",
  "rustc_version",
@@ -1631,12 +1755,37 @@ checksum = "f38d5652c16fde515bb1ecef450ab0f6a219d619a7274976324d5e377f7dceba"
 
 [[package]]
 name = "parking_lot"
+version = "0.11.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7d17b78036a60663b797adeaee46f5c9dfebb86948d1255007a1d6be0271ff99"
+dependencies = [
+ "instant",
+ "lock_api",
+ "parking_lot_core 0.8.6",
+]
+
+[[package]]
+name = "parking_lot"
 version = "0.12.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "70d58bf43669b5795d1576d0641cfb6fbb2057bf629506267a92807158584a13"
 dependencies = [
  "lock_api",
- "parking_lot_core",
+ "parking_lot_core 0.9.11",
+]
+
+[[package]]
+name = "parking_lot_core"
+version = "0.8.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "60a2cfe6f0ad2bfc16aefa463b497d5c7a5ecd44a23efa72aa342d90177356dc"
+dependencies = [
+ "cfg-if",
+ "instant",
+ "libc",
+ "redox_syscall 0.2.16",
+ "smallvec",
+ "winapi",
 ]
 
 [[package]]
@@ -1647,7 +1796,7 @@ checksum = "bc838d2a56b5b1a6c25f55575dfc605fabb63bb2365f6c2353ef9159aa69e4a5"
 dependencies = [
  "cfg-if",
  "libc",
- "redox_syscall",
+ "redox_syscall 0.5.12",
  "smallvec",
  "windows-targets",
 ]
@@ -1825,7 +1974,7 @@ version = "0.28.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fdef7f9be5c0122f890d58bdf4d964349ba6a6161f705907526d891efabba57d"
 dependencies = [
- "bitflags",
+ "bitflags 2.9.1",
  "cassowary",
  "compact_str",
  "crossterm",
@@ -1846,7 +1995,7 @@ version = "11.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c6df7ab838ed27997ba19a4664507e6f82b41fe6e20be42929332156e5e85146"
 dependencies = [
- "bitflags",
+ "bitflags 2.9.1",
 ]
 
 [[package]]
@@ -1883,6 +2032,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "bincode",
  "bytes",
  "deadpool-redis",
  "flume",
@@ -1890,10 +2040,21 @@ dependencies = [
  "redis",
  "serde",
  "serde_json",
+ "sled",
  "test-utils",
+ "thiserror 1.0.69",
  "tokio",
  "tracing",
  "url",
+]
+
+[[package]]
+name = "redox_syscall"
+version = "0.2.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb5a58c1855b4b6819d59012155603f0b22ad30cad752600aadfcb695265519a"
+dependencies = [
+ "bitflags 1.3.2",
 ]
 
 [[package]]
@@ -1902,7 +2063,7 @@ version = "0.5.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "928fca9cf2aa042393a8325b9ead81d2f0df4cb12e1e24cef072922ccd99c5af"
 dependencies = [
- "bitflags",
+ "bitflags 2.9.1",
 ]
 
 [[package]]
@@ -1970,7 +2131,7 @@ version = "0.38.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fdb5bc1ae2baa591800df16c9ca78619bf65c0488b41b96ccec5d11220d8c154"
 dependencies = [
- "bitflags",
+ "bitflags 2.9.1",
  "errno",
  "libc",
  "linux-raw-sys",
@@ -2136,6 +2297,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f92a496fb766b417c996b9c5e57daf2f7ad3b0bebe1ccfca4856390e3d3bb67"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "sled"
+version = "0.34.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f96b4737c2ce5987354855aed3797279def4ebf734436c6aa4552cf8e169935"
+dependencies = [
+ "crc32fast",
+ "crossbeam-epoch",
+ "crossbeam-utils",
+ "fs2",
+ "fxhash",
+ "libc",
+ "log",
+ "parking_lot 0.11.2",
 ]
 
 [[package]]
@@ -2371,7 +2548,7 @@ dependencies = [
  "bytes",
  "libc",
  "mio",
- "parking_lot",
+ "parking_lot 0.12.4",
  "pin-project-lite",
  "signal-hook-registry",
  "socket2",
@@ -2403,7 +2580,7 @@ dependencies = [
  "futures-channel",
  "futures-util",
  "log",
- "parking_lot",
+ "parking_lot 0.12.4",
  "percent-encoding",
  "phf",
  "pin-project-lite",
@@ -2452,7 +2629,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "adc82fd73de2a9722ac5da747f12383d2bfdb93591ee6c58486e0097890f05f2"
 dependencies = [
  "async-compression",
- "bitflags",
+ "bitflags 2.9.1",
  "bytes",
  "futures-core",
  "http",
@@ -2616,6 +2793,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7dd6e30e90baa6f72411720665d41d89b9a3d039dc45b8faea1ddd07f617f6af"
 
 [[package]]
+name = "unty"
+version = "0.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d49784317cd0d1ee7ec5c716dd598ec5b4483ea832a2dced265471cc0f690ae"
+
+[[package]]
 name = "url"
 version = "2.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2630,21 +2813,10 @@ dependencies = [
 name = "user-commands"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "chrono",
- "database-traits",
- "deadpool-postgres",
  "serde",
  "serde_json",
- "sql-connection",
- "test-utils",
- "thiserror 2.0.12",
- "tokio",
- "tokio-postgres",
- "tracing",
- "user-dao",
- "user-models",
- "user-queries",
+ "user-events",
  "utoipa",
  "uuid",
 ]
@@ -2655,6 +2827,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "dao-utils",
  "database-traits",
  "deadpool-postgres",
  "serde",
@@ -2664,7 +2837,19 @@ dependencies = [
  "tokio",
  "tokio-postgres",
  "tracing",
+ "user-commands",
  "user-models",
+ "uuid",
+]
+
+[[package]]
+name = "user-events"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "events-commands",
+ "serde",
+ "serde_json",
  "uuid",
 ]
 
@@ -2672,19 +2857,28 @@ dependencies = [
 name = "user-http"
 version = "0.1.0"
 dependencies = [
+ "analytics",
+ "anyhow",
+ "async-trait",
  "axum",
  "axum-core",
  "chrono",
+ "database-traits",
  "domain",
+ "events-commands",
+ "flume",
  "http",
  "serde",
  "serde_json",
  "sql-connection",
+ "test-utils",
  "thiserror 2.0.12",
+ "tokio",
  "tower",
  "tracing",
  "user-commands",
  "user-dao",
+ "user-events",
  "user-models",
  "user-queries",
  "utoipa",
@@ -2801,6 +2995,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
+name = "virtue"
+version = "0.0.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "051eb1abcf10076295e815102942cc58f9d5e3b4560e46e53c21e8ff6f3af7b1"
+
+[[package]]
 name = "wasi"
 version = "0.11.0+wasi-snapshot-preview1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2895,7 +3095,7 @@ version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6994d13118ab492c3c80c1f81928718159254c53c472bf9ce36f8dae4add02a7"
 dependencies = [
- "redox_syscall",
+ "redox_syscall 0.5.12",
  "wasite",
  "web-sys",
 ]
@@ -3121,7 +3321,7 @@ version = "0.39.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6f42320e61fe2cfd34354ecb597f86f413484a798ba44a8ca1165c58d42da6c1"
 dependencies = [
- "bitflags",
+ "bitflags 2.9.1",
 ]
 
 [[package]]

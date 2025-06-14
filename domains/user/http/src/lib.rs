@@ -1,3 +1,5 @@
+pub mod analytics_integration;
+pub mod command_handlers;
 pub mod handlers;
 
 use serde::{Deserialize, Serialize};
@@ -14,12 +16,10 @@ pub struct UserResponse {
     pub id: Uuid,
     pub name: String,
     pub events: Vec<SimpleEventResponse>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub metrics: Option<UserEventMetrics>,
 }
 
 pub use user_queries::{
-    EventTypeCount, GetUserByNameResponse, UserEventMetrics,
+    GetUserByNameResponse,
 };
 
 impl From<user_models::User> for UserResponse {
@@ -28,7 +28,6 @@ impl From<user_models::User> for UserResponse {
             id: user.id,
             name: user.name,
             events: vec![],
-            metrics: None,
         }
     }
 }
@@ -39,23 +38,11 @@ impl From<GetUserByNameResponse> for UserResponse {
             id: response.id,
             name: response.name,
             events: vec![],
-            metrics: None,
         }
     }
 }
 
 impl UserResponse {
-    pub fn with_metrics(
-        user: user_models::User, metrics: UserEventMetrics,
-    ) -> Self {
-        Self {
-            id: user.id,
-            name: user.name,
-            events: vec![],
-            metrics: Some(metrics),
-        }
-    }
-
     pub fn with_event_ids(
         user: user_models::User, event_ids: Vec<Uuid>,
     ) -> Self {
@@ -66,9 +53,10 @@ impl UserResponse {
                 .into_iter()
                 .map(|id| SimpleEventResponse { id })
                 .collect(),
-            metrics: None,
         }
     }
 }
 
+pub use analytics_integration::{UserAnalyticsFactory, UserAnalyticsIntegration};
+pub use command_handlers::{CreateUserHandler, UpdateUserHandler, DeleteUserHandler, CreateUserError, UpdateUserError, DeleteUserError};
 pub use handlers::*;

@@ -32,16 +32,21 @@ impl EventTypeDao {
         &self, id: i32,
     ) -> Result<EventTypeResponse, EventTypeDaoError> {
         let client = self.db.get_client().await?;
-        let stmt = client.prepare("SELECT id, name FROM event_types WHERE id = $1").await?;
+        let stmt = client
+            .prepare("SELECT id, name FROM event_types WHERE id = $1")
+            .await?;
         let rows = client.query(&stmt, &[&id]).await?;
-        
-        let event_type = rows.first()
-            .map(|row| EventTypeResponse {
-                id: row.get(0),
-                name: row.get(1),
+
+        let event_type = rows
+            .first()
+            .map(|row| {
+                EventTypeResponse {
+                    id: row.get(0),
+                    name: row.get(1),
+                }
             })
             .ok_or(EventTypeDaoError::NotFound)?;
-        
+
         Ok(event_type)
     }
 
@@ -50,16 +55,21 @@ impl EventTypeDao {
         &self,
     ) -> Result<Vec<EventTypeResponse>, EventTypeDaoError> {
         let client = self.db.get_client().await?;
-        let stmt = client.prepare("SELECT id, name FROM event_types ORDER BY name ASC").await?;
+        let stmt = client
+            .prepare("SELECT id, name FROM event_types ORDER BY name ASC")
+            .await?;
         let rows = client.query(&stmt, &[]).await?;
-        
-        let event_types = rows.iter()
-            .map(|row| EventTypeResponse {
-                id: row.get(0),
-                name: row.get(1),
+
+        let event_types = rows
+            .iter()
+            .map(|row| {
+                EventTypeResponse {
+                    id: row.get(0),
+                    name: row.get(1),
+                }
             })
             .collect();
-        
+
         Ok(event_types)
     }
 
@@ -70,24 +80,36 @@ impl EventTypeDao {
         let client = self.db.get_client().await?;
 
         // Check if name already exists
-        let check_stmt = client.prepare("SELECT id FROM event_types WHERE name = $1").await?;
+        let check_stmt = client
+            .prepare("SELECT id FROM event_types WHERE name = $1")
+            .await?;
         let check_rows = client.query(&check_stmt, &[&req.name]).await?;
         if !check_rows.is_empty() {
             return Err(EventTypeDaoError::AlreadyExists);
         }
 
-        let stmt = client.prepare("INSERT INTO event_types (name) VALUES ($1) RETURNING id, name").await?;
+        let stmt = client
+            .prepare(
+                "INSERT INTO event_types (name) VALUES ($1) RETURNING id, \
+                 name",
+            )
+            .await?;
         let rows = client.query(&stmt, &[&req.name]).await?;
-        
-        let event_type = rows.first()
-            .map(|row| EventTypeResponse {
-                id: row.get(0),
-                name: row.get(1),
+
+        let event_type = rows
+            .first()
+            .map(|row| {
+                EventTypeResponse {
+                    id: row.get(0),
+                    name: row.get(1),
+                }
             })
-            .ok_or_else(|| EventTypeDaoError::Database(
-                tokio_postgres::Error::__private_api_timeout()
-            ))?;
-        
+            .ok_or_else(|| {
+                EventTypeDaoError::Database(
+                    tokio_postgres::Error::__private_api_timeout(),
+                )
+            })?;
+
         Ok(event_type)
     }
 
@@ -98,7 +120,9 @@ impl EventTypeDao {
         let client = self.db.get_client().await?;
 
         // Check if event type exists
-        let check_stmt = client.prepare("SELECT id FROM event_types WHERE id = $1").await?;
+        let check_stmt = client
+            .prepare("SELECT id FROM event_types WHERE id = $1")
+            .await?;
         let check_rows = client.query(&check_stmt, &[&id]).await?;
         if check_rows.is_empty() {
             return Err(EventTypeDaoError::NotFound);
@@ -106,35 +130,54 @@ impl EventTypeDao {
 
         if let Some(name) = req.name {
             // Check if new name already exists for a different event type
-            let check_name_stmt = client.prepare("SELECT id FROM event_types WHERE name = $1 AND id != $2").await?;
-            let check_name_rows = client.query(&check_name_stmt, &[&name, &id]).await?;
+            let check_name_stmt = client
+                .prepare(
+                    "SELECT id FROM event_types WHERE name = $1 AND id != $2",
+                )
+                .await?;
+            let check_name_rows =
+                client.query(&check_name_stmt, &[&name, &id]).await?;
             if !check_name_rows.is_empty() {
                 return Err(EventTypeDaoError::AlreadyExists);
             }
 
-            let stmt = client.prepare("UPDATE event_types SET name = $1 WHERE id = $2 RETURNING id, name").await?;
+            let stmt = client
+                .prepare(
+                    "UPDATE event_types SET name = $1 WHERE id = $2 \
+                     RETURNING id, name",
+                )
+                .await?;
             let rows = client.query(&stmt, &[&name, &id]).await?;
-            
-            let event_type = rows.first()
-                .map(|row| EventTypeResponse {
-                    id: row.get(0),
-                    name: row.get(1),
+
+            let event_type = rows
+                .first()
+                .map(|row| {
+                    EventTypeResponse {
+                        id: row.get(0),
+                        name: row.get(1),
+                    }
                 })
                 .ok_or(EventTypeDaoError::NotFound)?;
-            
+
             Ok(event_type)
-        } else {
+        }
+        else {
             // No update needed, just return the existing event type
-            let stmt = client.prepare("SELECT id, name FROM event_types WHERE id = $1").await?;
+            let stmt = client
+                .prepare("SELECT id, name FROM event_types WHERE id = $1")
+                .await?;
             let rows = client.query(&stmt, &[&id]).await?;
-            
-            let event_type = rows.first()
-                .map(|row| EventTypeResponse {
-                    id: row.get(0),
-                    name: row.get(1),
+
+            let event_type = rows
+                .first()
+                .map(|row| {
+                    EventTypeResponse {
+                        id: row.get(0),
+                        name: row.get(1),
+                    }
                 })
                 .ok_or(EventTypeDaoError::NotFound)?;
-            
+
             Ok(event_type)
         }
     }
@@ -142,13 +185,15 @@ impl EventTypeDao {
     #[instrument(skip_all)]
     pub async fn delete(&self, id: i32) -> Result<(), EventTypeDaoError> {
         let client = self.db.get_client().await?;
-        let stmt = client.prepare("DELETE FROM event_types WHERE id = $1").await?;
+        let stmt = client
+            .prepare("DELETE FROM event_types WHERE id = $1")
+            .await?;
         let affected = client.execute(&stmt, &[&id]).await?;
-        
+
         if affected == 0 {
             return Err(EventTypeDaoError::NotFound);
         }
-        
+
         Ok(())
     }
 
@@ -157,16 +202,21 @@ impl EventTypeDao {
         &self, name: &str,
     ) -> Result<EventTypeResponse, EventTypeDaoError> {
         let client = self.db.get_client().await?;
-        let stmt = client.prepare("SELECT id, name FROM event_types WHERE name = $1").await?;
+        let stmt = client
+            .prepare("SELECT id, name FROM event_types WHERE name = $1")
+            .await?;
         let rows = client.query(&stmt, &[&name]).await?;
-        
-        let event_type = rows.first()
-            .map(|row| EventTypeResponse {
-                id: row.get(0),
-                name: row.get(1),
+
+        let event_type = rows
+            .first()
+            .map(|row| {
+                EventTypeResponse {
+                    id: row.get(0),
+                    name: row.get(1),
+                }
             })
             .ok_or(EventTypeDaoError::NotFound)?;
-        
+
         Ok(event_type)
     }
 }

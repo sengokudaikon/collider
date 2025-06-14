@@ -29,13 +29,15 @@ pub async fn create_test_event_types(
     let client = container.pool.get().await?;
     let login_row = client
         .query_one(
-            "INSERT INTO event_types (name) VALUES ('login_event') RETURNING id",
+            "INSERT INTO event_types (name) VALUES ('login_event') \
+             RETURNING id",
             &[],
         )
         .await?;
     let logout_row = client
         .query_one(
-            "INSERT INTO event_types (name) VALUES ('logout_event') RETURNING id",
+            "INSERT INTO event_types (name) VALUES ('logout_event') \
+             RETURNING id",
             &[],
         )
         .await?;

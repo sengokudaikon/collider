@@ -1,7 +1,8 @@
-use core::marker::Send;
 use std::convert::Infallible;
 
-use database_traits::connection::{FromRequestParts, GetDatabaseConnect, Parts};
+use database_traits::connection::{
+    FromRequestParts, Parts,
+};
 use deadpool_postgres::{Object, Pool};
 
 use crate::static_vars::get_sql_pool;
@@ -42,12 +43,3 @@ impl<S> FromRequestParts<S> for SqlConnect {
         Box::pin(async { Ok(SqlConnect::from_global()) })
     }
 }
-
-impl GetDatabaseConnect for SqlConnect {
-    type Connect = Pool;
-
-    fn get_connect(&self) -> &Self::Connect { &self.pool }
-}
-
-// For now, we'll just use the pool directly and handle transactions
-// at the application level when needed

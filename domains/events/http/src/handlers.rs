@@ -1,17 +1,15 @@
 use axum::{
-    Router,
     extract::{Path, Query, State},
     http::StatusCode,
     response::Json,
     routing::{delete, get, post, put},
+    Router,
 };
 use chrono::{DateTime, Utc};
 use domain::AppError;
 use events_commands::{
-    BulkDeleteEventsCommand, BulkDeleteEventsHandler,
-    BulkDeleteEventsResponse, CreateEventCommand, CreateEventHandler,
-    CreateEventResponse, DeleteEventHandler, UpdateEventCommand,
-    UpdateEventHandler, UpdateEventResponse,
+    BulkDeleteEventsCommand, BulkDeleteEventsResponse, CreateEventCommand,
+    CreateEventResponse, UpdateEventCommand, UpdateEventResponse,
 };
 use events_queries::{
     GetEventQuery, GetEventQueryHandler, ListEventsQuery,
@@ -23,7 +21,13 @@ use tracing::instrument;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
-use crate::EventResponse;
+use crate::{
+    command_handlers::{
+        BulkDeleteEventsHandler, CreateEventHandler, DeleteEventHandler,
+        UpdateEventHandler,
+    },
+    EventResponse,
+};
 
 #[derive(Clone)]
 pub struct EventServices {
@@ -78,8 +82,7 @@ impl EventHandlers {
 pub async fn create_event(
     State(services): State<EventServices>,
     Json(command): Json<CreateEventCommand>,
-) -> Result<(StatusCode, Json<events_commands::CreateEventResponse>), AppError>
-{
+) -> Result<(StatusCode, Json<CreateEventResponse>), AppError> {
     let result = services
         .create_event
         .execute(command)
@@ -107,7 +110,7 @@ pub async fn create_event(
 pub async fn update_event(
     State(services): State<EventServices>, Path(id): Path<Uuid>,
     Json(mut command): Json<UpdateEventCommand>,
-) -> Result<Json<events_commands::UpdateEventResponse>, AppError> {
+) -> Result<Json<UpdateEventResponse>, AppError> {
     command.event_id = id;
     let result = services
         .update_event
@@ -211,16 +214,16 @@ pub async fn list_events(
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct ListEventsParams {
-    user_id: Option<Uuid>,
-    event_type_id: Option<i32>,
-    limit: Option<u64>,
-    offset: Option<u64>,
-    page: Option<u64>,
+    pub user_id: Option<Uuid>,
+    pub event_type_id: Option<i32>,
+    pub limit: Option<u64>,
+    pub offset: Option<u64>,
+    pub page: Option<u64>,
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct BulkDeleteParams {
-    before: DateTime<Utc>,
+    pub before: DateTime<Utc>,
 }
 
 #[utoipa::path(
@@ -240,7 +243,7 @@ pub struct BulkDeleteParams {
 pub async fn bulk_delete_events(
     State(services): State<EventServices>,
     Query(params): Query<BulkDeleteParams>,
-) -> Result<Json<events_commands::BulkDeleteEventsResponse>, AppError> {
+) -> Result<Json<BulkDeleteEventsResponse>, AppError> {
     let command = BulkDeleteEventsCommand {
         before: params.before,
     };
@@ -249,7 +252,7 @@ pub async fn bulk_delete_events(
         .execute(command)
         .await
         .map_err(AppError::from_error)?;
-    Ok(Json(result.result))
+    Ok(Json(result))
 }
 
 #[cfg(test)]
@@ -263,8 +266,6 @@ mod tests {
     use database_traits::dao::GenericDao;
     use events_commands::CreateEventCommand;
     use events_dao::EventDao;
-    use events_models::EventActiveModel;
-    use sea_orm::ActiveValue::Set;
     use serde_json::json;
     use test_utils::{
         postgres::TestPostgresContainer, redis::TestRedisContainer, *,
@@ -278,8 +279,6 @@ mod tests {
     -> anyhow::Result<(TestPostgresContainer, Router, EventDao)> {
         let container = TestPostgresContainer::new().await?;
 
-        // Initialize Redis for caching (this also calls
-        // RedisConnectionManager::init_static)
         let redis_container = TestRedisContainer::new().await?;
         redis_container.flush_db().await?;
 
@@ -359,18 +358,17 @@ mod tests {
         let event_type_id = create_test_event_type(&container).await.unwrap();
         let user_id = create_test_user(&container).await.unwrap();
 
-        let active_model = EventActiveModel {
-            id: Set(Uuid::now_v7()),
-            user_id: Set(user_id),
-            event_type_id: Set(event_type_id),
-            timestamp: Set(Utc::now()),
-            metadata: Set(Some(json!({"test": "data"}))),
+        let create_command = CreateEventCommand {
+            user_id,
+            event_type: "test_event".to_string(),
+            timestamp: Some(Utc::now()),
+            metadata: Some(json!({"test": "data"})),
         };
-        let created_event = dao.create(active_model).await.unwrap();
+        let created_event = dao.create(create_command).await.unwrap();
 
         let request = Request::builder()
             .method(Method::GET)
-            .uri(&format!("/{}", created_event.id))
+            .uri(format!("/{}", created_event.id))
             .body(Body::empty())
             .unwrap();
 
@@ -398,7 +396,7 @@ mod tests {
 
         let request = Request::builder()
             .method(Method::GET)
-            .uri(&format!("/{}", non_existent_id))
+            .uri(format!("/{}", non_existent_id))
             .body(Body::empty())
             .unwrap();
 
@@ -410,7 +408,8 @@ mod tests {
     #[tokio::test]
     async fn test_update_event_endpoint() {
         let (container, app, dao) = setup_test_app().await.unwrap();
-        let event_type_id = create_test_event_type(&container).await.unwrap();
+        let _event_type_id =
+            create_test_event_type(&container).await.unwrap();
         let user_id = create_test_user(&container).await.unwrap();
 
         container
@@ -421,14 +420,13 @@ mod tests {
             .await
             .unwrap();
 
-        let active_model = EventActiveModel {
-            id: Set(Uuid::now_v7()),
-            user_id: Set(user_id),
-            event_type_id: Set(event_type_id),
-            timestamp: Set(Utc::now()),
-            metadata: Set(Some(json!({"original": "data"}))),
+        let create_command = CreateEventCommand {
+            user_id,
+            event_type: "test_event".to_string(),
+            timestamp: Some(Utc::now()),
+            metadata: Some(json!({"original": "data"})),
         };
-        let created_event = dao.create(active_model).await.unwrap();
+        let created_event = dao.create(create_command).await.unwrap();
 
         let update_data = json!({
             "event_type_id": 2,
@@ -437,7 +435,7 @@ mod tests {
 
         let request = Request::builder()
             .method(Method::PUT)
-            .uri(&format!("/{}", created_event.id))
+            .uri(format!("/{}", created_event.id))
             .header("content-type", "application/json")
             .body(Body::from(update_data.to_string()))
             .unwrap();
@@ -460,21 +458,21 @@ mod tests {
     #[tokio::test]
     async fn test_delete_event_endpoint() {
         let (container, app, dao) = setup_test_app().await.unwrap();
-        let event_type_id = create_test_event_type(&container).await.unwrap();
+        let _event_type_id =
+            create_test_event_type(&container).await.unwrap();
         let user_id = create_test_user(&container).await.unwrap();
 
-        let create_request = EventActiveModel {
-            id: Set(Uuid::now_v7()),
-            user_id: Set(user_id),
-            event_type_id: Set(event_type_id),
-            timestamp: Set(Utc::now()),
-            metadata: Set(Some(json!({"to_delete": "yes"}))),
+        let create_command = CreateEventCommand {
+            user_id,
+            event_type: "test_event".to_string(),
+            timestamp: Some(Utc::now()),
+            metadata: Some(json!({"to_delete": "yes"})),
         };
-        let created_event = dao.create(create_request).await.unwrap();
+        let created_event = dao.create(create_command).await.unwrap();
 
         let request = Request::builder()
             .method(Method::DELETE)
-            .uri(&format!("/{}", created_event.id))
+            .uri(format!("/{}", created_event.id))
             .body(Body::empty())
             .unwrap();
 
@@ -489,18 +487,18 @@ mod tests {
     #[tokio::test]
     async fn test_list_events_endpoint() {
         let (container, app, dao) = setup_test_app().await.unwrap();
-        let event_type_id = create_test_event_type(&container).await.unwrap();
+        let _event_type_id =
+            create_test_event_type(&container).await.unwrap();
         let user_id = create_test_user(&container).await.unwrap();
 
         for i in 0..3 {
-            let create_request = EventActiveModel {
-                id: Set(Uuid::now_v7()),
-                user_id: Set(user_id),
-                event_type_id: Set(event_type_id),
-                timestamp: Set(Utc::now()),
-                metadata: Set(Some(json!({"sequence": i}))),
+            let create_command = CreateEventCommand {
+                user_id,
+                event_type: "test_event".to_string(),
+                timestamp: Some(Utc::now()),
+                metadata: Some(json!({"sequence": i})),
             };
-            dao.create(create_request).await.unwrap();
+            dao.create(create_command).await.unwrap();
         }
 
         let request = Request::builder()
@@ -526,7 +524,8 @@ mod tests {
     #[tokio::test]
     async fn test_list_events_with_filters() {
         let (container, app, dao) = setup_test_app().await.unwrap();
-        let event_type_id = create_test_event_type(&container).await.unwrap();
+        let _event_type_id =
+            create_test_event_type(&container).await.unwrap();
         let user_id_1 = create_test_user(&container).await.unwrap();
 
         let user_id_2 = Uuid::now_v7();
@@ -537,26 +536,24 @@ mod tests {
         );
         container.execute_sql(&query).await.unwrap();
 
-        let create_request_1 = EventActiveModel {
-            id: Set(Uuid::now_v7()),
-            user_id: Set(user_id_1),
-            event_type_id: Set(event_type_id),
-            timestamp: Set(Utc::now()),
-            metadata: Set(Some(json!({"user": "1"}))),
+        let create_command_1 = CreateEventCommand {
+            user_id: user_id_1,
+            event_type: "test_event".to_string(),
+            timestamp: Some(Utc::now()),
+            metadata: Some(json!({"user": "1"})),
         };
-        let create_request_2 = EventActiveModel {
-            id: Set(Uuid::now_v7()),
-            user_id: Set(user_id_2),
-            event_type_id: Set(event_type_id),
-            timestamp: Set(Utc::now()),
-            metadata: Set(Some(json!({"user": "2"}))),
+        let create_command_2 = CreateEventCommand {
+            user_id: user_id_2,
+            event_type: "test_event".to_string(),
+            timestamp: Some(Utc::now()),
+            metadata: Some(json!({"user": "2"})),
         };
-        dao.create(create_request_1).await.unwrap();
-        dao.create(create_request_2).await.unwrap();
+        dao.create(create_command_1).await.unwrap();
+        dao.create(create_command_2).await.unwrap();
 
         let request = Request::builder()
             .method(Method::GET)
-            .uri(&format!("/?user_id={}", user_id_1))
+            .uri(format!("/?user_id={}", user_id_1))
             .body(Body::empty())
             .unwrap();
 
@@ -579,18 +576,18 @@ mod tests {
     #[tokio::test]
     async fn test_list_events_with_pagination() {
         let (container, app, dao) = setup_test_app().await.unwrap();
-        let event_type_id = create_test_event_type(&container).await.unwrap();
+        let _event_type_id =
+            create_test_event_type(&container).await.unwrap();
         let user_id = create_test_user(&container).await.unwrap();
 
         for i in 0..5 {
-            let create_request = EventActiveModel {
-                id: Set(Uuid::now_v7()),
-                user_id: Set(user_id),
-                event_type_id: Set(event_type_id),
-                timestamp: Set(Utc::now()),
-                metadata: Set(Some(json!({"sequence": i}))),
+            let create_command = CreateEventCommand {
+                user_id,
+                event_type: "test_event".to_string(),
+                timestamp: Some(Utc::now()),
+                metadata: Some(json!({"sequence": i})),
             };
-            dao.create(create_request).await.unwrap();
+            dao.create(create_command).await.unwrap();
         }
 
         let request = Request::builder()

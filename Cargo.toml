@@ -7,17 +7,23 @@ members = [
     "domains/user/commands",
     "domains/user/queries",
     "domains/user/http",
+    "domains/user/events",
     "domains/events/models",
     "domains/events/dao",
     "domains/events/commands",
     "domains/events/queries",
     "domains/events/http",
     "domains/analytics",
+    "domains/analytics/models",
+    "domains/analytics/dao", 
+    "domains/analytics/commands",
+    "domains/analytics/queries",
     "domains/analytics/http",
     # Shared infrastructure
     "libs/persistence/database_traits",
     "libs/persistence/sql_connection",
     "libs/persistence/redis_connection",
+    "libs/persistence/dao_utils",
     # Shared libs
     "libs/domain",
     "libs/test-utils",
@@ -29,6 +35,7 @@ members = [
 [workspace.dependencies]
 # Database
 tokio-postgres = { version = "0.7", features = ["with-uuid-1", "with-chrono-0_4", "with-serde_json-1"] }
+postgres-types = "0.2.9"
 deadpool-postgres = "0.14"
 deadpool-redis = { version = "0.21.1", features = ["serde","connection-manager", "cache-aio", "json", ] }
 redis = "0.31.0"
@@ -43,6 +50,7 @@ bytes = "1.10.1"
 flume = "0.11"
 hyperloglogplus = "0.4.1"
 fnv = "1.0"
+dashmap = "7.0.0-rc2"
 # API Documentation
 utoipa = { version = "5.3.1", features = ["axum_extras", "chrono", "uuid"] }
 utoipa-rapidoc = { version = "6.0.0", features = ["axum"] }
@@ -74,12 +82,17 @@ dotenvy = "0.15"
 
 test-utils = { path = "libs/test-utils" }
 analytics = { path = "domains/analytics" }
+analytics-models = { path = "domains/analytics/models" }
+analytics-dao = { path = "domains/analytics/dao" }
+analytics-commands = { path = "domains/analytics/commands" }
+analytics-queries = { path = "domains/analytics/queries" }
 analytics-http = { path = "domains/analytics/http" }
 user-models = { path = "domains/user/models" }
 user-dao = { path = "domains/user/dao" }
 user-commands = { path = "domains/user/commands" }
 user-queries = { path = "domains/user/queries" }
 user-http = { path = "domains/user/http" }
+user-events = { path = "domains/user/events" }
 events-models = { path = "domains/events/models" }
 events-dao = { path = "domains/events/dao" }
 events-commands = { path = "domains/events/commands" }
@@ -90,8 +103,8 @@ events-http = { path = "domains/events/http" }
 database-traits = { path = "libs/persistence/database_traits" }
 sql-connection = { path = "libs/persistence/sql_connection" }
 redis-connection = { path = "libs/persistence/redis_connection" }
+dao-utils = { path = "libs/persistence/dao_utils" }
 domain = { path = "libs/domain" }
-
 
 [profile.release]
 lto = "thin"          # Better parallelism vs "fat" LTO, 4-20% faster builds

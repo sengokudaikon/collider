@@ -8,19 +8,27 @@ edition = "2024"
 events-models = { path = "../models" }
 events-commands = { path = "../commands" }
 events-queries = { path = "../queries" }
+events-dao = { path = "../dao" }
 
 # Infrastructure
 sql-connection.workspace = true
 domain.workspace = true
+database-traits.workspace = true
+thiserror.workspace = true
+async-trait.workspace = true
+tokio.workspace = true
 
 # Web framework
-axum.workspace = true
+axum = { workspace = true, features = ["macros"] }
 serde.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
 tracing.workspace = true
 chrono.workspace = true
 utoipa.workspace = true
+
+# Event processing
+flume.workspace = true
 
 [dev-dependencies]
 test-utils.workspace = true

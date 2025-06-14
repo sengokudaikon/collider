@@ -1,11 +1,15 @@
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+use dao_utils::query_helpers::{PgParam, PgParamVec};
 use database_traits::dao::GenericDao;
-use events_models::{Event, NewEvent, UpdateEvent};
+use events_models::Event;
+use events_commands::{CreateEventCommand, UpdateEventCommand};
 use sql_connection::SqlConnect;
 use thiserror::Error;
 use tracing::instrument;
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
+
+use crate::EventTypeDaoError;
 
 #[derive(Debug, Error)]
 pub enum EventDaoError {
@@ -13,6 +17,8 @@ pub enum EventDaoError {
     Database(#[from] tokio_postgres::Error),
     #[error("Connection error: {0}")]
     Connection(#[from] deadpool_postgres::PoolError),
+    #[error("Event type DAO error: {0}")]
+    EventTypeDao(#[from] EventTypeDaoError),
     #[error("Event not found")]
     NotFound,
 }
@@ -23,59 +29,49 @@ pub struct EventDao {
 }
 
 impl EventDao {
-    pub fn new(db: SqlConnect) -> Self { Self { db } }
+    pub fn new(db: SqlConnect) -> Self { 
+        Self { 
+            db,
+        } 
+    }
+
+    pub fn db(&self) -> &SqlConnect { &self.db }
 }
 
 #[async_trait]
 impl GenericDao for EventDao {
-    type Model = Event;
-    type Response = Event;
-    type CreateRequest = NewEvent;
-    type UpdateRequest = UpdateEvent;
+    type CreateRequest = CreateEventCommand;
     type Error = EventDaoError;
     type ID = Uuid;
+    type Model = Event;
+    type Response = Event;
+    type UpdateRequest = UpdateEventCommand;
 
     async fn find_by_id(
         &self, id: Self::ID,
     ) -> Result<Self::Response, Self::Error> {
         let client = self.db.get_client().await?;
-        let stmt = client.prepare(
-            "SELECT id, user_id, event_type_id, timestamp, metadata 
-             FROM events WHERE id = $1"
-        ).await?;
+        let stmt = client.prepare("SELECT id, user_id, event_type_id, timestamp, metadata FROM events WHERE id = $1").await?;
         let rows = client.query(&stmt, &[&id]).await?;
-        
-        let event = rows.first()
-            .map(|row| Event {
-                id: row.get(0),
-                user_id: row.get(1),
-                event_type_id: row.get(2),
-                timestamp: row.get(3),
-                metadata: row.get(4),
-            })
+
+        let event = rows
+            .first()
+            .map(|row| self.map_row(row))
             .ok_or(EventDaoError::NotFound)?;
-        
+
         Ok(event)
     }
 
     async fn all(&self) -> Result<Vec<Self::Response>, Self::Error> {
         let client = self.db.get_client().await?;
-        let stmt = client.prepare(
-            "SELECT id, user_id, event_type_id, timestamp, metadata 
-             FROM events ORDER BY timestamp DESC"
-        ).await?;
+        let stmt = client.prepare("SELECT id, user_id, event_type_id, timestamp, metadata FROM events ORDER BY timestamp DESC").await?;
         let rows = client.query(&stmt, &[]).await?;
-        
-        let events = rows.iter()
-            .map(|row| Event {
-                id: row.get(0),
-                user_id: row.get(1),
-                event_type_id: row.get(2),
-                timestamp: row.get(3),
-                metadata: row.get(4),
-            })
+
+        let events = rows
+            .iter()
+            .map(|row| self.map_row(row))
             .collect();
-        
+
         Ok(events)
     }
 
@@ -83,241 +79,249 @@ impl GenericDao for EventDao {
         &self, req: Self::CreateRequest,
     ) -> Result<Self::Response, Self::Error> {
         let client = self.db.get_client().await?;
+        let event_id = Uuid::now_v7();
+        let timestamp = req.timestamp.unwrap_or_else(Utc::now);
         
-        let stmt = client.prepare(
-            "INSERT INTO events (id, user_id, event_type_id, timestamp, metadata) 
-             VALUES ($1, $2, $3, $4, $5) 
-             RETURNING id, user_id, event_type_id, timestamp, metadata"
-        ).await?;
-        
-        let rows = client.query(&stmt, &[
-            &req.id,
-            &req.user_id,
-            &req.event_type_id,
-            &req.timestamp,
-            &req.metadata,
-        ]).await?;
-        
-        let event = rows.first()
-            .map(|row| Event {
-                id: row.get(0),
-                user_id: row.get(1),
-                event_type_id: row.get(2),
-                timestamp: row.get(3),
-                metadata: row.get(4),
-            })
-            .ok_or_else(|| EventDaoError::Database(
-                tokio_postgres::Error::__private_api_timeout()
-            ))?;
-        
-        Ok(event)
+        // Look up event type by name and create event in single query using CTE
+        let stmt = client
+            .prepare(
+                "WITH event_type_lookup AS (
+                     SELECT id as event_type_id FROM event_types WHERE name = $3
+                 ),
+                 event_insert AS (
+                     INSERT INTO events (id, user_id, event_type_id, timestamp, metadata) 
+                     SELECT $1, $2, etl.event_type_id, $4, $5
+                     FROM event_type_lookup etl
+                     RETURNING id, user_id, event_type_id, timestamp, metadata
+                 )
+                 SELECT ei.id, ei.user_id, ei.event_type_id, ei.timestamp, ei.metadata,
+                        CASE WHEN etl.event_type_id IS NULL THEN true ELSE false END as type_not_found
+                 FROM event_type_lookup etl
+                 RIGHT JOIN event_insert ei ON true",
+            )
+            .await?;
+
+        let rows = client
+            .query(
+                &stmt,
+                &[
+                    &event_id,
+                    &req.user_id,
+                    &req.event_type,
+                    &timestamp,
+                    &req.metadata,
+                ],
+            )
+            .await?;
+
+        if let Some(row) = rows.first() {
+            let type_not_found: bool = row.get(5);
+            if type_not_found {
+                return Err(EventDaoError::EventTypeDao(crate::EventTypeDaoError::NotFound));
+            }
+            
+            let event = self.map_row(row);
+            Ok(event)
+        } else {
+            Err(EventDaoError::Database(
+                tokio_postgres::Error::__private_api_timeout(),
+            ))
+        }
     }
 
     async fn update(
         &self, id: Self::ID, req: Self::UpdateRequest,
     ) -> Result<Self::Response, Self::Error> {
         let client = self.db.get_client().await?;
-        
-        // Check if event exists first
-        let check_stmt = client.prepare("SELECT id FROM events WHERE id = $1").await?;
-        let check_rows = client.query(&check_stmt, &[&id]).await?;
-        if check_rows.is_empty() {
-            return Err(EventDaoError::NotFound);
+
+        // Build dynamic update using CTE for validation and update in single query
+        match (&req.event_type_id, &req.metadata) {
+            (Some(event_type_id), Some(metadata)) => {
+                let stmt = client
+                    .prepare(
+                        "WITH validation AS (
+                             SELECT CASE 
+                                 WHEN NOT EXISTS(SELECT 1 FROM events WHERE id = $1) THEN 'not_found'::text
+                                 ELSE 'ok'::text
+                             END as status
+                         ),
+                         updated AS (
+                             UPDATE events 
+                             SET event_type_id = $2, metadata = $3
+                             WHERE id = $1 
+                             AND (SELECT status FROM validation) = 'ok'
+                             RETURNING id, user_id, event_type_id, timestamp, metadata
+                         )
+                         SELECT u.id, u.user_id, u.event_type_id, u.timestamp, u.metadata, v.status
+                         FROM validation v
+                         LEFT JOIN updated u ON v.status = 'ok'",
+                    )
+                    .await?;
+
+                let rows = client.query(&stmt, &[&id, event_type_id, metadata]).await?;
+                
+                if let Some(row) = rows.first() {
+                    let status: String = row.get(5);
+                    match status.as_str() {
+                        "not_found" => Err(EventDaoError::NotFound),
+                        "ok" => {
+                            let event = Event {
+                                id: row.get(0),
+                                user_id: row.get(1),
+                                event_type_id: row.get(2),
+                                timestamp: row.get(3),
+                                metadata: row.get(4),
+                            };
+                            Ok(event)
+                        }
+                        _ => Err(EventDaoError::Database(tokio_postgres::Error::__private_api_timeout())),
+                    }
+                } else {
+                    Err(EventDaoError::Database(tokio_postgres::Error::__private_api_timeout()))
+                }
+            }
+            (Some(event_type_id), None) => {
+                let stmt = client
+                    .prepare(
+                        "UPDATE events SET event_type_id = $2 
+                         WHERE id = $1 
+                         RETURNING id, user_id, event_type_id, timestamp, metadata",
+                    )
+                    .await?;
+
+                let rows = client.query(&stmt, &[&id, event_type_id]).await?;
+                
+                let event = rows
+                    .first()
+                    .map(|row| self.map_row(row))
+                    .ok_or(EventDaoError::NotFound)?;
+
+                Ok(event)
+            }
+            (None, Some(metadata)) => {
+                let stmt = client
+                    .prepare(
+                        "UPDATE events SET metadata = $2 
+                         WHERE id = $1 
+                         RETURNING id, user_id, event_type_id, timestamp, metadata",
+                    )
+                    .await?;
+
+                let rows = client.query(&stmt, &[&id, metadata]).await?;
+                
+                let event = rows
+                    .first()
+                    .map(|row| self.map_row(row))
+                    .ok_or(EventDaoError::NotFound)?;
+
+                Ok(event)
+            }
+            (None, None) => {
+                // No updates, just return the existing event
+                self.find_by_id(id).await
+            }
         }
-        
-        // Build update query dynamically based on provided fields
-        let mut updates = Vec::new();
-        let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = vec![&id];
-        let mut param_count = 1;
-        
-        if let Some(user_id) = &req.user_id {
-            param_count += 1;
-            updates.push(format!("user_id = ${}", param_count));
-            params.push(user_id);
-        }
-        
-        if let Some(event_type_id) = &req.event_type_id {
-            param_count += 1;
-            updates.push(format!("event_type_id = ${}", param_count));
-            params.push(event_type_id);
-        }
-        
-        if let Some(metadata) = &req.metadata {
-            param_count += 1;
-            updates.push(format!("metadata = ${}", param_count));
-            params.push(metadata);
-        }
-        
-        if updates.is_empty() {
-            // No updates, just return the existing event
-            return self.find_by_id(id).await;
-        }
-        
-        let query = format!(
-            "UPDATE events SET {} WHERE id = $1 
-             RETURNING id, user_id, event_type_id, timestamp, metadata",
-            updates.join(", ")
-        );
-        
-        let stmt = client.prepare(&query).await?;
-        let rows = client.query(&stmt, &params).await?;
-        
-        let event = rows.first()
-            .map(|row| Event {
-                id: row.get(0),
-                user_id: row.get(1),
-                event_type_id: row.get(2),
-                timestamp: row.get(3),
-                metadata: row.get(4),
-            })
-            .ok_or(EventDaoError::NotFound)?;
-        
-        Ok(event)
     }
 
     async fn delete(&self, id: Self::ID) -> Result<(), Self::Error> {
         let client = self.db.get_client().await?;
-        let stmt = client.prepare("DELETE FROM events WHERE id = $1").await?;
-        let affected = client.execute(&stmt, &[&id]).await?;
         
+        // Use RETURNING clause to check if row existed
+        let stmt = client
+            .prepare("DELETE FROM events WHERE id = $1 RETURNING id")
+            .await?;
+        let affected = client.execute(&stmt, &[&id]).await?;
+
         if affected == 0 {
             return Err(EventDaoError::NotFound);
         }
-        
+
         Ok(())
+    }
+
+    fn map_row(&self, row: &tokio_postgres::Row) -> Self::Model {
+        Event {
+            id: row.get(0),
+            user_id: row.get(1),
+            event_type_id: row.get(2),
+            timestamp: row.get(3),
+            metadata: row.get(4),
+        }
+    }
+
+    async fn count(&self) -> Result<i64, Self::Error> {
+        let client = self.db.get_client().await?;
+        let stmt = client.prepare("SELECT COUNT(*) FROM events").await?;
+        let rows = client.query(&stmt, &[]).await?;
+
+        let count: i64 = rows.first()
+            .map(|row| row.get(0))
+            .unwrap_or(0);
+
+        Ok(count)
     }
 }
 
 impl EventDao {
+
     #[instrument(skip_all)]
     pub async fn find_with_filters(
         &self, user_id: Option<Uuid>, event_type_id: Option<i32>,
         limit: Option<u64>, offset: Option<u64>,
     ) -> Result<Vec<Event>, EventDaoError> {
         let client = self.db.get_client().await?;
+
+        // Build query dynamically based on provided filters
+        let mut query = String::from(
+            "SELECT id, user_id, event_type_id, timestamp, metadata FROM events"
+        );
+        let mut where_clauses = Vec::new();
+        let mut params: PgParamVec = Vec::new();
+        let mut param_count = 0;
+
+        // Add WHERE filters
+        if let Some(uid) = user_id {
+            param_count += 1;
+            where_clauses.push(format!("user_id = ${}", param_count));
+            params.push(Box::new(uid));
+        }
+
+        if let Some(etid) = event_type_id {
+            param_count += 1;
+            where_clauses.push(format!("event_type_id = ${}", param_count));
+            params.push(Box::new(etid));
+        }
+
+        if !where_clauses.is_empty() {
+            query.push_str(" WHERE ");
+            query.push_str(&where_clauses.join(" AND "));
+        }
+
+        // Add ORDER BY
+        query.push_str(" ORDER BY timestamp DESC");
+
+        // Add LIMIT and OFFSET
+        if let Some(l) = limit {
+            param_count += 1;
+            query.push_str(&format!(" LIMIT ${}", param_count));
+            params.push(Box::new(l as i64));
+        }
+
+        if let Some(o) = offset {
+            param_count += 1;
+            query.push_str(&format!(" OFFSET ${}", param_count));
+            params.push(Box::new(o as i64));
+        }
+
+        let stmt = client.prepare(&query).await?;
         
-        // Handle different combinations of filters to avoid lifetime issues
-        let rows = match (user_id, event_type_id, limit, offset) {
-            (Some(uid), Some(etid), Some(l), Some(o)) => {
-                let query = "SELECT id, user_id, event_type_id, timestamp, metadata FROM events 
-                           WHERE user_id = $1 AND event_type_id = $2 
-                           ORDER BY timestamp DESC LIMIT $3 OFFSET $4";
-                let stmt = client.prepare(query).await?;
-                client.query(&stmt, &[&uid, &etid, &(l as i64), &(o as i64)]).await?
-            },
-            (Some(uid), Some(etid), Some(l), None) => {
-                let query = "SELECT id, user_id, event_type_id, timestamp, metadata FROM events 
-                           WHERE user_id = $1 AND event_type_id = $2 
-                           ORDER BY timestamp DESC LIMIT $3";
-                let stmt = client.prepare(query).await?;
-                client.query(&stmt, &[&uid, &etid, &(l as i64)]).await?
-            },
-            (Some(uid), Some(etid), None, Some(o)) => {
-                let query = "SELECT id, user_id, event_type_id, timestamp, metadata FROM events 
-                           WHERE user_id = $1 AND event_type_id = $2 
-                           ORDER BY timestamp DESC OFFSET $3";
-                let stmt = client.prepare(query).await?;
-                client.query(&stmt, &[&uid, &etid, &(o as i64)]).await?
-            },
-            (Some(uid), Some(etid), None, None) => {
-                let query = "SELECT id, user_id, event_type_id, timestamp, metadata FROM events 
-                           WHERE user_id = $1 AND event_type_id = $2 
-                           ORDER BY timestamp DESC";
-                let stmt = client.prepare(query).await?;
-                client.query(&stmt, &[&uid, &etid]).await?
-            },
-            (Some(uid), None, Some(l), Some(o)) => {
-                let query = "SELECT id, user_id, event_type_id, timestamp, metadata FROM events 
-                           WHERE user_id = $1 
-                           ORDER BY timestamp DESC LIMIT $2 OFFSET $3";
-                let stmt = client.prepare(query).await?;
-                client.query(&stmt, &[&uid, &(l as i64), &(o as i64)]).await?
-            },
-            (Some(uid), None, Some(l), None) => {
-                let query = "SELECT id, user_id, event_type_id, timestamp, metadata FROM events 
-                           WHERE user_id = $1 
-                           ORDER BY timestamp DESC LIMIT $2";
-                let stmt = client.prepare(query).await?;
-                client.query(&stmt, &[&uid, &(l as i64)]).await?
-            },
-            (Some(uid), None, None, Some(o)) => {
-                let query = "SELECT id, user_id, event_type_id, timestamp, metadata FROM events 
-                           WHERE user_id = $1 
-                           ORDER BY timestamp DESC OFFSET $2";
-                let stmt = client.prepare(query).await?;
-                client.query(&stmt, &[&uid, &(o as i64)]).await?
-            },
-            (Some(uid), None, None, None) => {
-                let query = "SELECT id, user_id, event_type_id, timestamp, metadata FROM events 
-                           WHERE user_id = $1 
-                           ORDER BY timestamp DESC";
-                let stmt = client.prepare(query).await?;
-                client.query(&stmt, &[&uid]).await?
-            },
-            (None, Some(etid), Some(l), Some(o)) => {
-                let query = "SELECT id, user_id, event_type_id, timestamp, metadata FROM events 
-                           WHERE event_type_id = $1 
-                           ORDER BY timestamp DESC LIMIT $2 OFFSET $3";
-                let stmt = client.prepare(query).await?;
-                client.query(&stmt, &[&etid, &(l as i64), &(o as i64)]).await?
-            },
-            (None, Some(etid), Some(l), None) => {
-                let query = "SELECT id, user_id, event_type_id, timestamp, metadata FROM events 
-                           WHERE event_type_id = $1 
-                           ORDER BY timestamp DESC LIMIT $2";
-                let stmt = client.prepare(query).await?;
-                client.query(&stmt, &[&etid, &(l as i64)]).await?
-            },
-            (None, Some(etid), None, Some(o)) => {
-                let query = "SELECT id, user_id, event_type_id, timestamp, metadata FROM events 
-                           WHERE event_type_id = $1 
-                           ORDER BY timestamp DESC OFFSET $2";
-                let stmt = client.prepare(query).await?;
-                client.query(&stmt, &[&etid, &(o as i64)]).await?
-            },
-            (None, Some(etid), None, None) => {
-                let query = "SELECT id, user_id, event_type_id, timestamp, metadata FROM events 
-                           WHERE event_type_id = $1 
-                           ORDER BY timestamp DESC";
-                let stmt = client.prepare(query).await?;
-                client.query(&stmt, &[&etid]).await?
-            },
-            (None, None, Some(l), Some(o)) => {
-                let query = "SELECT id, user_id, event_type_id, timestamp, metadata FROM events 
-                           ORDER BY timestamp DESC LIMIT $1 OFFSET $2";
-                let stmt = client.prepare(query).await?;
-                client.query(&stmt, &[&(l as i64), &(o as i64)]).await?
-            },
-            (None, None, Some(l), None) => {
-                let query = "SELECT id, user_id, event_type_id, timestamp, metadata FROM events 
-                           ORDER BY timestamp DESC LIMIT $1";
-                let stmt = client.prepare(query).await?;
-                client.query(&stmt, &[&(l as i64)]).await?
-            },
-            (None, None, None, Some(o)) => {
-                let query = "SELECT id, user_id, event_type_id, timestamp, metadata FROM events 
-                           ORDER BY timestamp DESC OFFSET $1";
-                let stmt = client.prepare(query).await?;
-                client.query(&stmt, &[&(o as i64)]).await?
-            },
-            (None, None, None, None) => {
-                let query = "SELECT id, user_id, event_type_id, timestamp, metadata FROM events 
-                           ORDER BY timestamp DESC";
-                let stmt = client.prepare(query).await?;
-                client.query(&stmt, &[]).await?
-            },
-        };
+        let param_refs: Vec<&PgParam> = 
+            params.iter().map(|p| p.as_ref() as &PgParam).collect();
         
-        let events = rows.iter()
-            .map(|row| Event {
-                id: row.get(0),
-                user_id: row.get(1),
-                event_type_id: row.get(2),
-                timestamp: row.get(3),
-                metadata: row.get(4),
-            })
-            .collect();
-        
+        let rows = client.query(&stmt, &param_refs).await?;
+
+        let events = rows.iter().map(|row| self.map_row(row)).collect();
+
         Ok(events)
     }
 
@@ -326,7 +330,9 @@ impl EventDao {
         &self, before: DateTime<Utc>,
     ) -> Result<u64, EventDaoError> {
         let client = self.db.get_client().await?;
-        let stmt = client.prepare("DELETE FROM events WHERE timestamp < $1").await?;
+        let stmt = client
+            .prepare("DELETE FROM events WHERE timestamp < $1")
+            .await?;
         let affected = client.execute(&stmt, &[&before]).await?;
         Ok(affected)
     }
@@ -336,40 +342,147 @@ impl EventDao {
         &self, user_id: Uuid, limit: Option<u64>,
     ) -> Result<Vec<Event>, EventDaoError> {
         let client = self.db.get_client().await?;
-        
-        let (query, limit_i64) = if let Some(limit) = limit {
-            (
+
+        let (sql, params): (String, Vec<i64>) = match limit {
+            Some(l) => (
                 "SELECT id, user_id, event_type_id, timestamp, metadata 
                  FROM events WHERE user_id = $1 
-                 ORDER BY timestamp DESC LIMIT $2",
-                Some(limit as i64)
-            )
-        } else {
-            (
+                 ORDER BY timestamp DESC LIMIT $2".to_string(),
+                vec![l as i64],
+            ),
+            None => (
                 "SELECT id, user_id, event_type_id, timestamp, metadata 
                  FROM events WHERE user_id = $1 
-                 ORDER BY timestamp DESC",
-                None
-            )
+                 ORDER BY timestamp DESC".to_string(),
+                vec![],
+            ),
         };
+
+        let stmt = client.prepare(&sql).await?;
         
-        let stmt = client.prepare(query).await?;
-        let rows = if let Some(limit) = limit_i64 {
-            client.query(&stmt, &[&user_id, &limit]).await?
-        } else {
-            client.query(&stmt, &[&user_id]).await?
-        };
+        let param_refs: Vec<&PgParam> = 
+            std::iter::once(&user_id as &PgParam)
+                .chain(params.iter().map(|p| p as &PgParam))
+                .collect();
         
-        let events = rows.iter()
-            .map(|row| Event {
-                id: row.get(0),
-                user_id: row.get(1),
-                event_type_id: row.get(2),
-                timestamp: row.get(3),
-                metadata: row.get(4),
-            })
-            .collect();
-        
+        let rows = client.query(&stmt, &param_refs).await?;
+        let events = rows.iter().map(|row| self.map_row(row)).collect();
+
         Ok(events)
+    }
+
+    #[instrument(skip_all)]
+    pub async fn find_with_pagination(
+        &self, limit: Option<u64>, offset: Option<u64>,
+    ) -> Result<Vec<Event>, EventDaoError> {
+        let client = self.db.get_client().await?;
+
+        let (sql, params): (String, Vec<i64>) = match (limit, offset) {
+            (Some(l), Some(o)) => (
+                "SELECT id, user_id, event_type_id, timestamp, metadata FROM events ORDER BY timestamp DESC LIMIT $1 OFFSET $2".to_string(),
+                vec![l as i64, o as i64],
+            ),
+            (Some(l), None) => (
+                "SELECT id, user_id, event_type_id, timestamp, metadata FROM events ORDER BY timestamp DESC LIMIT $1".to_string(),
+                vec![l as i64],
+            ),
+            (None, Some(o)) => (
+                "SELECT id, user_id, event_type_id, timestamp, metadata FROM events ORDER BY timestamp DESC OFFSET $1".to_string(),
+                vec![o as i64],
+            ),
+            (None, None) => (
+                "SELECT id, user_id, event_type_id, timestamp, metadata FROM events ORDER BY timestamp DESC".to_string(),
+                vec![],
+            ),
+        };
+
+        let stmt = client.prepare(&sql).await?;
+        
+        let param_refs: Vec<&PgParam> = 
+            params.iter().map(|p| p as &PgParam).collect();
+        
+        let rows = client.query(&stmt, &param_refs).await?;
+        let events = rows.iter().map(|row| self.map_row(row)).collect();
+
+        Ok(events)
+    }
+
+    #[instrument(skip_all)]
+    pub async fn find_with_cursor(
+        &self, cursor: Option<DateTime<Utc>>, limit: u64,
+    ) -> Result<(Vec<Event>, Option<DateTime<Utc>>), EventDaoError> {
+        let client = self.db.get_client().await?;
+        let limit = limit.min(1000);
+        let limit_plus_one = limit as i64 + 1;
+
+        let (_sql, rows) = match cursor {
+            Some(cursor_timestamp) => {
+                let sql = "SELECT id, user_id, event_type_id, timestamp, metadata FROM events 
+                          WHERE timestamp < $1 
+                          ORDER BY timestamp DESC 
+                          LIMIT $2";
+                let stmt = client.prepare(sql).await?;
+                let rows = client.query(&stmt, &[&cursor_timestamp, &limit_plus_one]).await?;
+                (sql, rows)
+            },
+            None => {
+                let sql = "SELECT id, user_id, event_type_id, timestamp, metadata FROM events 
+                          ORDER BY timestamp DESC 
+                          LIMIT $1";
+                let stmt = client.prepare(sql).await?;
+                let rows = client.query(&stmt, &[&limit_plus_one]).await?;
+                (sql, rows)
+            },
+        };
+        
+        let events: Vec<Event> = rows.iter().take(limit as usize).map(|row| self.map_row(row)).collect();
+        
+        let next_cursor = if rows.len() > limit as usize {
+            events.last().map(|e| e.timestamp)
+        } else {
+            None
+        };
+
+        Ok((events, next_cursor))
+    }
+
+    #[instrument(skip_all)]
+    pub async fn find_by_user_with_cursor(
+        &self, user_id: Uuid, cursor: Option<DateTime<Utc>>, limit: u64,
+    ) -> Result<(Vec<Event>, Option<DateTime<Utc>>), EventDaoError> {
+        let client = self.db.get_client().await?;
+        let limit = limit.min(1000);
+        let limit_plus_one = limit as i64 + 1;
+
+        let (_sql, rows) = match cursor {
+            Some(cursor_timestamp) => {
+                let sql = "SELECT id, user_id, event_type_id, timestamp, metadata FROM events 
+                          WHERE user_id = $1 AND timestamp < $2 
+                          ORDER BY timestamp DESC 
+                          LIMIT $3";
+                let stmt = client.prepare(sql).await?;
+                let rows = client.query(&stmt, &[&user_id, &cursor_timestamp, &limit_plus_one]).await?;
+                (sql, rows)
+            },
+            None => {
+                let sql = "SELECT id, user_id, event_type_id, timestamp, metadata FROM events 
+                          WHERE user_id = $1 
+                          ORDER BY timestamp DESC 
+                          LIMIT $2";
+                let stmt = client.prepare(sql).await?;
+                let rows = client.query(&stmt, &[&user_id, &limit_plus_one]).await?;
+                (sql, rows)
+            },
+        };
+        
+        let events: Vec<Event> = rows.iter().take(limit as usize).map(|row| self.map_row(row)).collect();
+        
+        let next_cursor = if rows.len() > limit as usize {
+            events.last().map(|e| e.timestamp)
+        } else {
+            None
+        };
+
+        Ok((events, next_cursor))
     }
 }

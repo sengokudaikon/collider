@@ -2,8 +2,8 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod};
-use tokio_postgres::NoTls;
 use tokio::time::sleep;
+use tokio_postgres::NoTls;
 
 use crate::sql_migrator::SqlMigrator;
 
@@ -68,17 +68,16 @@ impl TestPostgresContainer {
     }
 
     async fn create_pool(connection_string: &str) -> Result<Pool> {
-        let pg_config = connection_string.parse::<tokio_postgres::Config>()?;
-        
+        let pg_config =
+            connection_string.parse::<tokio_postgres::Config>()?;
+
         let mgr_config = ManagerConfig {
             recycling_method: RecyclingMethod::Fast,
         };
         let mgr = Manager::from_config(pg_config, NoTls, mgr_config);
-        
-        let pool = Pool::builder(mgr)
-            .max_size(10)
-            .build()?;
-            
+
+        let pool = Pool::builder(mgr).max_size(10).build()?;
+
         Ok(pool)
     }
 
@@ -108,9 +107,7 @@ impl TestPostgresContainer {
         Ok(())
     }
 
-    async fn wait_for_connection(
-        connection_string: &str,
-    ) -> Result<Pool> {
+    async fn wait_for_connection(connection_string: &str) -> Result<Pool> {
         const MAX_ATTEMPTS: u32 = 20;
         const DELAY: Duration = Duration::from_millis(500);
 
@@ -119,7 +116,8 @@ impl TestPostgresContainer {
                 Ok(pool) => {
                     match pool.get().await {
                         Ok(client) => {
-                            if client.query_one("SELECT 1", &[]).await.is_ok() {
+                            if client.query_one("SELECT 1", &[]).await.is_ok()
+                            {
                                 return Ok(pool);
                             }
                         }
@@ -188,7 +186,7 @@ async fn cleanup_unique_database(db_name: &str) -> Result<()> {
     match TestPostgresContainer::create_pool(base_connection).await {
         Ok(admin_pool) => {
             let client = admin_pool.get().await?;
-            
+
             // Terminate all connections to the database first
             let terminate_query = format!(
                 "SELECT pg_terminate_backend(pid) FROM pg_stat_activity \
@@ -222,7 +220,7 @@ pub async fn cleanup_all_test_databases() -> Result<()> {
     match TestPostgresContainer::create_pool(base_connection).await {
         Ok(admin_pool) => {
             let client = admin_pool.get().await?;
-            
+
             // Get all databases that match our test pattern
             let query = "SELECT datname FROM pg_database WHERE datname LIKE \
                          'test_db_%'";

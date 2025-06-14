@@ -23,18 +23,18 @@ where
     );
 
     let pg_config = db_url.parse::<tokio_postgres::Config>()?;
-    
+
     let mgr_config = ManagerConfig {
         recycling_method: RecyclingMethod::Fast,
     };
     let mgr = Manager::from_config(pg_config, NoTls, mgr_config);
-    
+
     let mut pool_builder = Pool::builder(mgr);
-    
+
     if let Some(max_conn) = config.max_conn() {
         pool_builder = pool_builder.max_size(max_conn as usize);
     }
-    
+
     let pool = pool_builder.build()?;
 
     if SQL_DATABASE_POOL.set(pool).is_err() {

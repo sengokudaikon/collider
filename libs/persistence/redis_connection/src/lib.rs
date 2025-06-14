@@ -3,19 +3,18 @@ pub use deadpool_redis::{PoolError, redis::FromRedisValue};
 pub use redis::{AsyncCommands, RedisError};
 use tracing::{info, instrument};
 use url::Url;
+
+// Core modules
 pub mod config;
 pub mod connection;
-pub mod hash;
-pub mod json;
-pub mod key;
 pub mod macros;
-pub mod memory;
-pub mod normal;
-pub mod redis_value;
-pub mod tiered;
-pub mod type_bind;
 
-#[instrument(skip_all, name = "connect-dragonfly")]
+// Organized submodules
+pub mod core;
+pub mod types;
+pub mod cache;
+
+#[instrument(skip_all, name = "connect-redis")]
 pub async fn connect_redis_db<C>(config: &C) -> Result<Pool, CreatePoolError>
 where
     C: config::DbConnectConfig,

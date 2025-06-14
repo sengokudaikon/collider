@@ -57,7 +57,7 @@ async fn main() -> anyhow::Result<()> {
     info!("Connection pools initialized successfully");
 
     let db = SqlConnect::from_global();
-    let user_services = UserServices::new(db.clone());
+    let (user_services, _analytics_task) = UserServices::new_with_analytics(db.clone());
 
     let app = Router::new()
         .route("/health", get(health_check))
@@ -94,14 +94,10 @@ async fn main() -> anyhow::Result<()> {
         events_http::handlers::get_event,
         events_http::handlers::list_events,
         events_http::handlers::bulk_delete_events,
-        analytics_http::handlers::get_stats,
-        analytics_http::handlers::get_user_events,
         analytics_http::handlers::get_realtime_metrics,
-        analytics_http::handlers::get_time_series,
         analytics_http::handlers::get_hourly_summaries,
         analytics_http::handlers::get_user_activity,
-        analytics_http::handlers::get_popular_events_endpoint,
-        analytics_http::handlers::refresh_materialized_views,
+        analytics_http::handlers::get_popular_events,
         user_http::handlers::create_user,
         user_http::handlers::update_user,
         user_http::handlers::delete_user,
@@ -118,8 +114,6 @@ async fn main() -> anyhow::Result<()> {
             events_commands::UpdateEventCommand,
             events_commands::UpdateEventResponse,
             events_commands::BulkDeleteEventsResponse,
-            analytics_http::handlers::StatsResponse,
-            analytics_http::handlers::StatsQuery,
             user_http::UserResponse,
             user_commands::CreateUserCommand,
             user_commands::CreateUserResponse,

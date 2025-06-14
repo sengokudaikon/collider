@@ -6,19 +6,14 @@ edition = "2024"
 [dependencies]
 # Web framework
 axum.workspace = true
-tower-http.workspace = true
-
-# Async runtime
-tokio.workspace = true
-
-# Database
-database-traits.workspace = true
 sql-connection.workspace = true
 
 # Analytics domain
+analytics-dao = { path = "../dao" }
+analytics-models = { path = "../models" }
+analytics-commands = { path = "../commands" }
+analytics-queries = { path = "../queries" }
 analytics = { path = ".." }
-events-dao = { path = "../../events/dao" }
-events-models = { path = "../../events/models" }
 
 # Domain lib
 domain.workspace = true
@@ -35,6 +30,8 @@ uuid.workspace = true
 chrono.workspace = true
 thiserror.workspace = true
 utoipa.workspace = true
+anyhow.workspace = true
+tokio.workspace = true
 
 [dev-dependencies]
 test-utils.workspace = true

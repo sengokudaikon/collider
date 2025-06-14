@@ -4,7 +4,7 @@ macro_rules! redis_key {
         #[doc=concat!(concat!("Redis Hash type binding \n ## Key \n", $format_key), concat!("\n ## Value Type \n ", stringify!($t)))]
         pub struct $name;
 
-        impl $crate::key::CacheKey for $name {
+        impl $crate::core::key::CacheKey for $name {
             type Args<'r> = ($(&'r $ty,)*);
 
             fn get_key_with_args(&self, args: Self::Args<'_>) -> std::borrow::Cow<'static, str> {
@@ -14,8 +14,8 @@ macro_rules! redis_key {
             }
         }
 
-        impl $crate::type_bind::RedisTypeBind for $name {
-            type RedisType<'redis, R> = $crate::hash::Hash<'redis, R, $t>
+        impl $crate::core::type_bind::RedisTypeBind for $name {
+            type RedisType<'redis, R> = $crate::types::hash::Hash<'redis, R, $t>
                 where
                     R: 'redis;
         }
@@ -24,7 +24,7 @@ macro_rules! redis_key {
         #[doc=concat!(concat!("Redis Hash type binding\n ## Key \n", $key), concat!("\n ## Value Type \n ", stringify!($t)))]
         pub struct $name;
 
-        impl $crate::key::CacheKey for $name {
+        impl $crate::core::key::CacheKey for $name {
             type Args<'r> = ();
 
             fn get_key_with_args(&self, _: Self::Args<'_>) -> std::borrow::Cow<'static, str> {
@@ -32,93 +32,17 @@ macro_rules! redis_key {
             }
         }
 
-        impl $crate::type_bind::RedisTypeBind for $name {
-            type RedisType<'redis, R> = $crate::infrastructure::cache::hash::Hash<'redis, R, $t>
+        impl $crate::core::type_bind::RedisTypeBind for $name {
+            type RedisType<'redis, R> = $crate::types::hash::Hash<'redis, R, $t>
                 where
                     R: 'redis;
-        }
-    };
-    (tier $name:ident::<$t:ty> => $key:literal) => {
-        #[doc=concat!(concat!("Redis + Memory type binding\n ## Key \n", $key), concat!("\n ## Value Type \n ", stringify!($t)))]
-        pub struct $name;
-
-        impl $crate::key::CacheKey for $name {
-            type Args<'r> = ();
-
-            fn get_key_with_args(&self, _: Self::Args<'_>) -> std::borrow::Cow<'static, str> {
-                ($key).into()
-            }
-        }
-
-        impl $crate::type_bind::RedisTypeBind for $name {
-            type RedisType<'redis, R> = $crate::tiered::Tiered<'redis, R, $t>
-            where
-                R: 'redis;
-        }
-    };
-    (tier $name:ident::<$t:ty> => $format_key:literal[$($arg:ident:$ty:ident),*])=>{
-        #[doc=concat!(concat!("Redis + Memory type binding\n ## Key \n", $format_key), concat!("\n ## Value Type \n ", stringify!($t)))]
-        pub struct $name;
-
-        impl $crate::key::CacheKey for $name {
-            type Args<'r> = ($(&'r $ty,)*);
-
-            fn get_key_with_args(&self, args: Self::Args<'_>) -> std::borrow::Cow<'static, str> {
-                let ($($arg,)*) = args;
-
-                (format!($format_key, $($arg),*)).into()
-            }
-        }
-
-        impl $crate::type_bind::RedisTypeBind for $name {
-            type RedisType<'redis, R> = $crate::tiered::Tiered<'redis, R, $t>
-            where
-                R: 'redis;
-        }
-    };
-    (mem $name:ident::<$t:ty> => $key:literal) => {
-        #[doc=concat!(concat!("Memory type binding\n ## Key \n", $key), concat!("\n ## Value Type \n ", stringify!($t)))]
-        pub struct $name;
-
-        impl $crate::key::CacheKey for $name {
-            type Args<'r> = ();
-
-            fn get_key_with_args(&self, _: Self::Args<'_>) -> std::borrow::Cow<'static, str> {
-                ($key).into()
-            }
-        }
-
-        impl $crate::type_bind::RedisTypeBind for $name {
-            type RedisType<'redis, R> = $crate::memory::Memory<'redis, R, $t>
-            where
-                R: 'redis;
-        }
-    };
-    (mem $name:ident::<$t:ty> => $format_key:literal[$($arg:ident:$ty:ident),*])=>{
-        #[doc=concat!(concat!("Memory type binding\n ## Key \n", $format_key), concat!("\n ## Value Type \n ", stringify!($t)))]
-        pub struct $name;
-
-        impl $crate::key::CacheKey for $name {
-            type Args<'r> = ($(&'r $ty,)*);
-
-            fn get_key_with_args(&self, args: Self::Args<'_>) -> std::borrow::Cow<'static, str> {
-                let ($($arg,)*) = args;
-
-                (format!($format_key, $($arg),*)).into()
-            }
-        }
-
-        impl $crate::type_bind::RedisTypeBind for $name {
-            type RedisType<'redis, R> = $crate::memory::Memory<'redis, R, $t>
-            where
-                R: 'redis;
         }
     };
     ($name:ident::<$t:ty> => $format_key:literal[$($arg:ident:$ty:ident),*])=>{
         #[doc=concat!(concat!("Redis common type binding\n ## Key \n", $format_key), concat!("\n ## Value Type \n ", stringify!($t)))]
         pub struct $name;
 
-        impl $crate::key::CacheKey for $name {
+        impl $crate::core::key::CacheKey for $name {
             type Args<'r> = ($(&'r $ty,)*);
 
             fn get_key_with_args(&self, args: Self::Args<'_>) -> std::borrow::Cow<'static, str> {
@@ -128,8 +52,8 @@ macro_rules! redis_key {
             }
         }
 
-        impl $crate::type_bind::RedisTypeBind for $name {
-            type RedisType<'redis, R> = $crate::normal::Normal<'redis, R, $t>
+        impl $crate::core::type_bind::RedisTypeBind for $name {
+            type RedisType<'redis, R> = $crate::types::normal::Normal<'redis, R, $t>
                 where
                     R: 'redis;
         }
@@ -138,7 +62,7 @@ macro_rules! redis_key {
         #[doc=concat!(concat!("Redis common type binding\n ## Key \n", $key), concat!("\n ## Value Type \n ", stringify!($t)))]
         pub struct $name;
 
-        impl $crate::key::CacheKey for $name {
+        impl $crate::core::key::CacheKey for $name {
             type Args<'r> = ();
 
             fn get_key_with_args(&self, _: Self::Args<'_>) -> std::borrow::Cow<'static, str> {
@@ -146,8 +70,164 @@ macro_rules! redis_key {
             }
         }
 
-        impl $crate::type_bind::RedisTypeBind for $name {
-            type RedisType<'redis, R> = $crate::normal::Normal<'redis, R, $t>
+        impl $crate::core::type_bind::RedisTypeBind for $name {
+            type RedisType<'redis, R> = $crate::types::normal::Normal<'redis, R, $t>
+                where
+                    R: 'redis;
+        }
+    };
+    // Redis Set support
+    (set $name:ident::<$t:ty> => $format_key:literal[$($arg:ident:$ty:ident),*])=>{
+        #[doc=concat!(concat!("Redis Set type binding \n ## Key \n", $format_key), concat!("\n ## Value Type \n ", stringify!($t)))]
+        pub struct $name;
+
+        impl $crate::core::key::CacheKey for $name {
+            type Args<'r> = ($(&'r $ty,)*);
+
+            fn get_key_with_args(&self, args: Self::Args<'_>) -> std::borrow::Cow<'static, str> {
+                let ($($arg,)*) = args;
+
+                (format!($format_key, $($arg),*)).into()
+            }
+        }
+
+        impl $crate::core::type_bind::RedisTypeBind for $name {
+            type RedisType<'redis, R> = $crate::types::set::Set<'redis, R, $t>
+                where
+                    R: 'redis;
+        }
+    };
+    (set $name:ident::<$t:ty> => $key:literal) => {
+        #[doc=concat!(concat!("Redis Set type binding\n ## Key \n", $key), concat!("\n ## Value Type \n ", stringify!($t)))]
+        pub struct $name;
+
+        impl $crate::core::key::CacheKey for $name {
+            type Args<'r> = ();
+
+            fn get_key_with_args(&self, _: Self::Args<'_>) -> std::borrow::Cow<'static, str> {
+                ($key).into()
+            }
+        }
+
+        impl $crate::core::type_bind::RedisTypeBind for $name {
+            type RedisType<'redis, R> = $crate::types::set::Set<'redis, R, $t>
+                where
+                    R: 'redis;
+        }
+    };
+    // Redis Sorted Set (ZSet) support
+    (zset $name:ident::<$t:ty> => $format_key:literal[$($arg:ident:$ty:ident),*])=>{
+        #[doc=concat!(concat!("Redis Sorted Set type binding \n ## Key \n", $format_key), concat!("\n ## Value Type \n ", stringify!($t)))]
+        pub struct $name;
+
+        impl $crate::core::key::CacheKey for $name {
+            type Args<'r> = ($(&'r $ty,)*);
+
+            fn get_key_with_args(&self, args: Self::Args<'_>) -> std::borrow::Cow<'static, str> {
+                let ($($arg,)*) = args;
+
+                (format!($format_key, $($arg),*)).into()
+            }
+        }
+
+        impl $crate::core::type_bind::RedisTypeBind for $name {
+            type RedisType<'redis, R> = $crate::types::zset::SortedSet<'redis, R, $t>
+                where
+                    R: 'redis;
+        }
+    };
+    (zset $name:ident::<$t:ty> => $key:literal) => {
+        #[doc=concat!(concat!("Redis Sorted Set type binding\n ## Key \n", $key), concat!("\n ## Value Type \n ", stringify!($t)))]
+        pub struct $name;
+
+        impl $crate::core::key::CacheKey for $name {
+            type Args<'r> = ();
+
+            fn get_key_with_args(&self, _: Self::Args<'_>) -> std::borrow::Cow<'static, str> {
+                ($key).into()
+            }
+        }
+
+        impl $crate::core::type_bind::RedisTypeBind for $name {
+            type RedisType<'redis, R> = $crate::types::zset::SortedSet<'redis, R, $t>
+                where
+                    R: 'redis;
+        }
+    };
+    // Redis List support
+    (list $name:ident::<$t:ty> => $format_key:literal[$($arg:ident:$ty:ident),*])=>{
+        #[doc=concat!(concat!("Redis List type binding \n ## Key \n", $format_key), concat!("\n ## Value Type \n ", stringify!($t)))]
+        pub struct $name;
+
+        impl $crate::core::key::CacheKey for $name {
+            type Args<'r> = ($(&'r $ty,)*);
+
+            fn get_key_with_args(&self, args: Self::Args<'_>) -> std::borrow::Cow<'static, str> {
+                let ($($arg,)*) = args;
+
+                (format!($format_key, $($arg),*)).into()
+            }
+        }
+
+        impl $crate::core::type_bind::RedisTypeBind for $name {
+            type RedisType<'redis, R> = $crate::types::list::List<'redis, R, $t>
+                where
+                    R: 'redis;
+        }
+    };
+    (list $name:ident::<$t:ty> => $key:literal) => {
+        #[doc=concat!(concat!("Redis List type binding\n ## Key \n", $key), concat!("\n ## Value Type \n ", stringify!($t)))]
+        pub struct $name;
+
+        impl $crate::core::key::CacheKey for $name {
+            type Args<'r> = ();
+
+            fn get_key_with_args(&self, _: Self::Args<'_>) -> std::borrow::Cow<'static, str> {
+                ($key).into()
+            }
+        }
+
+        impl $crate::core::type_bind::RedisTypeBind for $name {
+            type RedisType<'redis, R> = $crate::types::list::List<'redis, R, $t>
+                where
+                    R: 'redis;
+        }
+    };
+    // Redis Stream support
+    (stream $name:ident::<$t:ty> => $format_key:literal[$($arg:ident:$ty:ident),*])=>{
+        #[doc=concat!(concat!("Redis Stream type binding \n ## Key \n", $format_key), concat!("\n ## Value Type \n ", stringify!($t)))]
+        pub struct $name;
+
+        impl $crate::core::key::CacheKey for $name {
+            type Args<'r> = ($(&'r $ty,)*);
+
+            fn get_key_with_args(&self, args: Self::Args<'_>) -> std::borrow::Cow<'static, str> {
+                let ($($arg,)*) = args;
+
+                (format!($format_key, $($arg),*)).into()
+            }
+        }
+
+        impl $crate::core::type_bind::RedisTypeBind for $name {
+            type RedisType<'redis, R> = $crate::types::stream::Stream<'redis, R, $t>
+                where
+                    R: 'redis;
+        }
+    };
+    (stream $name:ident::<$t:ty> => $key:literal) => {
+        #[doc=concat!(concat!("Redis Stream type binding\n ## Key \n", $key), concat!("\n ## Value Type \n ", stringify!($t)))]
+        pub struct $name;
+
+        impl $crate::core::key::CacheKey for $name {
+            type Args<'r> = ();
+
+            fn get_key_with_args(&self, _: Self::Args<'_>) -> std::borrow::Cow<'static, str> {
+                ($key).into()
+            }
+        }
+
+        impl $crate::core::type_bind::RedisTypeBind for $name {
+            type RedisType<'redis, R> = $crate::types::stream::Stream<'redis, R, $t>
                 where
                     R: 'redis;
         }

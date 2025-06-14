@@ -4,7 +4,8 @@ use database_traits::dao::GenericDao;
 use events_dao::EventDao;
 use events_models::Event;
 use redis_connection::{
-    connection::RedisConnectionManager, json::Json, type_bind::RedisTypeBind,
+    connection::RedisConnectionManager,
+    core::{value::Json, RedisTypeBind},
 };
 use serde::Deserialize;
 use sql_connection::SqlConnect;
@@ -75,7 +76,7 @@ impl GetEventQueryHandler {
         // Cache for only 30 seconds - events are updated frequently
         let _ = cache
             .set_with_expire::<()>(
-                Json(event.clone()).serde().unwrap(),
+                Json(event.clone()),
                 Duration::from_secs(30),
             )
             .await;
