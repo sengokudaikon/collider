@@ -19,6 +19,11 @@ async fn setup_test_redis()
     Ok((container, manager))
 }
 
+// Helper function to get test-prefixed key
+fn test_key(container: &TestRedisContainer, key: &str) -> String {
+    container.test_key(key)
+}
+
 #[tokio::test]
 async fn test_redis_db_config_defaults() {
     let config = RedisDbConfig {
@@ -94,128 +99,139 @@ async fn test_redis_connection_manager_mut() {
 
 #[tokio::test]
 async fn test_redis_basic_operations() {
-    let (_container, manager) = setup_test_redis().await.unwrap();
+    let (container, manager) = setup_test_redis().await.unwrap();
     let mut conn = manager.get_connection().await.unwrap();
 
-    let _: () = conn.set("string_key", "hello world").await.unwrap();
-    let value: String = conn.get("string_key").await.unwrap();
+    let string_key = test_key(&container, "string_key");
+    let int_key = test_key(&container, "int_key");
+    let nonexistent_key = test_key(&container, "nonexistent_key");
+
+    let _: () = conn.set(&string_key, "hello world").await.unwrap();
+    let value: String = conn.get(&string_key).await.unwrap();
     assert_eq!(value, "hello world");
 
-    let _: () = conn.set("int_key", 42i32).await.unwrap();
-    let int_value: i32 = conn.get("int_key").await.unwrap();
+    let _: () = conn.set(&int_key, 42i32).await.unwrap();
+    let int_value: i32 = conn.get(&int_key).await.unwrap();
     assert_eq!(int_value, 42);
 
-    let exists: bool = conn.exists("string_key").await.unwrap();
+    let exists: bool = conn.exists(&string_key).await.unwrap();
     assert!(exists);
 
-    let not_exists: bool = conn.exists("nonexistent_key").await.unwrap();
+    let not_exists: bool = conn.exists(&nonexistent_key).await.unwrap();
     assert!(!not_exists);
 
-    let _: () = conn.del("string_key").await.unwrap();
-    let exists_after_del: bool = conn.exists("string_key").await.unwrap();
+    let _: () = conn.del(&string_key).await.unwrap();
+    let exists_after_del: bool = conn.exists(&string_key).await.unwrap();
     assert!(!exists_after_del);
 }
 
 #[tokio::test]
 async fn test_redis_hash_operations() {
-    let (_container, manager) = setup_test_redis().await.unwrap();
+    let (container, manager) = setup_test_redis().await.unwrap();
     let mut conn = manager.get_connection().await.unwrap();
 
-    let _: () = conn.hset("hash_key", "field1", "value1").await.unwrap();
-    let _: () = conn.hset("hash_key", "field2", "value2").await.unwrap();
+    let hash_key = test_key(&container, "hash_key");
 
-    let value1: String = conn.hget("hash_key", "field1").await.unwrap();
+    let _: () = conn.hset(&hash_key, "field1", "value1").await.unwrap();
+    let _: () = conn.hset(&hash_key, "field2", "value2").await.unwrap();
+
+    let value1: String = conn.hget(&hash_key, "field1").await.unwrap();
     assert_eq!(value1, "value1");
 
-    let value2: String = conn.hget("hash_key", "field2").await.unwrap();
+    let value2: String = conn.hget(&hash_key, "field2").await.unwrap();
     assert_eq!(value2, "value2");
 
-    let field_exists: bool =
-        conn.hexists("hash_key", "field1").await.unwrap();
+    let field_exists: bool = conn.hexists(&hash_key, "field1").await.unwrap();
     assert!(field_exists);
 
     let field_not_exists: bool =
-        conn.hexists("hash_key", "nonexistent_field").await.unwrap();
+        conn.hexists(&hash_key, "nonexistent_field").await.unwrap();
     assert!(!field_not_exists);
 
     let all_fields: std::collections::HashMap<String, String> =
-        conn.hgetall("hash_key").await.unwrap();
+        conn.hgetall(&hash_key).await.unwrap();
     assert_eq!(all_fields.len(), 2);
     assert_eq!(all_fields.get("field1"), Some(&"value1".to_string()));
     assert_eq!(all_fields.get("field2"), Some(&"value2".to_string()));
 
-    let _: () = conn.hdel("hash_key", "field1").await.unwrap();
+    let _: () = conn.hdel(&hash_key, "field1").await.unwrap();
     let field_exists_after_del: bool =
-        conn.hexists("hash_key", "field1").await.unwrap();
+        conn.hexists(&hash_key, "field1").await.unwrap();
     assert!(!field_exists_after_del);
 }
 
 #[tokio::test]
 async fn test_redis_list_operations() {
-    let (_container, manager) = setup_test_redis().await.unwrap();
+    let (container, manager) = setup_test_redis().await.unwrap();
     let mut conn = manager.get_connection().await.unwrap();
 
-    let _: () = conn.lpush("list_key", "item1").await.unwrap();
-    let _: () = conn.lpush("list_key", "item2").await.unwrap();
-    let _: () = conn.rpush("list_key", "item3").await.unwrap();
+    let list_key = test_key(&container, "list_key");
 
-    let length: i32 = conn.llen("list_key").await.unwrap();
+    let _: () = conn.lpush(&list_key, "item1").await.unwrap();
+    let _: () = conn.lpush(&list_key, "item2").await.unwrap();
+    let _: () = conn.rpush(&list_key, "item3").await.unwrap();
+
+    let length: i32 = conn.llen(&list_key).await.unwrap();
     assert_eq!(length, 3);
 
-    let items: Vec<String> = conn.lrange("list_key", 0, -1).await.unwrap();
+    let items: Vec<String> = conn.lrange(&list_key, 0, -1).await.unwrap();
     assert_eq!(items, vec!["item2", "item1", "item3"]);
 
-    let popped: String = conn.lpop("list_key", None).await.unwrap();
+    let popped: String = conn.lpop(&list_key, None).await.unwrap();
     assert_eq!(popped, "item2");
 
-    let length_after_pop: i32 = conn.llen("list_key").await.unwrap();
+    let length_after_pop: i32 = conn.llen(&list_key).await.unwrap();
     assert_eq!(length_after_pop, 2);
 }
 
 #[tokio::test]
 async fn test_redis_set_operations() {
-    let (_container, manager) = setup_test_redis().await.unwrap();
+    let (container, manager) = setup_test_redis().await.unwrap();
     let mut conn = manager.get_connection().await.unwrap();
 
-    let _: () = conn.sadd("set_key", "member1").await.unwrap();
-    let _: () = conn.sadd("set_key", "member2").await.unwrap();
-    let _: () = conn.sadd("set_key", "member3").await.unwrap();
+    let set_key = test_key(&container, "set_key");
 
-    let is_member: bool = conn.sismember("set_key", "member1").await.unwrap();
+    let _: () = conn.sadd(&set_key, "member1").await.unwrap();
+    let _: () = conn.sadd(&set_key, "member2").await.unwrap();
+    let _: () = conn.sadd(&set_key, "member3").await.unwrap();
+
+    let is_member: bool = conn.sismember(&set_key, "member1").await.unwrap();
     assert!(is_member);
 
     let not_member: bool =
-        conn.sismember("set_key", "nonexistent").await.unwrap();
+        conn.sismember(&set_key, "nonexistent").await.unwrap();
     assert!(!not_member);
 
-    let cardinality: i32 = conn.scard("set_key").await.unwrap();
+    let cardinality: i32 = conn.scard(&set_key).await.unwrap();
     assert_eq!(cardinality, 3);
 
     let members: std::collections::HashSet<String> =
-        conn.smembers("set_key").await.unwrap();
+        conn.smembers(&set_key).await.unwrap();
     assert_eq!(members.len(), 3);
     assert!(members.contains("member1"));
     assert!(members.contains("member2"));
     assert!(members.contains("member3"));
 
-    let _: () = conn.srem("set_key", "member1").await.unwrap();
-    let cardinality_after_remove: i32 = conn.scard("set_key").await.unwrap();
+    let _: () = conn.srem(&set_key, "member1").await.unwrap();
+    let cardinality_after_remove: i32 = conn.scard(&set_key).await.unwrap();
     assert_eq!(cardinality_after_remove, 2);
 }
 
 #[tokio::test]
 async fn test_redis_expire_operations() {
-    let (_container, manager) = setup_test_redis().await.unwrap();
+    let (container, manager) = setup_test_redis().await.unwrap();
     let mut conn = manager.get_connection().await.unwrap();
 
-    let _: () = conn.set("temp_key", "temporary_value").await.unwrap();
-    let _: () = conn.expire("temp_key", 60).await.unwrap();
+    let temp_key = test_key(&container, "temp_key");
 
-    let ttl: i32 = conn.ttl("temp_key").await.unwrap();
+    let _: () = conn.set(&temp_key, "temporary_value").await.unwrap();
+    let _: () = conn.expire(&temp_key, 60).await.unwrap();
+
+    let ttl: i32 = conn.ttl(&temp_key).await.unwrap();
     assert!(ttl > 0 && ttl <= 60);
 
-    let _: () = conn.persist("temp_key").await.unwrap();
-    let ttl_after_persist: i32 = conn.ttl("temp_key").await.unwrap();
+    let _: () = conn.persist(&temp_key).await.unwrap();
+    let ttl_after_persist: i32 = conn.ttl(&temp_key).await.unwrap();
     assert_eq!(ttl_after_persist, -1);
 }
 
@@ -294,15 +310,17 @@ async fn test_redis_connect_trait() {
 
 #[tokio::test]
 async fn test_redis_memory_operations() {
-    let (_container, manager) = setup_test_redis().await.unwrap();
+    let (container, manager) = setup_test_redis().await.unwrap();
     let mut conn = manager.get_connection().await.unwrap();
 
-    let _: () = conn.set("memory_test", "some_data").await.unwrap();
-    let value: String = conn.get("memory_test").await.unwrap();
+    let memory_test_key = test_key(&container, "memory_test");
+
+    let _: () = conn.set(&memory_test_key, "some_data").await.unwrap();
+    let value: String = conn.get(&memory_test_key).await.unwrap();
     assert_eq!(value, "some_data");
 
-    let _: () = conn.del("memory_test").await.unwrap();
-    let exists: bool = conn.exists("memory_test").await.unwrap();
+    let _: () = conn.del(&memory_test_key).await.unwrap();
+    let exists: bool = conn.exists(&memory_test_key).await.unwrap();
     assert!(!exists);
 }
 

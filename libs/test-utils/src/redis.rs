@@ -7,25 +7,47 @@ use deadpool_redis::{Config, Pool, Runtime};
 use redis_connection::connection::RedisConnectionManager;
 use tokio::time::sleep;
 
-static REDIS_DB_COUNTER: AtomicU32 = AtomicU32::new(1);
+static TEST_INSTANCE_COUNTER: AtomicU32 = AtomicU32::new(1);
 
 pub struct TestRedisContainer {
     pub pool: Pool,
     pub connection_string: String,
+    pub test_prefix: String,
 }
 
 impl TestRedisContainer {
     pub async fn new() -> anyhow::Result<Self> {
-        let db_number = REDIS_DB_COUNTER.fetch_add(1, Ordering::SeqCst);
-        let connection_string =
-            format!("redis://localhost:6380/{}", db_number);
-        Self::new_with_connection_string(&connection_string).await
+        let test_instance =
+            TEST_INSTANCE_COUNTER.fetch_add(1, Ordering::SeqCst);
+        // Use database 0 (compatible with Dragonfly) and rely on key prefixes
+        // for isolation
+        let connection_string = "redis://localhost:6379/0".to_string();
+        let test_prefix = format!("test_{}:", test_instance);
+        Self::new_with_connection_string_and_prefix(
+            &connection_string,
+            &test_prefix,
+        )
+        .await
     }
 
     pub async fn new_with_connection_string(
         connection_string: &str,
     ) -> anyhow::Result<Self> {
+        let test_instance =
+            TEST_INSTANCE_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let test_prefix = format!("test_{}:", test_instance);
+        Self::new_with_connection_string_and_prefix(
+            connection_string,
+            &test_prefix,
+        )
+        .await
+    }
+
+    pub async fn new_with_connection_string_and_prefix(
+        connection_string: &str, test_prefix: &str,
+    ) -> anyhow::Result<Self> {
         let connection_string = connection_string.to_string();
+        let test_prefix = test_prefix.to_string();
 
         sleep(Duration::from_secs(2)).await;
 
@@ -66,6 +88,7 @@ impl TestRedisContainer {
         Ok(Self {
             pool,
             connection_string,
+            test_prefix,
         })
     }
 
@@ -77,9 +100,26 @@ impl TestRedisContainer {
 
     pub async fn flush_db(&self) -> anyhow::Result<()> {
         let mut conn = self.get_connection().await?;
-        deadpool_redis::redis::cmd("FLUSHDB")
-            .query_async::<()>(&mut conn)
+
+        // Get all keys with this test's prefix and delete them
+        let pattern = format!("{}*", self.test_prefix);
+        let keys: Vec<String> = deadpool_redis::redis::cmd("KEYS")
+            .arg(&pattern)
+            .query_async(&mut conn)
             .await?;
+
+        if !keys.is_empty() {
+            deadpool_redis::redis::cmd("DEL")
+                .arg(&keys)
+                .query_async::<()>(&mut conn)
+                .await?;
+        }
+
         Ok(())
+    }
+
+    /// Get a test-prefixed key for isolation
+    pub fn test_key(&self, key: &str) -> String {
+        format!("{}{}", self.test_prefix, key)
     }
 }

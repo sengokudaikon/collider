@@ -1,7 +1,4 @@
--- Analytics materialized views - read-only aggregations from events domain
--- These provide fast access to pre-computed analytics without duplicating data
-
--- Hourly event summaries for trend analysis
+-- Create materialized view without data first to ensure structure exists
 CREATE MATERIALIZED VIEW IF NOT EXISTS event_hourly_summaries AS
 SELECT
     et.name as event_type,
@@ -12,7 +9,8 @@ FROM events e
 JOIN event_types et ON e.event_type_id = et.id
 WHERE e.timestamp >= NOW() - INTERVAL '30 days'
 GROUP BY et.name, date_trunc('hour', e.timestamp)
-ORDER BY hour DESC, total_events DESC;
+ORDER BY hour DESC, total_events DESC
+WITH NO DATA;
 
 -- Daily user activity for engagement tracking
 CREATE MATERIALIZED VIEW IF NOT EXISTS user_daily_activity AS
@@ -27,7 +25,8 @@ FROM events e
 JOIN event_types et ON e.event_type_id = et.id
 WHERE e.timestamp >= NOW() - INTERVAL '90 days'
 GROUP BY e.user_id, date_trunc('day', e.timestamp)
-ORDER BY date DESC, total_events DESC;
+ORDER BY date DESC, total_events DESC
+WITH NO DATA;
 
 -- Popular events with growth rate comparison
 CREATE MATERIALIZED VIEW IF NOT EXISTS popular_events AS
@@ -64,7 +63,8 @@ SELECT
     END as growth_rate
 FROM current_period c
 LEFT JOIN previous_period p ON c.event_type = p.event_type
-ORDER BY c.total_count DESC;
+ORDER BY c.total_count DESC
+WITH NO DATA;
 
 -- User session approximations (based on activity gaps)
 -- This creates pseudo-sessions by grouping events within 30 minutes of each other
@@ -111,19 +111,5 @@ SELECT
     MAX(session_end) as last_session
 FROM session_stats
 GROUP BY user_id
-ORDER BY total_sessions DESC;
-
--- Indexes for performance
-CREATE INDEX IF NOT EXISTS idx_event_hourly_summaries_hour ON event_hourly_summaries (hour);
-CREATE INDEX IF NOT EXISTS idx_event_hourly_summaries_type ON event_hourly_summaries (event_type);
-CREATE INDEX IF NOT EXISTS idx_event_hourly_summaries_hour_type ON event_hourly_summaries (hour, event_type);
-
-CREATE INDEX IF NOT EXISTS idx_user_daily_activity_date ON user_daily_activity (date);
-CREATE INDEX IF NOT EXISTS idx_user_daily_activity_user ON user_daily_activity (user_id);
-CREATE INDEX IF NOT EXISTS idx_user_daily_activity_user_date ON user_daily_activity (user_id, date);
-
-CREATE INDEX IF NOT EXISTS idx_popular_events_period ON popular_events (period);
-CREATE INDEX IF NOT EXISTS idx_popular_events_total_count ON popular_events (total_count DESC);
-
-CREATE INDEX IF NOT EXISTS idx_user_session_summaries_user ON user_session_summaries (user_id);
-CREATE INDEX IF NOT EXISTS idx_user_session_summaries_total_sessions ON user_session_summaries (total_sessions DESC);
+ORDER BY total_sessions DESC
+WITH NO DATA;

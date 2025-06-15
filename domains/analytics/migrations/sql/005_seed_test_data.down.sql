@@ -1,0 +1,3 @@
+-- Remove test data
+-- Note: This is intentionally a no-op as we don't want to delete user data
+-- The test data uses specific IDs that can be identified if needed

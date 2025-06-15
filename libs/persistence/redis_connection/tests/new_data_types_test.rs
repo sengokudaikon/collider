@@ -8,10 +8,10 @@ use redis_connection::{
 use test_utils::redis::TestRedisContainer;
 
 // Test the new Redis data type macros
-cache_key!(set UniqueUsers::<String> => "users:active:{}"[date: String]);
-cache_key!(zset Leaderboard::<String> => "leaderboard:{}"[game_id: String]);
-cache_key!(list RecentActivity::<String> => "activity:{}"[user_id: String]);
-cache_key!(stream EventLog::<String> => "events:{}"[stream_id: String]);
+cache_key!(set UniqueUsers::<String> => "test_users:active:{}"[date: String]);
+cache_key!(zset Leaderboard::<String> => "test_leaderboard:{}"[game_id: String]);
+cache_key!(list RecentActivity::<String> => "test_activity:{}"[user_id: String]);
+cache_key!(stream EventLog::<String> => "test_events:{}"[stream_id: String]);
 
 async fn setup_test_redis()
 -> anyhow::Result<(TestRedisContainer, RedisConnectionManager)> {
@@ -21,6 +21,35 @@ async fn setup_test_redis()
     Ok((container, manager))
 }
 
+// Helper function to create unique date/id for each test
+fn test_date() -> String {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static TEST_DATE_COUNTER: AtomicU32 = AtomicU32::new(1);
+    let counter = TEST_DATE_COUNTER.fetch_add(1, Ordering::SeqCst);
+    format!("2024-12-14-{}", counter)
+}
+
+fn test_game_id() -> String {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static TEST_GAME_COUNTER: AtomicU32 = AtomicU32::new(1);
+    let counter = TEST_GAME_COUNTER.fetch_add(1, Ordering::SeqCst);
+    format!("game_{}", counter)
+}
+
+fn test_user_id() -> String {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static TEST_USER_COUNTER: AtomicU32 = AtomicU32::new(1);
+    let counter = TEST_USER_COUNTER.fetch_add(1, Ordering::SeqCst);
+    format!("user_{}", counter)
+}
+
+fn test_stream_id() -> String {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static TEST_STREAM_COUNTER: AtomicU32 = AtomicU32::new(1);
+    let counter = TEST_STREAM_COUNTER.fetch_add(1, Ordering::SeqCst);
+    format!("stream_{}", counter)
+}
+
 #[tokio::test]
 async fn test_redis_set_operations() {
     let (_container, manager) = setup_test_redis().await.unwrap();
@@ -28,8 +57,7 @@ async fn test_redis_set_operations() {
 
     // Test Redis Set using macro
     let unique_users = UniqueUsers;
-    let mut set =
-        unique_users.bind_with(&mut conn, &"2024-12-14".to_string());
+    let mut set = unique_users.bind_with(&mut conn, &test_date());
 
     // Add members to set
     let added: i32 = set.add("user123".to_string()).await.unwrap();
@@ -75,7 +103,7 @@ async fn test_redis_sorted_set_operations() {
 
     // Test Redis Sorted Set using macro
     let leaderboard = Leaderboard;
-    let mut zset = leaderboard.bind_with(&mut conn, &"game_123".to_string());
+    let mut zset = leaderboard.bind_with(&mut conn, &test_game_id());
 
     // Add members with scores
     let added: i32 = zset
@@ -132,12 +160,23 @@ async fn test_redis_sorted_set_operations() {
 
 #[tokio::test]
 async fn test_redis_list_operations() {
-    let (_container, manager) = setup_test_redis().await.unwrap();
+    let (container, manager) = setup_test_redis().await.unwrap();
     let mut conn = manager.get_connection().await.unwrap();
+
+    // Debug: Check what keys exist before the test
+    let all_keys: Vec<String> = deadpool_redis::redis::cmd("KEYS")
+        .arg("*")
+        .query_async(&mut conn)
+        .await
+        .unwrap();
+    println!("All keys before test: {:?}", all_keys);
+
+    let user_id = test_user_id();
+    println!("Using user_id: {}", user_id);
 
     // Test Redis List using macro
     let activity = RecentActivity;
-    let mut list = activity.bind_with(&mut conn, &"user_123".to_string());
+    let mut list = activity.bind_with(&mut conn, &user_id);
 
     // Push to left (beginning)
     let len: i32 = list.push_left("login".to_string()).await.unwrap();
@@ -185,8 +224,7 @@ async fn test_redis_stream_operations() {
 
     // Test Redis Stream using macro
     let event_log = EventLog;
-    let mut stream =
-        event_log.bind_with(&mut conn, &"app_events".to_string());
+    let mut stream = event_log.bind_with(&mut conn, &test_stream_id());
 
     // Add entries to stream
     let id1: String = stream
@@ -232,8 +270,7 @@ async fn test_redis_stream_consumer_groups() {
     let mut conn = manager.get_connection().await.unwrap();
 
     let event_log = EventLog;
-    let mut stream =
-        event_log.bind_with(&mut conn, &"group_events".to_string());
+    let mut stream = event_log.bind_with(&mut conn, &test_stream_id());
 
     // Add some entries first
     stream
@@ -304,9 +341,9 @@ async fn test_multiple_data_types_together() {
     let mut conn = manager.get_connection().await.unwrap();
 
     // Test using multiple data types for a complete scenario
-    let date = "2024-12-14".to_string();
-    let user_id = "user_123".to_string();
-    let game_id = "game_456".to_string();
+    let date = test_date();
+    let user_id = test_user_id();
+    let game_id = test_game_id();
 
     // Track active users in a set
     {
