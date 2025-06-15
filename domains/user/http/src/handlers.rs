@@ -197,8 +197,6 @@ pub async fn delete_user(
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct UserQueryParams {
-    #[serde(default)]
-    include_metrics: bool,
     limit: Option<u64>,
     offset: Option<u64>,
 }
@@ -262,8 +260,6 @@ pub async fn list_users(
         .await
         .map_err(AppError::from_error)?;
 
-    // Analytics functionality removed - using pure user domain now
-    // Metrics are handled by the analytics domain via background events
     Ok(Json(users.into_iter().map(Into::into).collect()))
 }
 

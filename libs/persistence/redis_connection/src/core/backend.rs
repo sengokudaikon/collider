@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+#[cfg(feature = "file-cache")] use std::path::PathBuf;
 
 use bytes::Bytes;
 use moka::future::Cache;
