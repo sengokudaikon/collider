@@ -349,32 +349,36 @@ async fn test_redis_commands_abstraction_basic() {
 
 #[tokio::test]
 async fn test_redis_commands_abstraction_string_ops() {
-    let (_container, manager) = setup_test_redis().await.unwrap();
+    let (container, manager) = setup_test_redis().await.unwrap();
     let conn = manager.get_connection().await.unwrap();
     let mut commands = conn.cmd();
 
+    // Use prefixed keys for proper test isolation
+    let expire_key = test_key(&container, "expire_key");
+    let new_key = test_key(&container, "new_key");
+
     // Test SET with expiration
     commands
-        .set_ex("expire_key", "expire_value", 60)
+        .set_ex(&expire_key, "expire_value", 60)
         .await
         .unwrap();
-    let ttl = commands.ttl("expire_key").await.unwrap();
+    let ttl = commands.ttl(&expire_key).await.unwrap();
     assert!(ttl > 0 && ttl <= 60);
 
     // Test SET NX (only if not exists)
-    let set_result = commands.set_nx("new_key", "new_value").await.unwrap();
+    let set_result = commands.set_nx(&new_key, "new_value").await.unwrap();
     assert!(set_result); // Should return true for new key
 
     let set_result_again =
-        commands.set_nx("new_key", "another_value").await.unwrap();
+        commands.set_nx(&new_key, "another_value").await.unwrap();
     assert!(!set_result_again); // Should return false as key exists
 
     // Test GETSET
     let old_value: String =
-        commands.get_set("new_key", "updated_value").await.unwrap();
+        commands.get_set(&new_key, "updated_value").await.unwrap();
     assert_eq!(old_value, "new_value");
 
-    let current_value: String = commands.get("new_key").await.unwrap();
+    let current_value: String = commands.get(&new_key).await.unwrap();
     assert_eq!(current_value, "updated_value");
 }
 

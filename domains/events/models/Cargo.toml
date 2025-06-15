@@ -6,11 +6,9 @@ edition = "2024"
 [dependencies]
 bytes.workspace = true
 tokio-postgres.workspace = true
-deadpool-postgres.workspace = true
 serde.workspace = true
 uuid.workspace = true
 chrono.workspace = true
 serde_json.workspace = true
-thiserror.workspace = true
 typed-builder.workspace = true
 utoipa.workspace = true

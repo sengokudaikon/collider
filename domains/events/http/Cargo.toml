@@ -4,8 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-# Domain dependencies
-events-models = { path = "../models" }
 events-handlers = { path = "../handlers" }
 events-responses = { path = "../responses" }
 events-commands = { path = "../commands" }
@@ -16,8 +14,6 @@ events-dao = { path = "../dao" }
 sql-connection.workspace = true
 domain.workspace = true
 database-traits.workspace = true
-thiserror.workspace = true
-async-trait.workspace = true
 tokio.workspace = true
 
 # Web framework
@@ -29,17 +25,13 @@ tracing.workspace = true
 chrono.workspace = true
 utoipa.workspace = true
 
-# Event processing
-flume.workspace = true
-
 [dev-dependencies]
 test-utils.workspace = true
 events-dao = { path = "../dao" }
 database-traits.workspace = true
+redis-connection.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 anyhow.workspace = true
 serde_json.workspace = true
 tower = { workspace = true, features = ["util"] }
 axum = { workspace = true, features = ["macros"] }
-tokio-postgres.workspace = true
-deadpool-postgres.workspace = true

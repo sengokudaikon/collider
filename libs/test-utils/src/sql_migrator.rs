@@ -34,17 +34,24 @@ impl SqlMigrator {
                 ),
             ),
             (
-                "003_seed_test_data",
+                "004_analytics_views",
+                include_str!(
+                    "../../../domains/analytics/migrations/sql/\
+                     004_analytics_views.sql"
+                ),
+            ),
+            (
+                "005_seed_test_data",
                 include_str!(
                     "../../../domains/analytics/migrations/sql/\
                      005_seed_test_data.sql"
                 ),
             ),
             (
-                "004_analytics_views",
+                "006_refresh_views",
                 include_str!(
                     "../../../domains/analytics/migrations/sql/\
-                     004_analytics_views.sql"
+                     006_refresh_views.sql"
                 ),
             ),
         ];
@@ -246,17 +253,24 @@ impl SqlMigrator {
     ) -> anyhow::Result<()> {
         let down_migrations = vec![
             (
+                "006_refresh_views",
+                include_str!(
+                    "../../../domains/analytics/migrations/sql/\
+                     006_refresh_views.down.sql"
+                ),
+            ),
+            (
+                "005_seed_test_data",
+                include_str!(
+                    "../../../domains/analytics/migrations/sql/\
+                     005_seed_test_data.down.sql"
+                ),
+            ),
+            (
                 "004_analytics_views",
                 include_str!(
                     "../../../domains/analytics/migrations/sql/\
                      004_analytics_views.down.sql"
-                ),
-            ),
-            (
-                "003_seed_test_data",
-                include_str!(
-                    "../../../domains/analytics/migrations/sql/\
-                     005_seed_test_data.down.sql"
                 ),
             ),
             (

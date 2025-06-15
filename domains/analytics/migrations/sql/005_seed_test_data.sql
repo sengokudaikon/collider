@@ -23,11 +23,30 @@ WHERE NOT EXISTS (
 INSERT INTO events (id, event_type_id, user_id, timestamp, metadata)
 SELECT 
     gen_random_uuid(),
-    (ARRAY[1, 2, 3, 4])[floor(random() * 4 + 1)],
+    1, -- page_view events for page_analytics
     '00000000-0000-0000-0000-000000000001'::UUID,
     NOW() - (random() * INTERVAL '30 days'),
-    '{}'::JSONB
-FROM generate_series(1, 10)
+    jsonb_build_object(
+        'page', '/home',
+        'session_id', gen_random_uuid()::text,
+        'referrer', 'https://google.com'
+    )
+FROM generate_series(1, 5)
+WHERE NOT EXISTS (
+    SELECT 1 FROM events LIMIT 1
+);
+
+INSERT INTO events (id, event_type_id, user_id, timestamp, metadata)
+SELECT 
+    gen_random_uuid(),
+    4, -- button_click events for product_analytics
+    '00000000-0000-0000-0000-000000000001'::UUID,
+    NOW() - (random() * INTERVAL '30 days'),
+    jsonb_build_object(
+        'product_id', floor(random() * 10 + 1)::int,
+        'session_id', gen_random_uuid()::text
+    )
+FROM generate_series(1, 5)
 WHERE NOT EXISTS (
     SELECT 1 FROM events LIMIT 1
 );
@@ -86,11 +105,3 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_product_analytics_unique ON product_analyt
 CREATE INDEX IF NOT EXISTS idx_referrer_analytics_date ON referrer_analytics (date);
 CREATE INDEX IF NOT EXISTS idx_referrer_analytics_referrer ON referrer_analytics (referrer);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_referrer_analytics_unique ON referrer_analytics (referrer, date);
-
-REFRESH MATERIALIZED VIEW event_hourly_summaries;
-REFRESH MATERIALIZED VIEW popular_events;
-REFRESH MATERIALIZED VIEW user_daily_activity;
-REFRESH MATERIALIZED VIEW user_session_summaries;
-REFRESH MATERIALIZED VIEW page_analytics;
-REFRESH MATERIALIZED VIEW product_analytics;
-REFRESH MATERIALIZED VIEW referrer_analytics;

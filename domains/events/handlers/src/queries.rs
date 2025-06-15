@@ -230,6 +230,7 @@ impl GetUserEventsQueryHandler {
 
 #[cfg(test)]
 mod tests {
+    use redis_connection::cache_provider::CacheProvider;
     use test_utils::{redis::TestRedisContainer, *};
     use uuid::Uuid;
 
@@ -243,6 +244,9 @@ mod tests {
             test_utils::postgres::TestPostgresContainer::new().await?;
         let redis_container = TestRedisContainer::new().await.unwrap();
         redis_container.flush_db().await.unwrap();
+
+        // Initialize the cache provider with the Redis pool
+        CacheProvider::init_redis_static(redis_container.pool.clone());
 
         let sql_connect = create_sql_connect(&container);
         let handler = GetUserEventsQueryHandler::new(sql_connect);

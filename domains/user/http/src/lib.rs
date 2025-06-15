@@ -293,3 +293,454 @@ pub async fn get_user_events(
 
     Ok(Json(events.into_iter().map(Into::into).collect()))
 }
+
+#[cfg(test)]
+mod tests {
+    use axum::{
+        body::Body,
+        http::{Method, Request, StatusCode},
+        routing::Router,
+    };
+    use database_traits::dao::GenericDao;
+    use redis_connection::cache_provider::CacheProvider;
+    use serde_json::json;
+    use test_utils::{
+        postgres::TestPostgresContainer, redis::TestRedisContainer, *,
+    };
+    use tower::ServiceExt;
+    use user_commands::{CreateUserCommand, UpdateUserCommand};
+    use user_dao::UserDao;
+    use uuid::Uuid;
+
+    use super::*;
+
+    async fn setup_test_app()
+    -> anyhow::Result<(TestPostgresContainer, Router, UserDao)> {
+        let container = TestPostgresContainer::new().await?;
+        let redis_container = TestRedisContainer::new().await?;
+        redis_container.flush_db().await?;
+
+        CacheProvider::init_redis_static(redis_container.pool.clone());
+
+        let sql_connect = create_sql_connect(&container);
+        let services = UserServices::new(sql_connect.clone());
+        let dao = UserDao::new(sql_connect);
+
+        let app = UserHandlers::routes().with_state(services);
+
+        Ok((container, app, dao))
+    }
+
+    #[tokio::test]
+    async fn test_create_user_endpoint() {
+        let (container, app, _) = setup_test_app().await.unwrap();
+
+        let command = CreateUserCommand {
+            name: "Test User".to_string(),
+        };
+
+        let request = Request::builder()
+            .method(Method::POST)
+            .uri("/")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&command).unwrap()))
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::CREATED);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let response_json: serde_json::Value =
+            serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(response_json["name"], "Test User");
+        assert!(response_json["id"].is_string());
+        assert!(response_json["created_at"].is_string());
+    }
+
+    #[tokio::test]
+    async fn test_create_user_invalid_data() {
+        let (container, app, _) = setup_test_app().await.unwrap();
+
+        let invalid_data = json!({
+            "name": ""  // Empty name should be invalid
+        });
+
+        let request = Request::builder()
+            .method(Method::POST)
+            .uri("/")
+            .header("content-type", "application/json")
+            .body(Body::from(invalid_data.to_string()))
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+
+        // Should return error for invalid data
+        assert!(
+            response.status().is_client_error()
+                || response.status().is_server_error()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_user_endpoint() {
+        let (container, app, dao) = setup_test_app().await.unwrap();
+
+        let create_command = CreateUserCommand {
+            name: "Get Test User".to_string(),
+        };
+        let created_user = dao.create(create_command).await.unwrap();
+
+        let request = Request::builder()
+            .method(Method::GET)
+            .uri(format!("/{}", created_user.id))
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let response_json: serde_json::Value =
+            serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(response_json["id"], created_user.id.to_string());
+        assert_eq!(response_json["name"], "Get Test User");
+    }
+
+    #[tokio::test]
+    async fn test_get_user_not_found() {
+        let (container, app, _) = setup_test_app().await.unwrap();
+        let non_existent_id = Uuid::now_v7();
+
+        let request = Request::builder()
+            .method(Method::GET)
+            .uri(format!("/{}", non_existent_id))
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn test_update_user_endpoint() {
+        let (container, app, dao) = setup_test_app().await.unwrap();
+
+        let create_command = CreateUserCommand {
+            name: "Original Name".to_string(),
+        };
+        let created_user = dao.create(create_command).await.unwrap();
+
+        let update_command = UpdateUserCommand {
+            user_id: created_user.id,
+            name: Some("Updated Name".to_string()),
+        };
+
+        let request = Request::builder()
+            .method(Method::PUT)
+            .uri(format!("/{}", created_user.id))
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&update_command).unwrap()))
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let response_json: serde_json::Value =
+            serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(response_json["id"], created_user.id.to_string());
+        assert_eq!(response_json["name"], "Updated Name");
+    }
+
+    #[tokio::test]
+    async fn test_update_user_not_found() {
+        let (container, app, _) = setup_test_app().await.unwrap();
+        let non_existent_id = Uuid::now_v7();
+
+        let update_command = UpdateUserCommand {
+            user_id: non_existent_id,
+            name: Some("New Name".to_string()),
+        };
+
+        let request = Request::builder()
+            .method(Method::PUT)
+            .uri(format!("/{}", non_existent_id))
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&update_command).unwrap()))
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn test_delete_user_endpoint() {
+        let (container, app, dao) = setup_test_app().await.unwrap();
+
+        let create_command = CreateUserCommand {
+            name: "User To Delete".to_string(),
+        };
+        let created_user = dao.create(create_command).await.unwrap();
+
+        let request = Request::builder()
+            .method(Method::DELETE)
+            .uri(format!("/{}", created_user.id))
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+        // Verify user is actually deleted
+        let find_result = dao.find_by_id(created_user.id).await;
+        assert!(find_result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_delete_user_not_found() {
+        let (container, app, _) = setup_test_app().await.unwrap();
+        let non_existent_id = Uuid::now_v7();
+
+        let request = Request::builder()
+            .method(Method::DELETE)
+            .uri(format!("/{}", non_existent_id))
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn test_list_users_endpoint() {
+        let (container, app, dao) = setup_test_app().await.unwrap();
+
+        // Create multiple users
+        for i in 0..3 {
+            let create_command = CreateUserCommand {
+                name: format!("Test User {}", i),
+            };
+            dao.create(create_command).await.unwrap();
+        }
+
+        let request = Request::builder()
+            .method(Method::GET)
+            .uri("/")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let response_json: serde_json::Value =
+            serde_json::from_slice(&body).unwrap();
+
+        assert!(response_json.is_array());
+        let users = response_json.as_array().unwrap();
+        assert!(users.len() >= 3); // At least the 3 we created
+    }
+
+    #[tokio::test]
+    async fn test_list_users_with_pagination() {
+        let (container, app, dao) = setup_test_app().await.unwrap();
+
+        // Create multiple users
+        for i in 0..5 {
+            let create_command = CreateUserCommand {
+                name: format!("Paginated User {}", i),
+            };
+            dao.create(create_command).await.unwrap();
+        }
+
+        let request = Request::builder()
+            .method(Method::GET)
+            .uri("/?limit=2&offset=0")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let response_json: serde_json::Value =
+            serde_json::from_slice(&body).unwrap();
+
+        assert!(response_json.is_array());
+        let users = response_json.as_array().unwrap();
+        assert!(users.len() <= 2); // Should respect limit
+    }
+
+    #[tokio::test]
+    async fn test_get_user_events_endpoint() {
+        let (container, app, dao) = setup_test_app().await.unwrap();
+
+        let create_command = CreateUserCommand {
+            name: "User With Events".to_string(),
+        };
+        let created_user = dao.create(create_command).await.unwrap();
+
+        // Create some test events for this user
+        let event_type_id = create_test_event_type(&container).await.unwrap();
+        for i in 0..2 {
+            create_test_event(
+                &container,
+                created_user.id,
+                event_type_id,
+                Some(&format!(r#"{{"event": "test_{}"}"#, i)),
+            )
+            .await
+            .unwrap();
+        }
+
+        let request = Request::builder()
+            .method(Method::GET)
+            .uri(format!("/{}/events", created_user.id))
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let response_json: serde_json::Value =
+            serde_json::from_slice(&body).unwrap();
+
+        assert!(response_json.is_array());
+        let events = response_json.as_array().unwrap();
+        assert_eq!(events.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_user_events_invalid_user_id() {
+        let (container, app, _) = setup_test_app().await.unwrap();
+
+        let request = Request::builder()
+            .method(Method::GET)
+            .uri("/invalid-uuid/events")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn test_get_user_events_non_existent_user() {
+        let (container, app, _) = setup_test_app().await.unwrap();
+        let non_existent_id = Uuid::now_v7();
+
+        let request = Request::builder()
+            .method(Method::GET)
+            .uri(format!("/{}/events", non_existent_id))
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+
+        // Should still return OK with empty array for non-existent user
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let response_json: serde_json::Value =
+            serde_json::from_slice(&body).unwrap();
+
+        assert!(response_json.is_array());
+        let events = response_json.as_array().unwrap();
+        assert_eq!(events.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_create_user_with_duplicate_name() {
+        let (container, app, dao) = setup_test_app().await.unwrap();
+
+        // Create first user
+        let create_command1 = CreateUserCommand {
+            name: "Duplicate Name".to_string(),
+        };
+        dao.create(create_command1).await.unwrap();
+
+        // Try to create second user with same name
+        let create_command2 = CreateUserCommand {
+            name: "Duplicate Name".to_string(),
+        };
+
+        let request = Request::builder()
+            .method(Method::POST)
+            .uri("/")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::to_string(&create_command2).unwrap(),
+            ))
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+
+        // Should succeed - duplicate names are allowed
+        assert_eq!(response.status(), StatusCode::CREATED);
+    }
+
+    #[tokio::test]
+    async fn test_partial_update_user() {
+        let (container, app, dao) = setup_test_app().await.unwrap();
+
+        let create_command = CreateUserCommand {
+            name: "Original Name".to_string(),
+        };
+        let created_user = dao.create(create_command).await.unwrap();
+
+        // Update with None to test partial updates
+        let update_command = UpdateUserCommand {
+            user_id: created_user.id,
+            name: None, // This should not change the name
+        };
+
+        let request = Request::builder()
+            .method(Method::PUT)
+            .uri(format!("/{}", created_user.id))
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&update_command).unwrap()))
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let response_json: serde_json::Value =
+            serde_json::from_slice(&body).unwrap();
+
+        // Name should remain unchanged
+        assert_eq!(response_json["name"], "Original Name");
+    }
+}

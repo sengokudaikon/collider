@@ -109,7 +109,6 @@ GROUP BY user_id
 ORDER BY total_sessions DESC
 WITH NO DATA;
 
--- Enhanced analytics views that leverage metadata
 CREATE MATERIALIZED VIEW IF NOT EXISTS page_analytics AS
 SELECT
     metadata->>'page' as page,

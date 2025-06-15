@@ -16,7 +16,8 @@ cache_key!(stream EventLog::<String> => "test_events:{}"[stream_id: String]);
 async fn setup_test_redis()
 -> anyhow::Result<(TestRedisContainer, RedisConnectionManager)> {
     let container = TestRedisContainer::new().await?;
-    container.flush_db().await?;
+    // Use flush_all_keys since cache_key! macros don't use prefixes
+    container.flush_all_keys().await?;
     let manager = RedisConnectionManager::new(container.pool.clone());
     Ok((container, manager))
 }

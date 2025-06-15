@@ -276,6 +276,7 @@ mod tests {
     use database_traits::dao::GenericDao;
     use events_commands::CreateEventCommand;
     use events_dao::EventDao;
+    use redis_connection::cache_provider::CacheProvider;
     use serde_json::json;
     use test_utils::{
         postgres::TestPostgresContainer, redis::TestRedisContainer, *,
@@ -291,6 +292,9 @@ mod tests {
 
         let redis_container = TestRedisContainer::new().await?;
         redis_container.flush_db().await?;
+
+        // Initialize the cache provider with the Redis pool
+        CacheProvider::init_redis_static(redis_container.pool.clone());
 
         let sql_connect = create_sql_connect(&container);
         let services = EventServices::new(sql_connect.clone());

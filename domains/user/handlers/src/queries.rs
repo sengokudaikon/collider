@@ -61,6 +61,7 @@ impl GetUserQueryHandler {
 
 #[cfg(test)]
 mod tests {
+    use redis_connection::cache_provider::CacheProvider;
     use test_utils::{redis::TestRedisContainer, *};
     use user_queries::{GetUserByNameQuery, GetUserQuery, ListUsersQuery};
     use uuid::Uuid;
@@ -72,6 +73,10 @@ mod tests {
         let container = TestPostgresContainer::new().await?;
         let redis_container = TestRedisContainer::new().await?;
         redis_container.flush_db().await?;
+
+        // Initialize the cache provider with the Redis pool
+        CacheProvider::init_redis_static(redis_container.pool.clone());
+
         let sql_connect = create_sql_connect(&container);
         let handler = GetUserQueryHandler::new(sql_connect);
         Ok((container, handler))
@@ -114,6 +119,10 @@ mod tests {
         let container = TestPostgresContainer::new().await?;
         let redis_container = TestRedisContainer::new().await?;
         redis_container.flush_db().await?;
+
+        // Initialize the cache provider with the Redis pool
+        CacheProvider::init_redis_static(redis_container.pool.clone());
+
         let sql_connect = create_sql_connect(&container);
         let handler = GetUserByNameQueryHandler::new(sql_connect);
         Ok((container, handler))
@@ -123,17 +132,20 @@ mod tests {
     async fn test_get_user_by_name_success() {
         let (container, handler) =
             setup_test_db_for_name_queries().await.unwrap();
-        let user_id = create_test_user_with_name(&container, "Alice")
+
+        // Use a unique name to avoid cache conflicts
+        let unique_name = format!("Alice_{}", Uuid::now_v7());
+        let user_id = create_test_user_with_name(&container, &unique_name)
             .await
             .unwrap();
 
         let query = GetUserByNameQuery {
-            name: "Alice".to_string(),
+            name: unique_name.clone(),
         };
         let result = handler.execute(query).await.unwrap();
 
         assert_eq!(result.id, user_id);
-        assert_eq!(result.name, "Alice");
+        assert_eq!(result.name, unique_name);
     }
 
     #[tokio::test]
@@ -160,6 +172,10 @@ mod tests {
         let container = TestPostgresContainer::new().await?;
         let redis_container = TestRedisContainer::new().await?;
         redis_container.flush_db().await?;
+
+        // Initialize the cache provider with the Redis pool
+        CacheProvider::init_redis_static(redis_container.pool.clone());
+
         let sql_connect = create_sql_connect(&container);
         let handler = ListUsersQueryHandler::new(sql_connect);
         Ok((container, handler))
@@ -205,7 +221,9 @@ mod tests {
         };
         let result = handler.execute(query).await.unwrap();
 
-        assert_eq!(result.len(), 0);
+        // The seed data migration creates a system user, so we expect 1 user
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].name, "System User");
     }
 }
 

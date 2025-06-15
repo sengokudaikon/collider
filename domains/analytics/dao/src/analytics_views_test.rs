@@ -155,14 +155,12 @@ mod tests {
             concurrent: false,
         };
 
-        // This should not fail even if views don't exist yet
-        // (they will be created by migrations)
+        // This should not fail since the views are created and populated by
+        // migrations
         let result = dao.refresh_views(command).await;
 
-        // We expect this to fail since the materialized views don't exist in
-        // test DB but we're testing that all 7 views are included in
-        // the refresh logic
-        assert!(result.is_err());
+        // The refresh should succeed since all views exist and are populated
+        assert!(result.is_ok());
 
         Ok(())
     }

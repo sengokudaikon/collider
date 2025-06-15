@@ -118,6 +118,27 @@ impl TestRedisContainer {
         Ok(())
     }
 
+    /// Flush all keys in the current database - use with caution, only for
+    /// tests where proper key prefixing is not used
+    pub async fn flush_all_keys(&self) -> anyhow::Result<()> {
+        let mut conn = self.get_connection().await?;
+
+        // Get all keys and delete them
+        let keys: Vec<String> = deadpool_redis::redis::cmd("KEYS")
+            .arg("*")
+            .query_async(&mut conn)
+            .await?;
+
+        if !keys.is_empty() {
+            deadpool_redis::redis::cmd("DEL")
+                .arg(&keys)
+                .query_async::<()>(&mut conn)
+                .await?;
+        }
+
+        Ok(())
+    }
+
     /// Get a test-prefixed key for isolation
     pub fn test_key(&self, key: &str) -> String {
         format!("{}{}", self.test_prefix, key)
