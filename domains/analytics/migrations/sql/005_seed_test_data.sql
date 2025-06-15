@@ -1,7 +1,3 @@
--- Seed minimal test data for materialized views to work
--- This ensures that the analytics views can be created successfully
-
--- Insert a test user if none exists
 INSERT INTO users (id, name, created_at)
 SELECT 
     '00000000-0000-0000-0000-000000000001'::UUID,
@@ -37,8 +33,6 @@ WHERE NOT EXISTS (
 );
 
 
--- Create indexes on materialized views
--- Note: These indexes are created on the structure of the materialized view, not the data
 CREATE INDEX IF NOT EXISTS idx_event_hourly_summaries_hour ON event_hourly_summaries (hour);
 CREATE INDEX IF NOT EXISTS idx_event_hourly_summaries_type ON event_hourly_summaries (event_type);
 CREATE INDEX IF NOT EXISTS idx_event_hourly_summaries_hour_type ON event_hourly_summaries (hour, event_type);
@@ -56,3 +50,47 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_popular_events_unique ON popular_events (e
 CREATE INDEX IF NOT EXISTS idx_user_session_summaries_user ON user_session_summaries (user_id);
 CREATE INDEX IF NOT EXISTS idx_user_session_summaries_total_sessions ON user_session_summaries (total_sessions DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_user_session_summaries_unique ON user_session_summaries (user_id);
+
+-- GIN indexes for JSONB metadata queries
+CREATE INDEX IF NOT EXISTS idx_events_metadata_gin ON events USING GIN (metadata);
+
+-- B-tree indexes for specific metadata field access patterns
+CREATE INDEX IF NOT EXISTS idx_events_metadata_page ON events USING BTREE ((metadata->>'page')) 
+WHERE metadata ? 'page';
+
+CREATE INDEX IF NOT EXISTS idx_events_metadata_product_id ON events USING BTREE (((metadata->>'product_id')::integer)) 
+WHERE metadata ? 'product_id';
+
+CREATE INDEX IF NOT EXISTS idx_events_metadata_session_id ON events USING BTREE ((metadata->>'session_id')) 
+WHERE metadata ? 'session_id';
+
+CREATE INDEX IF NOT EXISTS idx_events_metadata_referrer ON events USING BTREE ((metadata->>'referrer')) 
+WHERE metadata ? 'referrer';
+
+-- Composite indexes for analytics performance
+CREATE INDEX IF NOT EXISTS idx_events_timestamp_page ON events (timestamp, (metadata->>'page'))
+WHERE metadata ? 'page';
+
+CREATE INDEX IF NOT EXISTS idx_events_timestamp_product_id ON events (timestamp, ((metadata->>'product_id')::integer))
+WHERE metadata ? 'product_id';
+
+-- Indexes for new materialized views
+CREATE INDEX IF NOT EXISTS idx_page_analytics_hour ON page_analytics (hour);
+CREATE INDEX IF NOT EXISTS idx_page_analytics_page ON page_analytics (page);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_page_analytics_unique ON page_analytics (page, hour);
+
+CREATE INDEX IF NOT EXISTS idx_product_analytics_date ON product_analytics (date);
+CREATE INDEX IF NOT EXISTS idx_product_analytics_product_id ON product_analytics (product_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_product_analytics_unique ON product_analytics (product_id, event_type, date);
+
+CREATE INDEX IF NOT EXISTS idx_referrer_analytics_date ON referrer_analytics (date);
+CREATE INDEX IF NOT EXISTS idx_referrer_analytics_referrer ON referrer_analytics (referrer);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_referrer_analytics_unique ON referrer_analytics (referrer, date);
+
+REFRESH MATERIALIZED VIEW event_hourly_summaries;
+REFRESH MATERIALIZED VIEW popular_events;
+REFRESH MATERIALIZED VIEW user_daily_activity;
+REFRESH MATERIALIZED VIEW user_session_summaries;
+REFRESH MATERIALIZED VIEW page_analytics;
+REFRESH MATERIALIZED VIEW product_analytics;
+REFRESH MATERIALIZED VIEW referrer_analytics;

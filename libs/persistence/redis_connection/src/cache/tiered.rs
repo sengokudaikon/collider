@@ -1,29 +1,36 @@
 use std::{borrow::Cow, marker::PhantomData, time::Duration};
 
 use async_trait::async_trait;
-use bytes::Bytes;
 use serde::{Deserialize, Serialize};
-use tracing::instrument;
+use tracing::{debug, instrument, warn};
 
-use super::r#trait::{CacheError, CacheResult, CacheTrait};
+use super::{
+    memory::Memory,
+    redis_cache::RedisCache,
+    r#trait::{CacheError, CacheResult, CacheTrait},
+};
+#[cfg(feature = "file-cache")]
+use super::file_cache::FileCache;
 use crate::{
     config::TieredConfig,
     core::{
         backend::CacheBackend,
         type_bind::CacheTypeTrait,
-        value::{CacheValue, Json},
     },
 };
 
+/// Tiered cache that manages multiple cache instances in order of speed
+/// Implements read-through, write-through patterns with configurable policies
 pub struct Tiered<'cache, T> {
-    backends: super::super::core::backend::BoundedBackends<'cache>,
-    #[allow(dead_code)]
-    key: Cow<'static, str>,
+    caches: Vec<Box<dyn CacheTrait<Value = T> + Send + Sync + 'cache>>,
     config: TieredConfig,
     __phantom: PhantomData<(&'cache (), T)>,
 }
 
-impl<'cache, T> CacheTypeTrait<'cache> for Tiered<'cache, T> {
+impl<'cache, T> CacheTypeTrait<'cache> for Tiered<'cache, T>
+where
+    T: Serialize + for<'de> Deserialize<'de> + Clone + Send + Sync + 'static,
+{
     #[instrument(skip(backend), fields(key = %key))]
     fn from_cache_and_key(
         backend: CacheBackend<'cache>, key: Cow<'static, str>,
@@ -35,9 +42,47 @@ impl<'cache, T> CacheTypeTrait<'cache> for Tiered<'cache, T> {
             }
         };
 
+        // Convert backends to cache instances
+        let mut caches: Vec<Box<dyn CacheTrait<Value = T> + Send + Sync + 'cache>> = Vec::new();
+        
+        for backend in backends.iter() {
+            match backend {
+                CacheBackend::Memory { cache, config } => {
+                    let memory_cache = Memory::<T>::from_cache_and_key(
+                        CacheBackend::Memory {
+                            cache: cache.clone(),
+                            config: config.clone(),
+                        },
+                        key.clone(),
+                    );
+                    caches.push(Box::new(memory_cache));
+                }
+                CacheBackend::Redis(pool) => {
+                    let redis_cache = RedisCache::<T>::from_cache_and_key(
+                        CacheBackend::Redis(pool.clone()),
+                        key.clone(),
+                    );
+                    caches.push(Box::new(redis_cache));
+                }
+                #[cfg(feature = "file-cache")]
+                CacheBackend::File { file_db, config } => {
+                    let file_cache = FileCache::<T>::from_cache_and_key(
+                        CacheBackend::File {
+                            file_db: file_db.clone(),
+                            config: config.clone(),
+                        },
+                        key.clone(),
+                    );
+                    caches.push(Box::new(file_cache));
+                }
+                CacheBackend::Tiered { .. } => {
+                    panic!("Nested tiered caches not supported");
+                }
+            }
+        }
+
         Self {
-            backends,
-            key,
+            caches,
             config,
             __phantom: PhantomData,
         }
@@ -46,7 +91,7 @@ impl<'cache, T> CacheTypeTrait<'cache> for Tiered<'cache, T> {
 
 impl<'cache, T> Tiered<'cache, T>
 where
-    T: Serialize + for<'de> Deserialize<'de> + Clone + Send + Sync + 'cache,
+    T: Serialize + for<'de> Deserialize<'de> + Clone + Send + Sync + 'static,
 {
     pub fn with_config(mut self, config: TieredConfig) -> Self {
         self.config = config;
@@ -56,70 +101,32 @@ where
 
 /// Implement the backend-agnostic CacheTrait for tiered cache operations
 #[async_trait]
-impl<T> CacheTrait for Tiered<'_, T>
+impl<'cache, T> CacheTrait for Tiered<'cache, T>
 where
     T: Serialize + for<'de> Deserialize<'de> + Clone + Send + Sync + 'static,
 {
     type Value = T;
 
     async fn exists(&mut self, key: &str) -> CacheResult<bool> {
-        // Check each backend in order (fastest to slowest)
-        for backend in self.backends.iter() {
-            match backend {
-                CacheBackend::Memory { cache, .. } => {
-                    if cache.get(key).await.is_some() {
-                        return Ok(true);
-                    }
-                }
-                CacheBackend::Redis(_redis) => {
-                    // Note: We can't actually use Redis here without
-                    // AsyncCommands trait This would need
-                    // to be implemented with proper Redis trait bounds
-                    // For now, we'll assume it doesn't exist at Redis level
-                    return Ok(false);
-                }
-                #[cfg(feature = "file-cache")]
-                CacheBackend::File { .. } => {
-                    // File cache existence check would go here
-                    // For now, assume not found
-                }
-                _ => {}
+        // Check each cache in order (fastest to slowest)
+        for cache in &mut self.caches {
+            if cache.exists(key).await? {
+                return Ok(true);
             }
         }
         Ok(false)
     }
 
     async fn get(&mut self, key: &str) -> CacheResult<Self::Value> {
-        // Try each backend in order until we find the value
-        for backend in self.backends.iter() {
-            match backend {
-                CacheBackend::Memory { cache, .. } => {
-                    if let Some(bytes) = cache.get(key).await {
-                        let json =
-                            Json::<T>::from_bytes(&bytes).map_err(|e| {
-                                CacheError::DeserializationError(
-                                    e.to_string(),
-                                )
-                            })?;
-
-                        // If populate_on_read is enabled, populate faster
-                        // caches
-                        if self.config.populate_on_read {
-                            // Would populate faster backends here
-                        }
-
-                        return Ok(json.inner());
-                    }
+        // Try each cache in order until we find the value
+        for (layer_idx, cache) in self.caches.iter_mut().enumerate() {
+            if let Some(value) = cache.try_get(key).await? {
+                // Populate faster caches if enabled and we found the value in a slower layer
+                if self.config.populate_on_read && layer_idx > 0 {
+                    debug!("Populating faster cache layers with value from layer {}", layer_idx);
+                    self.populate_faster_layers(key, &value, layer_idx).await?;
                 }
-                CacheBackend::Redis(_redis) => {
-                    // Redis lookup would go here with proper trait bounds
-                    // For now, continue to next backend
-                }
-                #[cfg(feature = "file-cache")]
-                CacheBackend::File { .. } => {
-                    // File cache lookup would go here
-                }
-                _ => {}
+                return Ok(value);
             }
         }
         Err(CacheError::KeyNotFound)
@@ -138,30 +145,31 @@ where
     async fn set(
         &mut self, key: &str, value: &Self::Value,
     ) -> CacheResult<()> {
-        let json = Json(value.clone());
-        let bytes = json
-            .to_bytes()
-            .map_err(|e| CacheError::SerializationError(e.to_string()))?;
-
-        // Set in all backends based on write strategy
-        for backend in self.backends.iter() {
-            match backend {
-                CacheBackend::Memory { cache, .. } => {
-                    cache
-                        .insert(key.to_string(), Bytes::from(bytes.clone()))
-                        .await;
+        match self.config.write_strategy {
+            crate::config::WriteStrategy::WriteThrough => {
+                // Write to all caches
+                for cache in &mut self.caches {
+                    cache.set(key, value).await?;
                 }
-                CacheBackend::Redis(_redis) => {
-                    // Redis set would go here with proper trait bounds
+                Ok(())
+            }
+            crate::config::WriteStrategy::WriteBack => {
+                // Write to fastest cache only
+                if let Some(cache) = self.caches.first_mut() {
+                    cache.set(key, value).await
+                } else {
+                    Err(CacheError::Other("No caches available".to_string()))
                 }
-                #[cfg(feature = "file-cache")]
-                CacheBackend::File { .. } => {
-                    // File cache set would go here
+            }
+            crate::config::WriteStrategy::WriteToSlowest => {
+                // Write to most persistent cache only
+                if let Some(cache) = self.caches.last_mut() {
+                    cache.set(key, value).await
+                } else {
+                    Err(CacheError::Other("No caches available".to_string()))
                 }
-                _ => {}
             }
         }
-        Ok(())
     }
 
     async fn set_with_ttl(
@@ -186,26 +194,30 @@ where
     async fn remove(&mut self, key: &str) -> CacheResult<bool> {
         let mut existed = false;
 
-        // Remove from all backends
-        for backend in self.backends.iter() {
-            match backend {
-                CacheBackend::Memory { cache, .. } => {
-                    if cache.get(key).await.is_some() {
-                        existed = true;
-                    }
-                    cache.invalidate(key).await;
-                }
-                CacheBackend::Redis(_redis) => {
-                    // Redis remove would go here
-                }
-                #[cfg(feature = "file-cache")]
-                CacheBackend::File { .. } => {
-                    // File cache remove would go here
-                }
-                _ => {}
+        // Remove from all caches
+        for cache in &mut self.caches {
+            if cache.remove(key).await? {
+                existed = true;
             }
         }
 
         Ok(existed)
+    }
+}
+
+impl<'cache, T> Tiered<'cache, T>
+where
+    T: Serialize + for<'de> Deserialize<'de> + Clone + Send + Sync + 'static,
+{
+    /// Helper method to populate faster cache layers with a value
+    async fn populate_faster_layers(&mut self, key: &str, value: &T, found_at_layer: usize) -> CacheResult<()> {
+        // Populate all layers before the one where we found the value
+        for (layer_idx, cache) in self.caches.iter_mut().enumerate() {
+            if layer_idx >= found_at_layer {
+                break; // Don't populate the layer where we found it or slower ones
+            }
+            let _ = cache.set(key, value).await;
+        }
+        Ok(())
     }
 }

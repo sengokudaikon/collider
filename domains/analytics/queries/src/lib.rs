@@ -55,6 +55,37 @@ pub struct RealtimeMetricsQuery {
     pub timestamp: Option<DateTime<Utc>>,
 }
 
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct UserSessionSummariesQuery {
+    pub user_id: Option<Uuid>,
+    pub limit: Option<i64>,
+}
+
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct PageAnalyticsQuery {
+    pub page: Option<String>,
+    pub start_time: DateTime<Utc>,
+    pub end_time: DateTime<Utc>,
+    pub limit: Option<i64>,
+}
+
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct ProductAnalyticsQuery {
+    pub product_id: Option<i32>,
+    pub event_type: Option<String>,
+    pub start_date: DateTime<Utc>,
+    pub end_date: DateTime<Utc>,
+    pub limit: Option<i64>,
+}
+
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct ReferrerAnalyticsQuery {
+    pub referrer: Option<String>,
+    pub start_date: DateTime<Utc>,
+    pub end_date: DateTime<Utc>,
+    pub limit: Option<i64>,
+}
+
 // ============================================================================
 // Response Structs
 // ============================================================================

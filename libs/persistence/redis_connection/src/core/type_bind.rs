@@ -51,29 +51,4 @@ pub trait CacheTypeBind: CacheKey {
             CacheKeyAutoConstruct::construct(),
         )
     }
-
-    // Convenience methods for specific backends
-    fn bind_redis<'redis>(
-        &self, redis: &'redis mut deadpool_redis::Connection,
-    ) -> Self::CacheType<'redis>
-    where
-        for<'r> <Self as CacheKey>::Args<'r>: CacheKeyAutoConstruct,
-    {
-        self.bind(CacheBackend::Redis(redis))
-    }
-
-    fn bind_memory<'cache>(
-        &self, cache: moka::future::Cache<String, bytes::Bytes>,
-    ) -> Self::CacheType<'cache>
-    where
-        for<'r> <Self as CacheKey>::Args<'r>: CacheKeyAutoConstruct,
-    {
-        self.bind(CacheBackend::Memory {
-            cache,
-            config: crate::config::MemoryConfig {
-                capacity: 10_000,
-                ttl_secs: 300,
-            },
-        })
-    }
 }

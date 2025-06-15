@@ -5,6 +5,7 @@ members = [
     "domains/user/models",
     "domains/user/dao",
     "domains/user/commands",
+    "domains/user/handlers",
     "domains/user/queries",
     "domains/user/http",
     "domains/user/events",
@@ -28,7 +29,7 @@ members = [
     "libs/domain",
     "libs/test-utils",
     # Binaries
-    "binaries/migrator",
+    "binaries/migrator", "domains/user/errors",
 ]
 
 
@@ -36,6 +37,7 @@ members = [
 # Database
 tokio-postgres = { version = "0.7", features = ["with-uuid-1", "with-chrono-0_4", "with-serde_json-1"] }
 deadpool-postgres = "0.14"
+postgres-types = { version = "0.2", features = ["derive", "with-serde_json-1"] }
 deadpool-redis = { version = "0.21.1", features = ["serde", "connection-manager", "cache-aio", "json", ] }
 redis = "0.31.0"
 # Web framework
@@ -88,6 +90,7 @@ analytics-http = { path = "domains/analytics/http" }
 user-models = { path = "domains/user/models" }
 user-dao = { path = "domains/user/dao" }
 user-commands = { path = "domains/user/commands" }
+user-handlers = { path = "domains/user/handlers" }
 user-queries = { path = "domains/user/queries" }
 user-http = { path = "domains/user/http" }
 user-events = { path = "domains/user/events" }

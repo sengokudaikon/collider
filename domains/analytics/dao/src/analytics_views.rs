@@ -48,6 +48,9 @@ impl AnalyticsViewsDao {
                 "user_daily_activity".to_string(),
                 "popular_events".to_string(),
                 "user_session_summaries".to_string(),
+                "page_analytics".to_string(),
+                "product_analytics".to_string(),
+                "referrer_analytics".to_string(),
             ]
         };
 
@@ -469,5 +472,240 @@ impl AnalyticsViewsDao {
             most_active_day,
             favorite_events,
         })
+    }
+
+    pub async fn get_user_session_summaries(
+        &self, user_id: Option<Uuid>, limit: Option<i64>,
+    ) -> Result<
+        Vec<analytics_models::UserSessionSummary>,
+        AnalyticsViewsDaoError,
+    > {
+        let client =
+            self.db.get_client().await.map_err(|e| {
+                AnalyticsViewsDaoError::Connection(e.to_string())
+            })?;
+
+        let mut sql = "SELECT user_id, total_sessions, \
+                       avg_session_duration, total_time_spent, \
+                       avg_events_per_session, first_session, last_session 
+                       FROM user_session_summaries"
+            .to_string();
+        let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
+            vec![];
+
+        if let Some(uid) = &user_id {
+            sql.push_str(" WHERE user_id = $1");
+            params.push(uid);
+        }
+
+        sql.push_str(" ORDER BY total_sessions DESC");
+
+        let limit_param;
+        if let Some(limit_val) = limit {
+            limit_param = limit_val;
+            if user_id.is_some() {
+                sql.push_str(" LIMIT $2");
+                params.push(&limit_param);
+            }
+            else {
+                sql.push_str(" LIMIT $1");
+                params.push(&limit_param);
+            }
+        }
+
+        let rows = client.query(&sql, &params).await?;
+
+        let summaries = rows
+            .iter()
+            .map(|row| {
+                analytics_models::UserSessionSummary {
+                    user_id: row.get("user_id"),
+                    total_sessions: row.get("total_sessions"),
+                    avg_session_duration: row.get("avg_session_duration"),
+                    total_time_spent: row.get("total_time_spent"),
+                    avg_events_per_session: row.get("avg_events_per_session"),
+                    first_session: row.get("first_session"),
+                    last_session: row.get("last_session"),
+                }
+            })
+            .collect();
+
+        Ok(summaries)
+    }
+
+    pub async fn get_page_analytics(
+        &self, page: Option<String>, start_time: DateTime<Utc>,
+        end_time: DateTime<Utc>, limit: Option<i64>,
+    ) -> Result<Vec<analytics_models::PageAnalytics>, AnalyticsViewsDaoError>
+    {
+        let client =
+            self.db.get_client().await.map_err(|e| {
+                AnalyticsViewsDaoError::Connection(e.to_string())
+            })?;
+
+        let mut sql = "SELECT page, hour, total_events, unique_users, \
+                       unique_sessions 
+                       FROM page_analytics 
+                       WHERE hour >= $1 AND hour <= $2"
+            .to_string();
+        let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
+            vec![&start_time, &end_time];
+
+        if let Some(p) = &page {
+            sql.push_str(" AND page = $3");
+            params.push(p);
+        }
+
+        sql.push_str(" ORDER BY hour DESC, total_events DESC");
+
+        let limit_param;
+        if let Some(limit_val) = limit {
+            limit_param = limit_val;
+            if page.is_some() {
+                sql.push_str(" LIMIT $4");
+                params.push(&limit_param);
+            }
+            else {
+                sql.push_str(" LIMIT $3");
+                params.push(&limit_param);
+            }
+        }
+
+        let rows = client.query(&sql, &params).await?;
+
+        let analytics = rows
+            .iter()
+            .map(|row| {
+                analytics_models::PageAnalytics {
+                    page: row.get("page"),
+                    hour: row.get("hour"),
+                    total_events: row.get("total_events"),
+                    unique_users: row.get("unique_users"),
+                    unique_sessions: row.get("unique_sessions"),
+                }
+            })
+            .collect();
+
+        Ok(analytics)
+    }
+
+    pub async fn get_product_analytics(
+        &self, product_id: Option<i32>, event_type: Option<String>,
+        start_date: DateTime<Utc>, end_date: DateTime<Utc>,
+        limit: Option<i64>,
+    ) -> Result<Vec<analytics_models::ProductAnalytics>, AnalyticsViewsDaoError>
+    {
+        let client =
+            self.db.get_client().await.map_err(|e| {
+                AnalyticsViewsDaoError::Connection(e.to_string())
+            })?;
+
+        let mut sql = "SELECT product_id, event_type, date, total_events, \
+                       unique_users 
+                       FROM product_analytics 
+                       WHERE date >= $1 AND date <= $2"
+            .to_string();
+        let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
+            vec![&start_date, &end_date];
+
+        if let Some(pid) = &product_id {
+            sql.push_str(" AND product_id = $3");
+            params.push(pid);
+        }
+
+        if let Some(et) = &event_type {
+            if product_id.is_some() {
+                sql.push_str(" AND event_type = $4");
+            }
+            else {
+                sql.push_str(" AND event_type = $3");
+            }
+            params.push(et);
+        }
+
+        sql.push_str(" ORDER BY date DESC, total_events DESC");
+
+        let limit_param;
+        if let Some(limit_val) = limit {
+            limit_param = limit_val;
+            let param_index = params.len() + 1;
+            sql.push_str(&format!(" LIMIT ${}", param_index));
+            params.push(&limit_param);
+        }
+
+        let rows = client.query(&sql, &params).await?;
+
+        let analytics = rows
+            .iter()
+            .map(|row| {
+                analytics_models::ProductAnalytics {
+                    product_id: row.get("product_id"),
+                    event_type: row.get("event_type"),
+                    date: row.get("date"),
+                    total_events: row.get("total_events"),
+                    unique_users: row.get("unique_users"),
+                }
+            })
+            .collect();
+
+        Ok(analytics)
+    }
+
+    pub async fn get_referrer_analytics(
+        &self, referrer: Option<String>, start_date: DateTime<Utc>,
+        end_date: DateTime<Utc>, limit: Option<i64>,
+    ) -> Result<
+        Vec<analytics_models::ReferrerAnalytics>,
+        AnalyticsViewsDaoError,
+    > {
+        let client =
+            self.db.get_client().await.map_err(|e| {
+                AnalyticsViewsDaoError::Connection(e.to_string())
+            })?;
+
+        let mut sql = "SELECT referrer, date, total_events, unique_users, \
+                       unique_sessions 
+                       FROM referrer_analytics 
+                       WHERE date >= $1 AND date <= $2"
+            .to_string();
+        let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
+            vec![&start_date, &end_date];
+
+        if let Some(r) = &referrer {
+            sql.push_str(" AND referrer = $3");
+            params.push(r);
+        }
+
+        sql.push_str(" ORDER BY date DESC, total_events DESC");
+
+        let limit_param;
+        if let Some(limit_val) = limit {
+            limit_param = limit_val;
+            if referrer.is_some() {
+                sql.push_str(" LIMIT $4");
+                params.push(&limit_param);
+            }
+            else {
+                sql.push_str(" LIMIT $3");
+                params.push(&limit_param);
+            }
+        }
+
+        let rows = client.query(&sql, &params).await?;
+
+        let analytics = rows
+            .iter()
+            .map(|row| {
+                analytics_models::ReferrerAnalytics {
+                    referrer: row.get("referrer"),
+                    date: row.get("date"),
+                    total_events: row.get("total_events"),
+                    unique_users: row.get("unique_users"),
+                    unique_sessions: row.get("unique_sessions"),
+                }
+            })
+            .collect();
+
+        Ok(analytics)
     }
 }

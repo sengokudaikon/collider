@@ -160,7 +160,7 @@ async fn test_redis_sorted_set_operations() {
 
 #[tokio::test]
 async fn test_redis_list_operations() {
-    let (container, manager) = setup_test_redis().await.unwrap();
+    let (_container, manager) = setup_test_redis().await.unwrap();
     let mut conn = manager.get_connection().await.unwrap();
 
     // Debug: Check what keys exist before the test

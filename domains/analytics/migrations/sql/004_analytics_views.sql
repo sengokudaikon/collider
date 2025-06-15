@@ -1,4 +1,3 @@
--- Create materialized view without data first to ensure structure exists
 CREATE MATERIALIZED VIEW IF NOT EXISTS event_hourly_summaries AS
 SELECT
     et.name as event_type,
@@ -12,7 +11,6 @@ GROUP BY et.name, date_trunc('hour', e.timestamp)
 ORDER BY hour DESC, total_events DESC
 WITH NO DATA;
 
--- Daily user activity for engagement tracking
 CREATE MATERIALIZED VIEW IF NOT EXISTS user_daily_activity AS
 SELECT
     e.user_id,
@@ -28,7 +26,6 @@ GROUP BY e.user_id, date_trunc('day', e.timestamp)
 ORDER BY date DESC, total_events DESC
 WITH NO DATA;
 
--- Popular events with growth rate comparison
 CREATE MATERIALIZED VIEW IF NOT EXISTS popular_events AS
 WITH current_period AS (
     SELECT 
@@ -66,8 +63,6 @@ LEFT JOIN previous_period p ON c.event_type = p.event_type
 ORDER BY c.total_count DESC
 WITH NO DATA;
 
--- User session approximations (based on activity gaps)
--- This creates pseudo-sessions by grouping events within 30 minutes of each other
 CREATE MATERIALIZED VIEW IF NOT EXISTS user_session_summaries AS
 WITH user_session_events AS (
     SELECT 
@@ -112,4 +107,48 @@ SELECT
 FROM session_stats
 GROUP BY user_id
 ORDER BY total_sessions DESC
+WITH NO DATA;
+
+-- Enhanced analytics views that leverage metadata
+CREATE MATERIALIZED VIEW IF NOT EXISTS page_analytics AS
+SELECT
+    metadata->>'page' as page,
+    date_trunc('hour', timestamp) as hour,
+    COUNT(*) as total_events,
+    COUNT(DISTINCT user_id) as unique_users,
+    COUNT(DISTINCT metadata->>'session_id') as unique_sessions
+FROM events 
+WHERE metadata ? 'page' 
+  AND timestamp >= NOW() - INTERVAL '30 days'
+GROUP BY metadata->>'page', date_trunc('hour', timestamp)
+ORDER BY hour DESC, total_events DESC
+WITH NO DATA;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics AS
+SELECT
+    (metadata->>'product_id')::integer as product_id,
+    et.name as event_type,
+    date_trunc('day', e.timestamp) as date,
+    COUNT(*) as total_events,
+    COUNT(DISTINCT e.user_id) as unique_users
+FROM events e
+JOIN event_types et ON e.event_type_id = et.id
+WHERE e.metadata ? 'product_id' 
+  AND e.timestamp >= NOW() - INTERVAL '30 days'
+GROUP BY (e.metadata->>'product_id')::integer, et.name, date_trunc('day', e.timestamp)
+ORDER BY date DESC, total_events DESC
+WITH NO DATA;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS referrer_analytics AS
+SELECT
+    metadata->>'referrer' as referrer,
+    date_trunc('day', timestamp) as date,
+    COUNT(*) as total_events,
+    COUNT(DISTINCT user_id) as unique_users,
+    COUNT(DISTINCT metadata->>'session_id') as unique_sessions
+FROM events 
+WHERE metadata ? 'referrer'
+  AND timestamp >= NOW() - INTERVAL '30 days'
+GROUP BY metadata->>'referrer', date_trunc('day', timestamp)
+ORDER BY date DESC, total_events DESC
 WITH NO DATA;

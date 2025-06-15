@@ -8,14 +8,12 @@ use sql_connection::{
 use test_utils::SqlMigrator;
 use tracing::{Level, info};
 
-mod tui;
-
 #[derive(Parser)]
 #[command(name = "migrator")]
-#[command(about = "Database migration tool with interactive TUI")]
+#[command(about = "Database migration tool")]
 struct Cli {
     #[command(subcommand)]
-    command: Option<Commands>,
+    command: Commands,
 
     #[arg(long, help = "Database URL (or use DATABASE_URL env var)")]
     database_url: Option<String>,
@@ -33,8 +31,6 @@ enum Commands {
     Reset,
 
     Status,
-
-    Tui,
 }
 
 #[tokio::main]
@@ -64,12 +60,12 @@ async fn main() -> Result<()> {
     let migrator = SqlMigrator::new(pool.clone());
 
     match cli.command {
-        Some(Commands::Up) => {
+        Commands::Up => {
             info!("Running all pending migrations...");
             migrator.run_all_migrations().await?;
             info!("✓ All migrations completed successfully");
         }
-        Some(Commands::Down { steps }) => {
+        Commands::Down { steps } => {
             info!("Rolling back {} migration(s)...", steps);
             let applied = migrator.list_applied_migrations().await?;
             if applied.is_empty() {
@@ -93,7 +89,7 @@ async fn main() -> Result<()> {
                 info!("✓ Rollback completed successfully");
             }
         }
-        Some(Commands::Reset) => {
+        Commands::Reset => {
             info!(
                 "⚠️  WARNING: This will reset ALL migrations and DELETE ALL \
                  DATA!"
@@ -104,7 +100,7 @@ async fn main() -> Result<()> {
             migrator.reset_all().await?;
             info!("✓ All migrations reset successfully");
         }
-        Some(Commands::Status) => {
+        Commands::Status => {
             let applied = migrator.list_applied_migrations().await?;
             if applied.is_empty() {
                 info!("No migrations have been applied");
@@ -115,10 +111,6 @@ async fn main() -> Result<()> {
                     info!("  ✓ {}", migration);
                 }
             }
-        }
-        Some(Commands::Tui) | None => {
-            info!("Starting interactive TUI...");
-            tui::run_tui(migrator).await?;
         }
     }
 

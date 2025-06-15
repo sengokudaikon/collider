@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use utoipa::gen::serde_json;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -73,4 +74,71 @@ pub struct UserSessionSummary {
     pub avg_events_per_session: f64,
     pub first_session: DateTime<Utc>,
     pub last_session: DateTime<Utc>,
+}
+
+/// Model for page_analytics materialized view
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct PageAnalytics {
+    pub page: Option<String>,
+    pub hour: DateTime<Utc>,
+    pub total_events: i64,
+    pub unique_users: i64,
+    pub unique_sessions: i64,
+}
+
+/// Model for product_analytics materialized view
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct ProductAnalytics {
+    pub product_id: Option<i32>,
+    pub event_type: String,
+    pub date: DateTime<Utc>,
+    pub total_events: i64,
+    pub unique_users: i64,
+}
+
+/// Model for referrer_analytics materialized view
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct ReferrerAnalytics {
+    pub referrer: Option<String>,
+    pub date: DateTime<Utc>,
+    pub total_events: i64,
+    pub unique_users: i64,
+    pub unique_sessions: i64,
+}
+
+/// Aggregated analytics response with all metrics
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct AnalyticsDashboard {
+    pub overview: EventMetrics,
+    pub popular_events: Vec<PopularEvent>,
+    pub top_pages: Vec<PageAnalytics>,
+    pub top_products: Vec<ProductAnalytics>,
+    pub top_referrers: Vec<ReferrerAnalytics>,
+    pub active_users: Vec<UserDailyActivity>,
+}
+
+/// Time-series data point for charts
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct TimeSeriesPoint {
+    pub timestamp: DateTime<Utc>,
+    pub value: f64,
+    pub label: Option<String>,
+}
+
+/// Chart data for frontend visualization
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct ChartData {
+    pub title: String,
+    pub chart_type: ChartType,
+    pub data: Vec<TimeSeriesPoint>,
+    pub metadata: Option<serde_json::Value>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub enum ChartType {
+    Line,
+    Bar,
+    Pie,
+    Area,
+    Scatter,
 }

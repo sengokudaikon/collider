@@ -15,7 +15,7 @@ use crate::core::{
 };
 
 pub struct Hash<'cache, T> {
-    redis: &'cache mut deadpool_redis::Connection,
+    pool: deadpool_redis::Pool,
     key: Cow<'static, str>,
     __phantom: PhantomData<T>,
 }
@@ -24,13 +24,13 @@ impl<'cache, T> CacheTypeTrait<'cache> for Hash<'cache, T> {
     fn from_cache_and_key(
         backend: CacheBackend<'cache>, key: Cow<'static, str>,
     ) -> Self {
-        let redis = match backend {
-            CacheBackend::Redis(redis) => redis,
+        let pool = match backend {
+            CacheBackend::Redis(pool) => pool,
             _ => panic!("Hash type can only be created from Redis backend"),
         };
 
         Self {
-            redis,
+            pool,
             key,
             __phantom: PhantomData,
         }
@@ -46,7 +46,8 @@ where
         F: ToRedisArgs + Send + Sync + 'arg,
         RV: FromRedisValue,
     {
-        self.redis.hexists(&*self.key, field).await
+        let mut conn = self.pool.get().await?;
+        conn.hexists(&*self.key, field).await
     }
 
     pub async fn set<'arg, RV, F>(
@@ -56,14 +57,16 @@ where
         F: ToRedisArgs + Send + Sync + 'arg,
         RV: FromRedisValue,
     {
-        self.redis.hset(&*self.key, field, value.into()).await
+        let mut conn = self.pool.get().await?;
+        conn.hset(&*self.key, field, value.into()).await
     }
 
     pub async fn get<'arg, F>(&mut self, field: F) -> RedisResult<T>
     where
         F: ToRedisArgs + Send + Sync + 'arg,
     {
-        let json: Json<T> = self.redis.hget(&*self.key, field).await?;
+        let mut conn = self.pool.get().await?;
+        let json: Json<T> = conn.hget(&*self.key, field).await?;
         Ok(json.inner())
     }
 
@@ -71,7 +74,8 @@ where
     where
         K: FromRedisValue + Eq + std::hash::Hash,
     {
-        let map: HashMap<K, Json<T>> = self.redis.hgetall(&*self.key).await?;
+        let mut conn = self.pool.get().await?;
+        let map: HashMap<K, Json<T>> = conn.hgetall(&*self.key).await?;
         Ok(map.into_iter().map(|(k, v)| (k, v.inner())).collect())
     }
 
@@ -94,6 +98,7 @@ where
         F: ToRedisArgs + Send + Sync + 'arg,
         RV: FromRedisValue,
     {
-        self.redis.hdel(&*self.key, field).await
+        let mut conn = self.pool.get().await?;
+        conn.hdel(&*self.key, field).await
     }
 }

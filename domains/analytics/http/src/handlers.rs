@@ -3,13 +3,16 @@ use std::{collections::HashMap, sync::Arc};
 use analytics::RedisAnalyticsMetricsUpdater;
 use analytics_dao::AnalyticsViewsDao;
 use analytics_models::{
-    EventHourlySummary, EventMetrics, PopularEvent, UserDailyActivity,
-    UserMetrics,
+    EventHourlySummary, EventMetrics, PageAnalytics, PopularEvent,
+    ProductAnalytics, ReferrerAnalytics, UserDailyActivity, UserMetrics,
+    UserSessionSummary,
 };
 use analytics_queries::{
     DashboardMetrics, EventMetricsQuery, HourlySummariesQuery,
-    PopularEventsQuery, RealtimeMetricsQuery, RefreshViewsQuery,
+    PageAnalyticsQuery, PopularEventsQuery, ProductAnalyticsQuery,
+    RealtimeMetricsQuery, ReferrerAnalyticsQuery, RefreshViewsQuery,
     RefreshViewsResponse, UserActivityQuery, UserMetricsQuery,
+    UserSessionSummariesQuery,
 };
 use axum::{
     Router,
@@ -49,6 +52,10 @@ impl AnalyticsHandlers {
             .route("/views/hourly-summaries", get(get_hourly_summaries))
             .route("/views/user-activity", get(get_user_activity))
             .route("/views/popular-events", get(get_popular_events))
+            .route("/views/user-sessions", get(get_user_session_summaries))
+            .route("/views/page-analytics", get(get_page_analytics))
+            .route("/views/product-analytics", get(get_product_analytics))
+            .route("/views/referrer-analytics", get(get_referrer_analytics))
             .route("/views/refresh", post(refresh_views))
             // Metrics endpoints
             .route("/metrics/events", get(get_event_metrics))
@@ -177,6 +184,118 @@ pub async fn refresh_views(
         refreshed_views: response.refreshed_views,
         duration_ms: response.duration_ms,
     }))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/analytics/views/user-sessions",
+    params(UserSessionSummariesQuery),
+    responses(
+        (status = 200, description = "User session summaries", body = Vec<UserSessionSummary>),
+        (status = 400, description = "Invalid query parameters"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "analytics-views"
+)]
+#[instrument(skip_all)]
+pub async fn get_user_session_summaries(
+    State(services): State<AnalyticsServices>,
+    Query(params): Query<UserSessionSummariesQuery>,
+) -> Result<Json<Vec<UserSessionSummary>>, AppError> {
+    let summaries = services
+        .dao
+        .get_user_session_summaries(params.user_id, params.limit)
+        .await?;
+
+    Ok(Json(summaries))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/analytics/views/page-analytics",
+    params(PageAnalyticsQuery),
+    responses(
+        (status = 200, description = "Page analytics", body = Vec<PageAnalytics>),
+        (status = 400, description = "Invalid query parameters"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "analytics-views"
+)]
+#[instrument(skip_all)]
+pub async fn get_page_analytics(
+    State(services): State<AnalyticsServices>,
+    Query(params): Query<PageAnalyticsQuery>,
+) -> Result<Json<Vec<PageAnalytics>>, AppError> {
+    let analytics = services
+        .dao
+        .get_page_analytics(
+            params.page,
+            params.start_time,
+            params.end_time,
+            params.limit,
+        )
+        .await?;
+
+    Ok(Json(analytics))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/analytics/views/product-analytics",
+    params(ProductAnalyticsQuery),
+    responses(
+        (status = 200, description = "Product analytics", body = Vec<ProductAnalytics>),
+        (status = 400, description = "Invalid query parameters"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "analytics-views"
+)]
+#[instrument(skip_all)]
+pub async fn get_product_analytics(
+    State(services): State<AnalyticsServices>,
+    Query(params): Query<ProductAnalyticsQuery>,
+) -> Result<Json<Vec<ProductAnalytics>>, AppError> {
+    let analytics = services
+        .dao
+        .get_product_analytics(
+            params.product_id,
+            params.event_type,
+            params.start_date,
+            params.end_date,
+            params.limit,
+        )
+        .await?;
+
+    Ok(Json(analytics))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/analytics/views/referrer-analytics",
+    params(ReferrerAnalyticsQuery),
+    responses(
+        (status = 200, description = "Referrer analytics", body = Vec<ReferrerAnalytics>),
+        (status = 400, description = "Invalid query parameters"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "analytics-views"
+)]
+#[instrument(skip_all)]
+pub async fn get_referrer_analytics(
+    State(services): State<AnalyticsServices>,
+    Query(params): Query<ReferrerAnalyticsQuery>,
+) -> Result<Json<Vec<ReferrerAnalytics>>, AppError> {
+    let analytics = services
+        .dao
+        .get_referrer_analytics(
+            params.referrer,
+            params.start_date,
+            params.end_date,
+            params.limit,
+        )
+        .await?;
+
+    Ok(Json(analytics))
 }
 
 // ============================================================================

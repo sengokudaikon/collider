@@ -6,49 +6,27 @@ use sql_connection::SqlConnect;
 use thiserror::Error;
 use tracing::{instrument, warn};
 use user_commands::{
-    CreateUserCommand, CreateUserResponse, CreateUserResult,
-    DeleteUserCommand, UpdateUserCommand, UpdateUserResponse,
-    UpdateUserResult,
+    CreateUserCommand, DeleteUserCommand, UpdateUserCommand,
 };
-use user_dao::{UserDao, UserDaoError};
+use user_dao::UserDao;
+use user_errors::UserError;
 use user_events::UserAnalyticsEvent;
+use user_queries::UserResponse;
 use uuid::Uuid;
-
-#[derive(Debug, Error)]
-pub enum CreateUserError {
-    #[error("DAO error: {0}")]
-    Dao(#[from] UserDaoError),
-}
-
-#[derive(Debug, Error)]
-pub enum UpdateUserError {
-    #[error("DAO error: {0}")]
-    Dao(#[from] UserDaoError),
-    #[error("User not found: {user_id}")]
-    NotFound { user_id: Uuid },
-}
-
-#[derive(Debug, Error)]
-pub enum DeleteUserError {
-    #[error("DAO error: {0}")]
-    Dao(#[from] UserDaoError),
-    #[error("User not found: {user_id}")]
-    NotFound { user_id: Uuid },
-}
 
 #[derive(Clone)]
 pub struct CreateUserHandler {
     user_dao: UserDao,
     analytics_event_sender: Option<Sender<UserAnalyticsEvent>>,
-    event_sender: Option<Sender<CreateEventCommand>>,
 }
 
 impl CreateUserHandler {
-    pub fn new(db: SqlConnect) -> Self {
+    pub fn new(
+        db: SqlConnect, analytics_sender: Option<Sender<UserAnalyticsEvent>>,
+    ) -> Self {
         Self {
             user_dao: UserDao::new(db),
-            analytics_event_sender: None,
-            event_sender: None,
+            analytics_event_sender: analytics_sender,
         }
     }
 
@@ -59,20 +37,12 @@ impl CreateUserHandler {
         self
     }
 
-    pub fn with_event_sender(
-        mut self, event_sender: Sender<CreateEventCommand>,
-    ) -> Self {
-        self.event_sender = Some(event_sender);
-        self
-    }
-
     #[instrument(skip(self))]
-    pub async fn execute(
+    async fn execute(
         &self, command: CreateUserCommand,
-    ) -> Result<CreateUserResult, CreateUserError> {
+    ) -> Result<UserResponse, UserError> {
         let saved_user = self.user_dao.create(command).await?;
 
-        // Emit analytics event for analytics domain consumption
         if let Some(analytics_event_sender) = &self.analytics_event_sender {
             let analytics_event = UserAnalyticsEvent::UserCreated {
                 user_id: saved_user.id,
@@ -86,12 +56,10 @@ impl CreateUserHandler {
             }
         }
 
-        Ok(CreateUserResult {
-            user: CreateUserResponse {
-                id: saved_user.id,
-                name: saved_user.name,
-                created_at: saved_user.created_at,
-            },
+        Ok(UserResponse {
+            id: saved_user.id,
+            name: saved_user.name,
+            created_at: saved_user.created_at,
         })
     }
 }
@@ -103,10 +71,12 @@ pub struct UpdateUserHandler {
 }
 
 impl UpdateUserHandler {
-    pub fn new(db: SqlConnect) -> Self {
+    pub fn new(
+        db: SqlConnect, analytics_sender: Option<Sender<UserAnalyticsEvent>>,
+    ) -> Self {
         Self {
             user_dao: UserDao::new(db),
-            analytics_event_sender: None,
+            analytics_event_sender: analytics_sender,
         }
     }
 
@@ -117,21 +87,14 @@ impl UpdateUserHandler {
         self
     }
 
-    pub fn with_event_sender(
-        self, _event_sender: Sender<CreateEventCommand>,
-    ) -> Self {
-        // No-op for now - UpdateUserHandler doesn't emit regular events
-        self
-    }
-
     #[instrument(skip(self))]
     pub async fn execute(
         &self, command: UpdateUserCommand,
-    ) -> Result<UpdateUserResult, UpdateUserError> {
+    ) -> Result<UserResponse, UserError> {
         let existing_user =
             self.user_dao.find_by_id(command.user_id).await.map_err(
                 |_| {
-                    UpdateUserError::NotFound {
+                    UserError::NotFound {
                         user_id: command.user_id,
                     }
                 },
@@ -159,12 +122,10 @@ impl UpdateUserHandler {
             }
         }
 
-        Ok(UpdateUserResult {
-            user: UpdateUserResponse {
-                id: updated_user.id,
-                name: updated_user.name,
-                created_at: updated_user.created_at,
-            },
+        Ok(UserResponse {
+            id: updated_user.id,
+            name: updated_user.name,
+            created_at: updated_user.created_at,
         })
     }
 }
@@ -190,21 +151,14 @@ impl DeleteUserHandler {
         self
     }
 
-    pub fn with_event_sender(
-        self, _event_sender: Sender<CreateEventCommand>,
-    ) -> Self {
-        // No-op for now - DeleteUserHandler doesn't emit regular events
-        self
-    }
-
     #[instrument(skip(self))]
     pub async fn execute(
         &self, command: DeleteUserCommand,
-    ) -> Result<(), DeleteUserError> {
+    ) -> Result<(), UserError> {
         let _existing_user =
             self.user_dao.find_by_id(command.user_id).await.map_err(
                 |_| {
-                    DeleteUserError::NotFound {
+                    UserError::NotFound {
                         user_id: command.user_id,
                     }
                 },
@@ -231,6 +185,8 @@ impl DeleteUserHandler {
 mod tests {
     use flume;
     use test_utils::*;
+    use user_commands::{DeleteUserCommand, UpdateUserCommand};
+    use user_events::UserAnalyticsEvent;
 
     use super::*;
 
@@ -244,7 +200,8 @@ mod tests {
             test_utils::postgres::TestPostgresContainer::new().await?;
         let sql_connect = create_sql_connect(&container);
 
-        let create_handler = CreateUserHandler::new(sql_connect.clone());
+        let create_handler =
+            CreateUserHandler::new(sql_connect.clone(), None);
         let update_handler = UpdateUserHandler::new(sql_connect.clone());
         let delete_handler = DeleteUserHandler::new(sql_connect);
 
@@ -262,8 +219,8 @@ mod tests {
 
         let result = create_handler.execute(command).await.unwrap();
 
-        assert_eq!(result.user.name, "test_user");
-        assert!(!result.user.id.is_nil());
+        assert_eq!(result.name, "test_user");
+        assert!(!result.id.is_nil());
     }
 
     #[tokio::test]
@@ -284,13 +241,13 @@ mod tests {
         let result = create_handler.execute(command).await.unwrap();
 
         // Verify user was created
-        assert_eq!(result.user.name, "analytics_event_test_user");
+        assert_eq!(result.name, "analytics_event_test_user");
 
         // Verify analytics event was published
         let published_event = analytics_event_receiver.try_recv().unwrap();
         match published_event {
             UserAnalyticsEvent::UserCreated { user_id, name, .. } => {
-                assert_eq!(user_id, result.user.id);
+                assert_eq!(user_id, result.id);
                 assert_eq!(name, "analytics_event_test_user");
             }
             _ => panic!("Expected UserCreated analytics event"),
@@ -317,13 +274,13 @@ mod tests {
 
         // Update the user
         let update_command = UpdateUserCommand {
-            user_id: created_user.user.id,
+            user_id: created_user.id,
             name: Some("updated_analytics_test_user".to_string()),
         };
         let result = update_handler.execute(update_command).await.unwrap();
 
         // Verify user was updated
-        assert_eq!(result.user.name, "updated_analytics_test_user");
+        assert_eq!(result.name, "updated_analytics_test_user");
 
         // Verify analytics event was published
         let published_event = analytics_event_receiver.try_recv().unwrap();
@@ -334,7 +291,7 @@ mod tests {
                 new_name,
                 ..
             } => {
-                assert_eq!(user_id, created_user.user.id);
+                assert_eq!(user_id, created_user.id);
                 assert_eq!(old_name, "update_analytics_test_user");
                 assert_eq!(new_name, "updated_analytics_test_user");
             }
@@ -362,7 +319,7 @@ mod tests {
 
         // Delete the user
         let delete_command = DeleteUserCommand {
-            user_id: created_user.user.id,
+            user_id: created_user.id,
         };
         let result = delete_handler.execute(delete_command).await;
 
@@ -373,7 +330,7 @@ mod tests {
         let published_event = analytics_event_receiver.try_recv().unwrap();
         match published_event {
             UserAnalyticsEvent::UserDeleted { user_id, .. } => {
-                assert_eq!(user_id, created_user.user.id);
+                assert_eq!(user_id, created_user.id);
             }
             _ => panic!("Expected UserDeleted analytics event"),
         }

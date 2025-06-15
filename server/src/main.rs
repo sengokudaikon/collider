@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 
 use analytics_http::analytics_routes;
 use axum::{Router, http::StatusCode, response::IntoResponse, routing::get};
-use events_http::event_routes;
+use events_http::{event_routes};
 use redis_connection::{
     config::RedisDbConfig, connect_redis_db,
     connection::RedisConnectionManager,
@@ -95,6 +95,7 @@ async fn main() -> anyhow::Result<()> {
         events_http::handlers::get_event,
         events_http::handlers::list_events,
         events_http::handlers::bulk_delete_events,
+        events_http::stats::get_stats,
         analytics_http::handlers::get_realtime_metrics,
         analytics_http::handlers::get_hourly_summaries,
         analytics_http::handlers::get_user_activity,
@@ -104,12 +105,16 @@ async fn main() -> anyhow::Result<()> {
         user_http::handlers::delete_user,
         user_http::handlers::get_user,
         user_http::handlers::list_users,
-        user_http::handlers::get_user_by_name,
-        user_http::handlers::get_user_with_metrics
+        user_http::handlers::get_user_events
     ),
     components(
         schemas(
             events_http::EventResponse,
+            events_http::EventRequestDto,
+            events_http::EventsListParams,
+            events_http::EventsDeleteParams,
+            events_http::stats::StatsQuery,
+            events_http::stats::StatsResponse,
             events_commands::CreateEventCommand,
             events_commands::CreateEventResponse,
             events_commands::UpdateEventCommand,
@@ -117,9 +122,9 @@ async fn main() -> anyhow::Result<()> {
             events_commands::BulkDeleteEventsResponse,
             user_http::UserResponse,
             user_commands::CreateUserCommand,
-            user_commands::CreateUserResponse,
+            user_commands::UserResponse,
             user_commands::UpdateUserCommand,
-            user_commands::UpdateUserResponse
+            user_commands::UserResponse
         )
     ),
     tags(

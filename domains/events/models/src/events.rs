@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use typed_builder::TypedBuilder;
 use utoipa::ToSchema;
 use uuid::Uuid;
+use crate::Metadata;
 
 #[derive(
     Clone,
@@ -21,5 +22,5 @@ pub struct Event {
     pub event_type_id: i32,
     #[builder(default)]
     pub timestamp: DateTime<Utc>,
-    pub metadata: Option<serde_json::Value>,
+    pub metadata: Option<Metadata>,
 }

@@ -1,29 +1,16 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use dao_utils::{
-    pagination::{CursorPagination, PaginationParams, create_param_refs},
-    query_helpers::{CursorResult, count_query},
+    pagination::{create_param_refs, CursorPagination, PaginationParams},
+    query_helpers::{count_query, CursorResult},
 };
 use database_traits::dao::GenericDao;
-use sql_connection::SqlConnect;
-use thiserror::Error;
-use tokio_postgres::Error as PgError;
+use sql_connection::{PgError, SqlConnect};
 use tracing::instrument;
 use user_commands::{CreateUserCommand, UpdateUserCommand};
+use user_errors::UserDaoError;
 use user_models::User;
 use uuid::Uuid;
-
-#[derive(Debug, Error)]
-pub enum UserDaoError {
-    #[error("Database error: {0}")]
-    Database(#[from] PgError),
-    #[error("Connection error: {0}")]
-    Connection(#[from] deadpool_postgres::PoolError),
-    #[error("User not found")]
-    NotFound,
-    #[error("Name already exists")]
-    NameExists,
-}
 
 #[derive(Clone)]
 pub struct UserDao {

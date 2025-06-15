@@ -1,13 +1,21 @@
-pub mod create_user;
-pub mod delete_user;
-pub mod events;
-pub mod update_user;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
+use uuid::Uuid;
 
-pub use create_user::{
-    CreateUserCommand, CreateUserResponse, CreateUserResult,
-};
-pub use delete_user::DeleteUserCommand;
-pub use events::*;
-pub use update_user::{
-    UpdateUserCommand, UpdateUserResponse, UpdateUserResult,
-};
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct UpdateUserCommand {
+    #[serde(skip)]
+    pub user_id: Uuid,
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CreateUserCommand {
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DeleteUserCommand {
+    pub user_id: Uuid,
+}

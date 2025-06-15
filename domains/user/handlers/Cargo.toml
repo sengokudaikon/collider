@@ -1,0 +1,32 @@
+[package]
+name = "user-handlers"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# Core dependencies
+uuid.workspace = true
+serde.workspace = true
+chrono.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+# Database
+database-traits.workspace = true
+sql-connection.workspace = true
+
+user-models = { path = "../models" }
+user-errors = { path = "../errors" }
+user-dao = { path = "../dao" }
+user-commands = { path = "../commands" }
+user-queries = { path = "../queries" }
+user-events = { path = "../events" }
+events-commands = { path = "../../events/commands" }
+
+# Channel communication
+flume.workspace = true
+
+[dev-dependencies]
+test-utils.workspace = true
+tokio.workspace = true
+anyhow.workspace = true

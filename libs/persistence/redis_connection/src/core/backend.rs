@@ -1,5 +1,3 @@
-#[cfg(feature = "file-cache")] use std::path::PathBuf;
-
 use bytes::Bytes;
 use moka::future::Cache;
 
@@ -11,6 +9,7 @@ use moka::future::Cache;
 pub struct BoundedBackends<'a> {
     backends: Vec<CacheBackend<'a>>,
     max_capacity: usize,
+    _phantom: std::marker::PhantomData<&'a ()>,
 }
 
 impl<'a> BoundedBackends<'a> {
@@ -19,6 +18,7 @@ impl<'a> BoundedBackends<'a> {
         Self {
             backends: Vec::with_capacity(max_capacity),
             max_capacity,
+            _phantom: std::marker::PhantomData,
         }
     }
 
@@ -57,10 +57,8 @@ impl<'a> BoundedBackends<'a> {
 }
 
 /// From implementations for ergonomic CacheBackend creation
-impl<'a> From<&'a mut deadpool_redis::Connection> for CacheBackend<'a> {
-    fn from(redis: &'a mut deadpool_redis::Connection) -> Self {
-        CacheBackend::Redis(redis)
-    }
+impl<'a> From<deadpool_redis::Pool> for CacheBackend<'a> {
+    fn from(pool: deadpool_redis::Pool) -> Self { CacheBackend::Redis(pool) }
 }
 
 impl<'a> From<(Cache<String, Bytes>, crate::config::MemoryConfig)>
@@ -74,20 +72,26 @@ impl<'a> From<(Cache<String, Bytes>, crate::config::MemoryConfig)>
 }
 
 #[cfg(feature = "file-cache")]
-impl<'a> From<(std::path::PathBuf, crate::config::FileConfig)>
-    for CacheBackend<'a>
+impl<'a>
+    From<(
+        std::sync::Arc<tokio::sync::RwLock<sled::Db>>,
+        crate::config::FileConfig,
+    )> for CacheBackend<'a>
 {
     fn from(
-        (path, config): (std::path::PathBuf, crate::config::FileConfig),
+        (file_db, config): (
+            std::sync::Arc<tokio::sync::RwLock<sled::Db>>,
+            crate::config::FileConfig,
+        ),
     ) -> Self {
-        CacheBackend::File { path, config }
+        CacheBackend::File { file_db, config }
     }
 }
 
 /// Represents different cache backend types
 pub enum CacheBackend<'a> {
-    /// Redis backend requiring a deadpool connection
-    Redis(&'a mut deadpool_redis::Connection),
+    /// Redis backend using a deadpool connection pool
+    Redis(deadpool_redis::Pool),
 
     /// In-memory cache backend
     Memory {
@@ -98,7 +102,7 @@ pub enum CacheBackend<'a> {
     /// File-based cache backend
     #[cfg(feature = "file-cache")]
     File {
-        path: PathBuf,
+        file_db: std::sync::Arc<tokio::sync::RwLock<sled::Db>>,
         config: crate::config::FileConfig,
     },
 
@@ -118,16 +122,6 @@ pub enum CacheBackend<'a> {
 impl<'a> CacheBackend<'a> {
     /// Check if this is a Redis backend
     pub fn is_redis(&self) -> bool { matches!(self, CacheBackend::Redis(_)) }
-
-    /// Get the Redis connection if this is a Redis backend
-    pub fn as_redis_mut(
-        &mut self,
-    ) -> Option<&mut deadpool_redis::Connection> {
-        match self {
-            CacheBackend::Redis(conn) => Some(*conn),
-            _ => None,
-        }
-    }
 
     /// Create a tiered cache with the given backends
     /// Uses default configuration which determines the maximum capacity
@@ -225,19 +219,32 @@ impl<'a> TieredCacheBuilder<'a> {
 
     /// Add a Redis cache layer
     pub fn add_redis(
-        self, connection: &'a mut deadpool_redis::Connection,
+        self, pool: deadpool_redis::Pool,
     ) -> Result<Self, String> {
-        let backend = CacheBackend::Redis(connection);
+        let backend = CacheBackend::Redis(pool);
         self.add_layer(backend)
     }
 
     /// Add a file cache layer
     #[cfg(feature = "file-cache")]
     pub fn add_file(
-        self, path: PathBuf, config: crate::config::FileConfig,
+        self, file_db: std::sync::Arc<tokio::sync::RwLock<sled::Db>>,
+        config: crate::config::FileConfig,
     ) -> Result<Self, String> {
-        let backend = CacheBackend::File { path, config };
+        let backend = CacheBackend::File { file_db, config };
         self.add_layer(backend)
+    }
+
+    /// Add a file cache layer by opening a sled database at the given path
+    #[cfg(feature = "file-cache")]
+    pub fn add_file_at_path(
+        self, path: std::path::PathBuf, config: crate::config::FileConfig,
+    ) -> Result<Self, String> {
+        let db = sled::open(&path).map_err(|e| {
+            format!("Failed to open file cache at {}: {}", path.display(), e)
+        })?;
+        let file_db = std::sync::Arc::new(tokio::sync::RwLock::new(db));
+        self.add_file(file_db, config)
     }
 
     /// Build the final tiered cache backend

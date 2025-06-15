@@ -18,10 +18,8 @@ tracing-subscriber.workspace = true
 # Migration dependencies
 async-trait.workspace = true
 
-# CLI and TUI dependencies
+# CLI dependencies
 clap = { version = "4.5", features = ["derive"] }
-ratatui = "0.28"
-crossterm = "0.28"
 
 # Local dependencies
 sql-connection = { path = "../../libs/persistence/sql_connection" }

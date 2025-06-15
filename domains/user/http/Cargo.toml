@@ -8,6 +8,8 @@ edition = "2024"
 user-commands = { path = "../commands" }
 user-events = { path = "../events" }
 user-queries = { path = "../queries" }
+events-queries = { path = "../../events/queries" }
+events-http = { path = "../../events/http" }
 user-models.workspace = true
 
 # Web framework
@@ -20,7 +22,6 @@ uuid.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 chrono.workspace = true
-thiserror.workspace = true
 tracing.workspace = true
 tokio.workspace = true
 
@@ -34,12 +35,9 @@ analytics.workspace = true
 # HTTP
 http.workspace = true
 
-user-dao.workspace = true
 sql-connection.workspace = true
 domain.workspace = true
 utoipa.workspace = true
-database-traits.workspace = true
-async-trait.workspace = true
 
 [dev-dependencies]
 test-utils.workspace = true

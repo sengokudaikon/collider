@@ -170,7 +170,7 @@ mod tests {
 
         // Test sending an event
         let event = UserAnalyticsEvent::UserCreated {
-            user_id: Uuid::new_v4(),
+            user_id: Uuid::now_v7(),
             name: "Test User".to_string(),
             created_at: Utc::now(),
             registration_source: Some("test".to_string()),

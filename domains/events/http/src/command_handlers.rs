@@ -5,6 +5,7 @@ use events_commands::{
     UpdateEventCommand, UpdateEventResponse, UpdateEventResult,
 };
 use events_dao::{EventDao, EventDaoError, EventTypeDaoError};
+use events_models::EventMetadata;
 use sql_connection::SqlConnect;
 use thiserror::Error;
 use tracing::instrument;
@@ -59,7 +60,7 @@ impl CreateEventHandler {
                 user_id: saved_event.user_id,
                 event_type_id: saved_event.event_type_id,
                 timestamp: saved_event.timestamp,
-                metadata: saved_event.metadata,
+                metadata: saved_event.metadata.map(|m| m.to_json()),
             },
         })
     }
@@ -90,7 +91,7 @@ impl UpdateEventHandler {
                 user_id: updated_event.user_id,
                 event_type_id: updated_event.event_type_id,
                 timestamp: updated_event.timestamp,
-                metadata: updated_event.metadata,
+                metadata: updated_event.metadata.map(|m| m.to_json()),
             },
         })
     }

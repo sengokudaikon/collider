@@ -1,65 +1,295 @@
 pub mod analytics_integration;
-pub mod command_handlers;
-pub mod handlers;
-
-use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
+use axum::{
+    extract::{Path, Query, State},
+    http::StatusCode,
+    response::Json,
+    routing::{delete, get, post, put},
+    Router,
+};
+use domain::AppError;
+use events_commands::CreateEventCommand;
+use events_http::EventResponse;
+use events_queries::{GetUserEventsQuery, GetUserEventsQueryHandler};
+use flume::Sender;
+use serde::Deserialize;
+use tracing::instrument;
+use user_commands::{
+    CreateUserCommand, UserResponse, DeleteUserCommand,
+    UpdateUserCommand, UserResponse,
+};
+use user_events::UserAnalyticsEvent;
+use user_queries::{
+    GetUserByNameQueryHandler, GetUserQueryHandler, ListUsersQueryHandler,
+};
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct SimpleEventResponse {
-    pub id: Uuid,
+use crate::analytics_integration::UserAnalyticsFactory;
+
+#[derive(Clone)]
+pub struct UserServices {
+    pub create_user: CreateUserHandler,
+    pub update_user: UpdateUserHandler,
+    pub delete_user: DeleteUserHandler,
+
+    pub get_user: GetUserQueryHandler,
+    pub get_user_by_name: GetUserByNameQueryHandler,
+    pub list_users: ListUsersQueryHandler,
+    pub get_user_events: GetUserEventsQueryHandler,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct UserResponse {
-    pub id: Uuid,
-    pub name: String,
-    pub events: Vec<SimpleEventResponse>,
-}
-
-pub use user_queries::GetUserByNameResponse;
-
-impl From<user_models::User> for UserResponse {
-    fn from(user: user_models::User) -> Self {
+impl UserServices {
+    pub fn new(db: sql_connection::SqlConnect) -> Self {
         Self {
-            id: user.id,
-            name: user.name,
-            events: vec![],
+            create_user: CreateUserHandler::new(db.clone()),
+            update_user: UpdateUserHandler::new(db.clone()),
+            delete_user: DeleteUserHandler::new(db.clone()),
+            get_user: GetUserQueryHandler::new(db.clone()),
+            get_user_by_name: GetUserByNameQueryHandler::new(db.clone()),
+            list_users: ListUsersQueryHandler::new(db.clone()),
+            get_user_events: GetUserEventsQueryHandler::new(db),
         }
     }
-}
 
-impl From<GetUserByNameResponse> for UserResponse {
-    fn from(response: GetUserByNameResponse) -> Self {
-        Self {
-            id: response.id,
-            name: response.name,
-            events: vec![],
-        }
-    }
-}
-
-impl UserResponse {
-    pub fn with_event_ids(
-        user: user_models::User, event_ids: Vec<Uuid>,
+    pub fn with_event_sender(
+        mut self, event_sender: Sender<CreateEventCommand>,
     ) -> Self {
-        Self {
-            id: user.id,
-            name: user.name,
-            events: event_ids
-                .into_iter()
-                .map(|id| SimpleEventResponse { id })
-                .collect(),
-        }
+        self.create_user =
+            self.create_user.with_event_sender(event_sender.clone());
+        self.update_user =
+            self.update_user.with_event_sender(event_sender.clone());
+        self.delete_user = self.delete_user.with_event_sender(event_sender);
+        self
+    }
+
+    /// Create UserServices with analytics integration enabled
+    pub fn new_with_analytics(
+        db: sql_connection::SqlConnect,
+    ) -> (Self, tokio::task::JoinHandle<()>) {
+        let (analytics_sender, analytics_task) =
+            UserAnalyticsFactory::create_integration();
+
+        let services = Self::new(db).with_analytics_sender(analytics_sender);
+
+        (services, analytics_task)
+    }
+
+    /// Configure command handlers with analytics event sender
+    pub fn with_analytics_sender(
+        mut self, analytics_sender: Sender<UserAnalyticsEvent>,
+    ) -> Self {
+        self.create_user = self
+            .create_user
+            .with_analytics_event_sender(analytics_sender.clone());
+        self.update_user = self
+            .update_user
+            .with_analytics_event_sender(analytics_sender.clone());
+        self.delete_user = self
+            .delete_user
+            .with_analytics_event_sender(analytics_sender);
+        self
     }
 }
 
-pub use analytics_integration::{
-    UserAnalyticsFactory, UserAnalyticsIntegration,
-};
-pub use command_handlers::{
-    CreateUserError, CreateUserHandler, DeleteUserError, DeleteUserHandler,
-    UpdateUserError, UpdateUserHandler,
-};
-pub use handlers::*;
+pub struct UserHandlers;
+
+impl UserHandlers {
+    pub fn routes() -> Router<UserServices> {
+        Router::new()
+            .route("/", get(list_users))
+            .route("/", post(create_user))
+            .route("/{id}", get(get_user))
+            .route("/{id}", put(update_user))
+            .route("/{id}", delete(delete_user))
+            .route("/{id}/events", get(get_user_events))
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/users",
+    request_body = CreateUserCommand,
+    responses(
+        (status = 201, description = "User created successfully", body = UserResponse),
+        (status = 400, description = "Invalid request data"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "users"
+)]
+#[instrument(skip_all)]
+pub async fn create_user(
+    State(services): State<UserServices>,
+    Json(command): Json<CreateUserCommand>,
+) -> Result<(StatusCode, Json<user_commands::UserResponse>), AppError> {
+    let result = services
+        .create_user
+        .execute(command)
+        .await
+        .map_err(AppError::from_error)?;
+
+    tracing::info!("User created: {}", result.user.id);
+
+    Ok((StatusCode::CREATED, Json(result.user)))
+}
+
+#[utoipa::path(
+    put,
+    path = "/api/users/{id}",
+    request_body = UpdateUserCommand,
+    params(
+        ("id" = Uuid, Path, description = "User ID")
+    ),
+    responses(
+        (status = 200, description = "User updated successfully", body = UserResponse),
+        (status = 404, description = "User not found"),
+        (status = 400, description = "Invalid request data"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "users"
+)]
+#[instrument(skip_all)]
+pub async fn update_user(
+    State(services): State<UserServices>, Path(id): Path<Uuid>,
+    Json(mut command): Json<UpdateUserCommand>,
+) -> Result<Json<user_commands::UserResponse>, AppError> {
+    command.user_id = id;
+    let result = services
+        .update_user
+        .execute(command)
+        .await
+        .map_err(AppError::from_error)?;
+
+    tracing::info!("User updated: {}", id);
+
+    Ok(Json(result.user))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/api/users/{id}",
+    params(
+        ("id" = Uuid, Path, description = "User ID")
+    ),
+    responses(
+        (status = 204, description = "User deleted successfully"),
+        (status = 404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "users"
+)]
+#[instrument(skip_all)]
+pub async fn delete_user(
+    State(services): State<UserServices>, Path(id): Path<Uuid>,
+) -> Result<StatusCode, AppError> {
+    let command = DeleteUserCommand { user_id: id };
+    services
+        .delete_user
+        .execute(command)
+        .await
+        .map_err(AppError::from_error)?;
+
+    tracing::info!("User deleted: {}", id);
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct UserQueryParams {
+    limit: Option<u64>,
+    offset: Option<u64>,
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/users/{id}",
+    params(
+        ("id" = Uuid, Path, description = "User ID"),
+        UserQueryParams
+    ),
+    responses(
+        (status = 200, description = "User found", body = UserResponse),
+        (status = 404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "users"
+)]
+#[instrument(skip_all)]
+pub async fn get_user(
+    State(services): State<UserServices>, Path(id): Path<Uuid>,
+    Query(_params): Query<UserQueryParams>,
+) -> Result<Json<UserResponse>, AppError> {
+    let query = user_queries::GetUserQuery { user_id: id };
+    let user = services
+        .get_user
+        .execute(query)
+        .await
+        .map_err(AppError::from_error)?;
+
+    Ok(Json(user.into()))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/users",
+    params(
+        UserQueryParams
+    ),
+    responses(
+        (status = 200, description = "List of users", body = Vec<UserResponse>),
+        (status = 400, description = "Invalid query parameters"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "users"
+)]
+#[instrument(skip_all)]
+pub async fn list_users(
+    State(services): State<UserServices>,
+    Query(_params): Query<UserQueryParams>,
+) -> Result<Json<Vec<UserResponse>>, AppError> {
+    let query = user_queries::ListUsersQuery {
+        limit: _params.limit,
+        offset: _params.offset,
+    };
+    let users = services
+        .list_users
+        .execute(query)
+        .await
+        .map_err(AppError::from_error)?;
+
+    Ok(Json(users.into_iter().map(Into::into).collect()))
+}
+
+#[utoipa::path(
+    get,
+    path = "/users/{user_id}/events",
+    params(
+        ("user_id" = String, Path, description = "User ID")
+    ),
+    responses(
+        (status = 200, description = "OK"),
+        (status = 404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Event"
+)]
+#[instrument(skip_all)]
+pub async fn get_user_events(
+    State(services): State<UserServices>, Path(user_id): Path<String>,
+) -> Result<Json<Vec<EventResponse>>, AppError> {
+    let user_uuid = user_id
+        .parse::<Uuid>()
+        .map_err(|err| AppError::from_error(err))?;
+
+    let query = GetUserEventsQuery {
+        user_id: user_uuid,
+        limit: None,
+    };
+
+    let events = services
+        .get_user_events
+        .execute(query)
+        .await
+        .map_err(AppError::from_error)?;
+
+    Ok(Json(events.into_iter().map(Into::into).collect()))
+}

@@ -32,6 +32,108 @@ impl EventDao {
     pub fn new(db: SqlConnect) -> Self { Self { db } }
 
     pub fn db(&self) -> &SqlConnect { &self.db }
+
+    #[instrument(skip(self))]
+    pub async fn count_events(
+        &self,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+        event_type: Option<String>,
+    ) -> Result<i64, EventDaoError> {
+        let client = self.db.get_client().await?;
+        
+        let (query, params): (&str, PgParamVec) = if let Some(event_type) = event_type {
+            (
+                "SELECT COUNT(*) FROM events e 
+                 JOIN event_types et ON e.event_type_id = et.id 
+                 WHERE e.timestamp >= $1 AND e.timestamp <= $2 AND et.name = $3",
+                vec![Box::new(from), Box::new(to), Box::new(event_type)]
+            )
+        } else {
+            (
+                "SELECT COUNT(*) FROM events WHERE timestamp >= $1 AND timestamp <= $2",
+                vec![Box::new(from), Box::new(to)]
+            )
+        };
+
+        let stmt = client.prepare(query).await?;
+        let param_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = 
+            params.iter().map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
+        
+        let row = client.query_one(&stmt, &param_refs).await?;
+        Ok(row.get(0))
+    }
+
+    #[instrument(skip(self))]
+    pub async fn count_unique_users(
+        &self,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+        event_type: Option<String>,
+    ) -> Result<i64, EventDaoError> {
+        let client = self.db.get_client().await?;
+        
+        let (query, params): (&str, PgParamVec) = if let Some(event_type) = event_type {
+            (
+                "SELECT COUNT(DISTINCT e.user_id) FROM events e 
+                 JOIN event_types et ON e.event_type_id = et.id 
+                 WHERE e.timestamp >= $1 AND e.timestamp <= $2 AND et.name = $3",
+                vec![Box::new(from), Box::new(to), Box::new(event_type)]
+            )
+        } else {
+            (
+                "SELECT COUNT(DISTINCT user_id) FROM events WHERE timestamp >= $1 AND timestamp <= $2",
+                vec![Box::new(from), Box::new(to)]
+            )
+        };
+
+        let stmt = client.prepare(query).await?;
+        let param_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = 
+            params.iter().map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
+        
+        let row = client.query_one(&stmt, &param_refs).await?;
+        Ok(row.get(0))
+    }
+
+    #[instrument(skip(self))]
+    pub async fn get_event_type_stats(
+        &self,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+        event_type: Option<String>,
+    ) -> Result<Vec<(String, i64)>, EventDaoError> {
+        let client = self.db.get_client().await?;
+        
+        let (query, params): (&str, PgParamVec) = if let Some(event_type) = event_type {
+            (
+                "SELECT et.name, COUNT(*) FROM events e 
+                 JOIN event_types et ON e.event_type_id = et.id 
+                 WHERE e.timestamp >= $1 AND e.timestamp <= $2 AND et.name = $3
+                 GROUP BY et.name ORDER BY COUNT(*) DESC",
+                vec![Box::new(from), Box::new(to), Box::new(event_type)]
+            )
+        } else {
+            (
+                "SELECT et.name, COUNT(*) FROM events e 
+                 JOIN event_types et ON e.event_type_id = et.id 
+                 WHERE e.timestamp >= $1 AND e.timestamp <= $2
+                 GROUP BY et.name ORDER BY COUNT(*) DESC",
+                vec![Box::new(from), Box::new(to)]
+            )
+        };
+
+        let stmt = client.prepare(query).await?;
+        let param_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = 
+            params.iter().map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
+        
+        let rows = client.query(&stmt, &param_refs).await?;
+        let results = rows
+            .into_iter()
+            .map(|row| (row.get::<_, String>(0), row.get::<_, i64>(1)))
+            .collect();
+        
+        Ok(results)
+    }
 }
 
 #[async_trait]
@@ -131,7 +233,15 @@ impl GenericDao for EventDao {
                 ));
             }
 
-            let event = self.map_row(row);
+            let event = Event {
+                id: row.get(0),
+                user_id: row.get(1),
+                event_type_id: row.get(2),
+                timestamp: row.get(3),
+                metadata: row.get::<_, Option<serde_json::Value>>(4).and_then(|json| {
+                    serde_json::from_value(json).ok()
+                }),
+            };
             Ok(event)
         }
         else {
@@ -183,12 +293,16 @@ impl GenericDao for EventDao {
                     match status.as_str() {
                         "not_found" => Err(EventDaoError::NotFound),
                         "ok" => {
+                            let metadata_json: Option<serde_json::Value> = row.get(4);
+                            let metadata = metadata_json.and_then(|json| {
+                                serde_json::from_value(json).ok()
+                            });
                             let event = Event {
                                 id: row.get(0),
                                 user_id: row.get(1),
                                 event_type_id: row.get(2),
                                 timestamp: row.get(3),
-                                metadata: row.get(4),
+                                metadata,
                             };
                             Ok(event)
                         }
@@ -268,12 +382,17 @@ impl GenericDao for EventDao {
     }
 
     fn map_row(&self, row: &tokio_postgres::Row) -> Self::Model {
+        let metadata_json: Option<serde_json::Value> = row.get(4);
+        let metadata = metadata_json.and_then(|json| {
+            serde_json::from_value(json).ok()
+        });
+        
         Event {
             id: row.get(0),
             user_id: row.get(1),
             event_type_id: row.get(2),
             timestamp: row.get(3),
-            metadata: row.get(4),
+            metadata,
         }
     }
 

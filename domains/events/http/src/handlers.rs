@@ -1,9 +1,9 @@
 use axum::{
-    Router,
     extract::{Path, Query, State},
     http::StatusCode,
     response::Json,
     routing::{delete, get, post, put},
+    Router,
 };
 use chrono::{DateTime, Utc};
 use domain::AppError;
@@ -22,11 +22,12 @@ use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::{
-    EventResponse,
     command_handlers::{
         BulkDeleteEventsHandler, CreateEventHandler, DeleteEventHandler,
         UpdateEventHandler,
     },
+    stats::{StatsService, get_stats},
+    EventResponse,
 };
 
 #[derive(Clone)]
@@ -38,6 +39,7 @@ pub struct EventServices {
 
     pub get_event: GetEventQueryHandler,
     pub list_events: ListEventsQueryHandler,
+    pub stats: StatsService,
 }
 
 impl EventServices {
@@ -48,7 +50,8 @@ impl EventServices {
             delete_event: DeleteEventHandler::new(db.clone()),
             bulk_delete_events: BulkDeleteEventsHandler::new(db.clone()),
             get_event: GetEventQueryHandler::new(db.clone()),
-            list_events: ListEventsQueryHandler::new(db),
+            list_events: ListEventsQueryHandler::new(db.clone()),
+            stats: StatsService::new(db.clone()),
         }
     }
 }
@@ -61,34 +64,11 @@ impl EventHandlers {
             .route("/", get(list_events))
             .route("/", post(create_event))
             .route("/", delete(bulk_delete_events))
+            .route("/stats", get(get_stats))
             .route("/{id}", get(get_event))
             .route("/{id}", put(update_event))
             .route("/{id}", delete(delete_event))
     }
-}
-
-#[utoipa::path(
-    post,
-    path = "/api/events",
-    request_body = CreateEventCommand,
-    responses(
-        (status = 201, description = "Event created successfully", body = CreateEventResponse),
-        (status = 400, description = "Invalid request data"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "events"
-)]
-#[instrument(skip_all)]
-pub async fn create_event(
-    State(services): State<EventServices>,
-    Json(command): Json<CreateEventCommand>,
-) -> Result<(StatusCode, Json<CreateEventResponse>), AppError> {
-    let result = services
-        .create_event
-        .execute(command)
-        .await
-        .map_err(AppError::from_error)?;
-    Ok((StatusCode::CREATED, Json(result.event)))
 }
 
 #[utoipa::path(
@@ -172,6 +152,55 @@ pub async fn get_event(
     Ok(Json(event.into()))
 }
 
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct EventsListParams {
+    pub page: Option<u64>,
+    pub limit: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct ListEventsParams {
+    pub user_id: Option<Uuid>,
+    pub event_type_id: Option<i32>,
+    pub limit: Option<u64>,
+    pub offset: Option<u64>,
+    pub page: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct EventsDeleteParams {
+    pub before: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct BulkDeleteParams {
+    pub before: DateTime<Utc>,
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/events",
+    request_body = CreateEventCommand,
+    responses(
+        (status = 201, description = "Event created successfully", body = CreateEventResponse),
+        (status = 400, description = "Invalid request data"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "events"
+)]
+#[instrument(skip_all)]
+pub async fn create_event(
+    State(services): State<EventServices>,
+    Json(command): Json<CreateEventCommand>,
+) -> Result<(StatusCode, Json<CreateEventResponse>), AppError> {
+    let result = services
+        .create_event
+        .execute(command)
+        .await
+        .map_err(AppError::from_error)?;
+    Ok((StatusCode::CREATED, Json(result.event)))
+}
+
 #[utoipa::path(
     get,
     path = "/api/events",
@@ -210,20 +239,6 @@ pub async fn list_events(
         .await
         .map_err(AppError::from_error)?;
     Ok(Json(events.into_iter().map(Into::into).collect()))
-}
-
-#[derive(Debug, Deserialize, ToSchema, IntoParams)]
-pub struct ListEventsParams {
-    pub user_id: Option<Uuid>,
-    pub event_type_id: Option<i32>,
-    pub limit: Option<u64>,
-    pub offset: Option<u64>,
-    pub page: Option<u64>,
-}
-
-#[derive(Debug, Deserialize, ToSchema, IntoParams)]
-pub struct BulkDeleteParams {
-    pub before: DateTime<Utc>,
 }
 
 #[utoipa::path(

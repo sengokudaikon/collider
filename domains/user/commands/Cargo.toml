@@ -4,12 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-# Core dependencies for DTOs only
 uuid.workspace = true
 serde.workspace = true
 chrono.workspace = true
 utoipa.workspace = true
-serde_json.workspace = true
-
-# User events
-user-events = { path = "../events" }

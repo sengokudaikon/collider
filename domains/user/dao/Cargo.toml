@@ -15,6 +15,7 @@ serde.workspace = true
 sql-connection.workspace = true
 user-models = { path = "../models" }
 user-commands = { path = "../commands" }
+user-errors = { path = "../errors" }
 database-traits.workspace = true
 dao-utils = { path = "../../../libs/persistence/dao_utils" }
 

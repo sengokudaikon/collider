@@ -37,17 +37,13 @@ impl<'cache, T> CacheTypeTrait<'cache> for FileCache<'cache, T> {
         backend: super::super::core::backend::CacheBackend<'cache>,
         key: Cow<'static, str>,
     ) -> Self {
-        let (path, config) = match backend {
+        let (file_db, config) = match backend {
             super::super::core::backend::CacheBackend::File {
-                path,
+                file_db,
                 config,
-            } => (path, config),
+            } => (file_db, config),
             _ => panic!("FileCache can only be created from File backend"),
         };
-
-        let file_db = Arc::new(RwLock::new(
-            sled::open(&path).expect("Failed to open file cache database"),
-        ));
 
         Self {
             key: key.clone(),
@@ -66,10 +62,7 @@ where
 {
     pub fn with_config(mut self, config: FileConfig) -> Self {
         self.config = config;
-        self.file_db = Arc::new(RwLock::new(
-            sled::open(&self.config.path)
-                .expect("Failed to open file cache database"),
-        ));
+        // Note: file_db is now provided via the backend, not opened here
         self
     }
 
