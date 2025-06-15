@@ -1,26 +1,39 @@
 #![allow(unused)]
-use std::{borrow::Cow, collections::HashMap, marker::PhantomData, time::Duration};
+use std::{
+    borrow::Cow, collections::HashMap, marker::PhantomData, time::Duration,
+};
 
 use bytes::Bytes;
 use deadpool_redis::redis::{
-    AsyncCommands, FromRedisValue, RedisResult, ToRedisArgs, streams::{StreamId, StreamRangeReply, StreamReadOptions, StreamReadReply},
+    AsyncCommands, FromRedisValue, RedisResult, ToRedisArgs,
+    streams::{
+        StreamId, StreamRangeReply, StreamReadOptions, StreamReadReply,
+    },
 };
 use moka::future::Cache;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
-use crate::core::{value::{Json, CacheValue}, type_bind::RedisTypeTrait};
+use crate::core::{
+    backend::CacheBackend,
+    type_bind::CacheTypeTrait,
+    value::{CacheValue, Json},
+};
 
-pub struct Stream<'redis, R: 'redis, T> {
-    redis: &'redis mut R,
+pub struct Stream<'cache, T> {
+    redis: &'cache mut deadpool_redis::Connection,
     key: Cow<'static, str>,
     __phantom: PhantomData<T>,
 }
 
-impl<'redis, R, T> RedisTypeTrait<'redis, R> for Stream<'redis, R, T> {
-    fn from_redis_and_key(
-        redis: &'redis mut R, key: Cow<'static, str>,
-        memory: Option<Cache<String, Bytes>>,
+impl<'cache, T> CacheTypeTrait<'cache> for Stream<'cache, T> {
+    fn from_cache_and_key(
+        backend: CacheBackend<'cache>, key: Cow<'static, str>,
     ) -> Self {
+        let redis = match backend {
+            CacheBackend::Redis(redis) => redis,
+            _ => panic!("Stream type can only be created from Redis backend"),
+        };
+
         Self {
             redis,
             key,
@@ -29,42 +42,51 @@ impl<'redis, R, T> RedisTypeTrait<'redis, R> for Stream<'redis, R, T> {
     }
 }
 
-impl<'redis, R, T> Stream<'redis, R, T>
+impl<'cache, T> Stream<'cache, T>
 where
-    R: redis::aio::ConnectionLike + Send + Sync,
-    T: Serialize + for<'de> Deserialize<'de> + Send + Sync + 'redis,
+    T: Serialize + for<'de> Deserialize<'de> + Send + Sync + 'cache,
 {
     /// Add entry to stream with auto-generated ID
-    pub async fn add_auto<F>(&mut self, fields: &[(&str, F)]) -> RedisResult<String> 
+    pub async fn add_auto<F>(
+        &mut self, fields: &[(&str, F)],
+    ) -> RedisResult<String>
     where
         F: Into<Json<T>> + Clone,
     {
-        let json_fields: Vec<(&str, Json<T>)> = fields.iter()
-            .map(|(k, v)| (*k, v.clone().into()))
-            .collect();
+        let json_fields: Vec<(&str, Json<T>)> =
+            fields.iter().map(|(k, v)| (*k, v.clone().into())).collect();
         self.redis.xadd(&*self.key, "*", &json_fields).await
     }
 
     /// Add entry to stream with specific ID
-    pub async fn add_with_id<F>(&mut self, id: &str, fields: &[(&str, F)]) -> RedisResult<String> 
+    pub async fn add_with_id<F>(
+        &mut self, id: &str, fields: &[(&str, F)],
+    ) -> RedisResult<String>
     where
         F: Into<Json<T>> + Clone,
     {
-        let json_fields: Vec<(&str, Json<T>)> = fields.iter()
-            .map(|(k, v)| (*k, v.clone().into()))
-            .collect();
+        let json_fields: Vec<(&str, Json<T>)> =
+            fields.iter().map(|(k, v)| (*k, v.clone().into())).collect();
         self.redis.xadd(&*self.key, id, &json_fields).await
     }
 
     /// Add entry with maximum length constraint
-    pub async fn add_with_maxlen<F>(&mut self, maxlen: usize, fields: &[(&str, F)]) -> RedisResult<String> 
+    pub async fn add_with_maxlen<F>(
+        &mut self, maxlen: usize, fields: &[(&str, F)],
+    ) -> RedisResult<String>
     where
         F: Into<Json<T>> + Clone,
     {
-        let json_fields: Vec<(&str, Json<T>)> = fields.iter()
-            .map(|(k, v)| (*k, v.clone().into()))
-            .collect();
-        self.redis.xadd_maxlen(&*self.key, redis::streams::StreamMaxlen::Equals(maxlen), "*", &json_fields).await
+        let json_fields: Vec<(&str, Json<T>)> =
+            fields.iter().map(|(k, v)| (*k, v.clone().into())).collect();
+        self.redis
+            .xadd_maxlen(
+                &*self.key,
+                redis::streams::StreamMaxlen::Equals(maxlen),
+                "*",
+                &json_fields,
+            )
+            .await
     }
 
     /// Get length of stream
@@ -76,23 +98,33 @@ where
     }
 
     /// Read entries from stream by range
-    pub async fn range(&mut self, start: &str, end: &str) -> RedisResult<StreamRangeReply> {
+    pub async fn range(
+        &mut self, start: &str, end: &str,
+    ) -> RedisResult<StreamRangeReply> {
         self.redis.xrange(&*self.key, start, end).await
     }
 
     /// Read entries from stream by range with count limit
-    pub async fn range_count(&mut self, start: &str, end: &str, count: usize) -> RedisResult<StreamRangeReply> {
+    pub async fn range_count(
+        &mut self, start: &str, end: &str, count: usize,
+    ) -> RedisResult<StreamRangeReply> {
         self.redis.xrange_count(&*self.key, start, end, count).await
     }
 
     /// Read entries in reverse order
-    pub async fn reverse_range(&mut self, end: &str, start: &str) -> RedisResult<StreamRangeReply> {
+    pub async fn reverse_range(
+        &mut self, end: &str, start: &str,
+    ) -> RedisResult<StreamRangeReply> {
         self.redis.xrevrange(&*self.key, end, start).await
     }
 
     /// Read entries in reverse order with count limit
-    pub async fn reverse_range_count(&mut self, end: &str, start: &str, count: usize) -> RedisResult<StreamRangeReply> {
-        self.redis.xrevrange_count(&*self.key, end, start, count).await
+    pub async fn reverse_range_count(
+        &mut self, end: &str, start: &str, count: usize,
+    ) -> RedisResult<StreamRangeReply> {
+        self.redis
+            .xrevrange_count(&*self.key, end, start, count)
+            .await
     }
 
     /// Read new entries from stream (blocking)
@@ -102,7 +134,9 @@ where
     }
 
     /// Read new entries with blocking timeout
-    pub async fn read_blocking(&mut self, id: &str, timeout: Duration) -> RedisResult<StreamReadReply> {
+    pub async fn read_blocking(
+        &mut self, id: &str, timeout: Duration,
+    ) -> RedisResult<StreamReadReply> {
         let opts = StreamReadOptions::default()
             .count(10)
             .block(timeout.as_millis() as usize);
@@ -122,7 +156,9 @@ where
     where
         RV: FromRedisValue,
     {
-        self.redis.xtrim(&*self.key, redis::streams::StreamMaxlen::Equals(maxlen)).await
+        self.redis
+            .xtrim(&*self.key, redis::streams::StreamMaxlen::Equals(maxlen))
+            .await
     }
 
     /// Trim stream approximately to maximum length (more efficient)
@@ -130,11 +166,15 @@ where
     where
         RV: FromRedisValue,
     {
-        self.redis.xtrim(&*self.key, redis::streams::StreamMaxlen::Approx(maxlen)).await
+        self.redis
+            .xtrim(&*self.key, redis::streams::StreamMaxlen::Approx(maxlen))
+            .await
     }
 
     /// Create consumer group
-    pub async fn create_group<RV>(&mut self, group: &str, id: &str) -> RedisResult<RV>
+    pub async fn create_group<RV>(
+        &mut self, group: &str, id: &str,
+    ) -> RedisResult<RV>
     where
         RV: FromRedisValue,
     {
@@ -142,11 +182,15 @@ where
     }
 
     /// Create consumer group with MKSTREAM option
-    pub async fn create_group_mkstream<RV>(&mut self, group: &str, id: &str) -> RedisResult<RV>
+    pub async fn create_group_mkstream<RV>(
+        &mut self, group: &str, id: &str,
+    ) -> RedisResult<RV>
     where
         RV: FromRedisValue,
     {
-        self.redis.xgroup_create_mkstream(&*self.key, group, id).await
+        self.redis
+            .xgroup_create_mkstream(&*self.key, group, id)
+            .await
     }
 
     /// Delete consumer group
@@ -158,7 +202,9 @@ where
     }
 
     /// Read from consumer group
-    pub async fn read_group(&mut self, group: &str, consumer: &str, id: &str) -> RedisResult<StreamReadReply> {
+    pub async fn read_group(
+        &mut self, group: &str, consumer: &str, id: &str,
+    ) -> RedisResult<StreamReadReply> {
         let opts = StreamReadOptions::default()
             .count(10)
             .group(group, consumer);
@@ -166,7 +212,9 @@ where
     }
 
     /// Read from consumer group with blocking
-    pub async fn read_group_blocking(&mut self, group: &str, consumer: &str, id: &str, timeout: Duration) -> RedisResult<StreamReadReply> {
+    pub async fn read_group_blocking(
+        &mut self, group: &str, consumer: &str, id: &str, timeout: Duration,
+    ) -> RedisResult<StreamReadReply> {
         let opts = StreamReadOptions::default()
             .count(10)
             .block(timeout.as_millis() as usize)
@@ -175,7 +223,9 @@ where
     }
 
     /// Acknowledge message processing
-    pub async fn ack<RV>(&mut self, group: &str, ids: &[&str]) -> RedisResult<RV>
+    pub async fn ack<RV>(
+        &mut self, group: &str, ids: &[&str],
+    ) -> RedisResult<RV>
     where
         RV: FromRedisValue,
     {
@@ -183,37 +233,59 @@ where
     }
 
     /// Get pending messages info
-    pub async fn pending(&mut self, group: &str) -> RedisResult<redis::streams::StreamPendingReply> {
+    pub async fn pending(
+        &mut self, group: &str,
+    ) -> RedisResult<redis::streams::StreamPendingReply> {
         self.redis.xpending(&*self.key, group).await
     }
 
     /// Get detailed pending messages
-    pub async fn pending_count(&mut self, group: &str, start: &str, end: &str, count: usize) -> RedisResult<redis::streams::StreamPendingCountReply> {
-        self.redis.xpending_count(&*self.key, group, start, end, count).await
+    pub async fn pending_count(
+        &mut self, group: &str, start: &str, end: &str, count: usize,
+    ) -> RedisResult<redis::streams::StreamPendingCountReply> {
+        self.redis
+            .xpending_count(&*self.key, group, start, end, count)
+            .await
     }
 
     /// Claim pending messages
-    pub async fn claim(&mut self, group: &str, consumer: &str, min_idle_time: usize, ids: &[&str]) -> RedisResult<StreamRangeReply> {
-        self.redis.xclaim(&*self.key, group, consumer, min_idle_time, ids).await
+    pub async fn claim(
+        &mut self, group: &str, consumer: &str, min_idle_time: usize,
+        ids: &[&str],
+    ) -> RedisResult<StreamRangeReply> {
+        self.redis
+            .xclaim(&*self.key, group, consumer, min_idle_time, ids)
+            .await
     }
 
     /// Auto-claim pending messages (simplified to use xclaim)
-    pub async fn auto_claim(&mut self, group: &str, consumer: &str, min_idle_time: usize, ids: &[&str]) -> RedisResult<StreamRangeReply> {
-        self.redis.xclaim(&*self.key, group, consumer, min_idle_time, ids).await
+    pub async fn auto_claim(
+        &mut self, group: &str, consumer: &str, min_idle_time: usize,
+        ids: &[&str],
+    ) -> RedisResult<StreamRangeReply> {
+        self.redis
+            .xclaim(&*self.key, group, consumer, min_idle_time, ids)
+            .await
     }
 
     /// Get stream info
-    pub async fn info(&mut self) -> RedisResult<redis::streams::StreamInfoStreamReply> {
+    pub async fn info(
+        &mut self,
+    ) -> RedisResult<redis::streams::StreamInfoStreamReply> {
         self.redis.xinfo_stream(&*self.key).await
     }
 
     /// Get consumer groups info
-    pub async fn info_groups(&mut self) -> RedisResult<redis::streams::StreamInfoGroupsReply> {
+    pub async fn info_groups(
+        &mut self,
+    ) -> RedisResult<redis::streams::StreamInfoGroupsReply> {
         self.redis.xinfo_groups(&*self.key).await
     }
 
     /// Get consumers info for a group
-    pub async fn info_consumers(&mut self, group: &str) -> RedisResult<redis::streams::StreamInfoConsumersReply> {
+    pub async fn info_consumers(
+        &mut self, group: &str,
+    ) -> RedisResult<redis::streams::StreamInfoConsumersReply> {
         self.redis.xinfo_consumers(&*self.key, group).await
     }
 }

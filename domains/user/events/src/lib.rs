@@ -38,10 +38,18 @@ pub enum UserAnalyticsEvent {
 }
 
 impl UserAnalyticsEvent {
-    /// Convert UserAnalyticsEvent to CreateEventCommand for storage in events table
-    pub fn to_create_event_command(&self) -> events_commands::CreateEventCommand {
+    /// Convert UserAnalyticsEvent to CreateEventCommand for storage in events
+    /// table
+    pub fn to_create_event_command(
+        &self,
+    ) -> events_commands::CreateEventCommand {
         match self {
-            UserAnalyticsEvent::UserCreated { user_id, name, created_at, registration_source } => {
+            UserAnalyticsEvent::UserCreated {
+                user_id,
+                name,
+                created_at,
+                registration_source,
+            } => {
                 events_commands::CreateEventCommand {
                     user_id: *user_id,
                     event_type: "user_created".to_string(),
@@ -51,8 +59,13 @@ impl UserAnalyticsEvent {
                         "registration_source": registration_source
                     })),
                 }
-            },
-            UserAnalyticsEvent::UserNameUpdated { user_id, old_name, new_name, updated_at } => {
+            }
+            UserAnalyticsEvent::UserNameUpdated {
+                user_id,
+                old_name,
+                new_name,
+                updated_at,
+            } => {
                 events_commands::CreateEventCommand {
                     user_id: *user_id,
                     event_type: "user_name_updated".to_string(),
@@ -62,16 +75,26 @@ impl UserAnalyticsEvent {
                         "new_name": new_name
                     })),
                 }
-            },
-            UserAnalyticsEvent::UserDeleted { user_id, deleted_at } => {
+            }
+            UserAnalyticsEvent::UserDeleted {
+                user_id,
+                deleted_at,
+            } => {
                 events_commands::CreateEventCommand {
                     user_id: *user_id,
                     event_type: "user_deleted".to_string(),
                     timestamp: Some(*deleted_at),
                     metadata: None,
                 }
-            },
-            UserAnalyticsEvent::UserSessionStart { user_id, session_id, started_at, user_agent, ip_address, referrer } => {
+            }
+            UserAnalyticsEvent::UserSessionStart {
+                user_id,
+                session_id,
+                started_at,
+                user_agent,
+                ip_address,
+                referrer,
+            } => {
                 events_commands::CreateEventCommand {
                     user_id: *user_id,
                     event_type: "user_session_start".to_string(),
@@ -83,8 +106,13 @@ impl UserAnalyticsEvent {
                         "referrer": referrer
                     })),
                 }
-            },
-            UserAnalyticsEvent::UserSessionEnd { user_id, session_id, ended_at, duration_seconds } => {
+            }
+            UserAnalyticsEvent::UserSessionEnd {
+                user_id,
+                session_id,
+                ended_at,
+                duration_seconds,
+            } => {
                 events_commands::CreateEventCommand {
                     user_id: *user_id,
                     event_type: "user_session_end".to_string(),
@@ -94,7 +122,7 @@ impl UserAnalyticsEvent {
                         "duration_seconds": duration_seconds
                     })),
                 }
-            },
+            }
         }
     }
 }

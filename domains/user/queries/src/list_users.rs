@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use redis_connection::{
     connection::RedisConnectionManager,
-    core::{value::Json, RedisTypeBind},
+    core::{CacheTypeBind, value::Json},
 };
 use serde::Deserialize;
 use sql_connection::SqlConnect;
@@ -53,7 +53,7 @@ impl ListUsersQueryHandler {
             let mut conn = redis.get_connection().await?;
 
             let cache_key = UserListCacheKey;
-            let mut cache = cache_key.bind(&mut *conn);
+            let mut cache = cache_key.bind(&mut conn);
 
             if let Ok(Some(users)) = cache.try_get().await {
                 tracing::debug!("Cache hit for user list");

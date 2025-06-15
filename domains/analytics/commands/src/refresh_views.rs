@@ -27,7 +27,9 @@ pub struct RefreshViewsResponse {
     pub duration_ms: u64,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, ToSchema, thiserror::Error)]
+#[derive(
+    Clone, Debug, Serialize, Deserialize, ToSchema, thiserror::Error,
+)]
 pub enum RefreshViewsError {
     #[error("Database error: {message}")]
     Database { message: String },

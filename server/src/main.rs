@@ -57,7 +57,8 @@ async fn main() -> anyhow::Result<()> {
     info!("Connection pools initialized successfully");
 
     let db = SqlConnect::from_global();
-    let (user_services, _analytics_task) = UserServices::new_with_analytics(db.clone());
+    let (user_services, _analytics_task) =
+        UserServices::new_with_analytics(db.clone());
 
     let app = Router::new()
         .route("/health", get(health_check))

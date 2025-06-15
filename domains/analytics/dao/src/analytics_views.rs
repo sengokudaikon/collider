@@ -1,6 +1,6 @@
 use analytics_commands::{
-    refresh_views::{RefreshViewsError, RefreshViewsResponse},
     RefreshViewsCommand,
+    refresh_views::{RefreshViewsError, RefreshViewsResponse},
 };
 use analytics_models::{
     EventHourlySummary, EventMetrics, PopularEvent, UserDailyActivity,

@@ -1,11 +1,12 @@
+use std::time::Duration;
+
 use deadpool_redis::redis::AsyncCommands;
 use redis_connection::{
-    core::command::{IntoRedisCommands, RedisCommands, RedisCommandsExt},
     config::{DbConnectConfig, RedisDbConfig},
     connection::RedisConnectionManager,
+    core::command::{IntoRedisCommands, RedisCommands, RedisCommandsExt},
 };
 use test_utils::redis::TestRedisContainer;
-use std::time::Duration;
 
 async fn setup_test_redis()
 -> anyhow::Result<(TestRedisContainer, RedisConnectionManager)> {
@@ -219,7 +220,7 @@ async fn test_redis_expire_operations() {
 }
 
 #[tokio::test]
-async fn test_redis_key_pattern_operations() {
+async fn test_cache_key_pattern_operations() {
     let (_container, manager) = setup_test_redis().await.unwrap();
     let mut conn = manager.get_connection().await.unwrap();
 
@@ -335,7 +336,10 @@ async fn test_redis_commands_abstraction_string_ops() {
     let mut commands = conn.cmd();
 
     // Test SET with expiration
-    commands.set_ex("expire_key", "expire_value", 60).await.unwrap();
+    commands
+        .set_ex("expire_key", "expire_value", 60)
+        .await
+        .unwrap();
     let ttl = commands.ttl("expire_key").await.unwrap();
     assert!(ttl > 0 && ttl <= 60);
 
@@ -343,13 +347,15 @@ async fn test_redis_commands_abstraction_string_ops() {
     let set_result = commands.set_nx("new_key", "new_value").await.unwrap();
     assert!(set_result); // Should return true for new key
 
-    let set_result_again = commands.set_nx("new_key", "another_value").await.unwrap();
+    let set_result_again =
+        commands.set_nx("new_key", "another_value").await.unwrap();
     assert!(!set_result_again); // Should return false as key exists
 
     // Test GETSET
-    let old_value: String = commands.get_set("new_key", "updated_value").await.unwrap();
+    let old_value: String =
+        commands.get_set("new_key", "updated_value").await.unwrap();
     assert_eq!(old_value, "new_value");
-    
+
     let current_value: String = commands.get("new_key").await.unwrap();
     assert_eq!(current_value, "updated_value");
 }
@@ -361,18 +367,24 @@ async fn test_redis_commands_abstraction_hash_ops() {
     let mut commands = conn.cmd();
 
     // Test hash operations
-    let set_result = commands.hset("hash_key", "field1", "value1").await.unwrap();
+    let set_result =
+        commands.hset("hash_key", "field1", "value1").await.unwrap();
     assert!(set_result);
-    
+
     commands.hset("hash_key", "field2", "value2").await.unwrap();
 
     let value1: String = commands.hget("hash_key", "field1").await.unwrap();
     assert_eq!(value1, "value1");
 
     assert!(commands.hexists("hash_key", "field1").await.unwrap());
-    assert!(!commands.hexists("hash_key", "nonexistent_field").await.unwrap());
+    assert!(
+        !commands
+            .hexists("hash_key", "nonexistent_field")
+            .await
+            .unwrap()
+    );
 
-    let all_values: std::collections::HashMap<String, String> = 
+    let all_values: std::collections::HashMap<String, String> =
         commands.hgetall("hash_key").await.unwrap();
     assert_eq!(all_values.len(), 2);
     assert_eq!(all_values.get("field1"), Some(&"value1".to_string()));
@@ -409,13 +421,15 @@ async fn test_redis_commands_abstraction_list_ops() {
     let current_length = commands.llen("list_key").await.unwrap();
     assert_eq!(current_length, 3);
 
-    let items: Vec<String> = commands.lrange("list_key", 0, -1).await.unwrap();
+    let items: Vec<String> =
+        commands.lrange("list_key", 0, -1).await.unwrap();
     assert_eq!(items, vec!["item2", "item1", "item3"]);
 
     let popped: Option<String> = commands.lpop("list_key").await.unwrap();
     assert_eq!(popped, Some("item2".to_string()));
 
-    let popped_right: Option<String> = commands.rpop("list_key").await.unwrap();
+    let popped_right: Option<String> =
+        commands.rpop("list_key").await.unwrap();
     assert_eq!(popped_right, Some("item3".to_string()));
 
     let final_length = commands.llen("list_key").await.unwrap();
@@ -441,7 +455,7 @@ async fn test_redis_commands_abstraction_set_ops() {
     let cardinality = commands.scard("set_key").await.unwrap();
     assert_eq!(cardinality, 3);
 
-    let members: std::collections::HashSet<String> = 
+    let members: std::collections::HashSet<String> =
         commands.smembers("set_key").await.unwrap();
     assert_eq!(members.len(), 3);
     assert!(members.contains("member1"));
@@ -500,7 +514,7 @@ async fn test_redis_commands_key_operations() {
     // Test key operations
     commands.set("old_key", "value").await.unwrap();
     commands.rename("old_key", "new_key").await.unwrap();
-    
+
     assert!(!commands.exists("old_key").await.unwrap());
     assert!(commands.exists("new_key").await.unwrap());
 

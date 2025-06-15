@@ -1,5 +1,5 @@
 #[macro_export]
-macro_rules! redis_key {
+macro_rules! cache_key {
     (hash $name:ident::<$t:ty> => $format_key:literal[$($arg:ident:$ty:ident),*])=>{
         #[doc=concat!(concat!("Redis Hash type binding \n ## Key \n", $format_key), concat!("\n ## Value Type \n ", stringify!($t)))]
         pub struct $name;
@@ -14,10 +14,8 @@ macro_rules! redis_key {
             }
         }
 
-        impl $crate::core::type_bind::RedisTypeBind for $name {
-            type RedisType<'redis, R> = $crate::types::hash::Hash<'redis, R, $t>
-                where
-                    R: 'redis;
+        impl $crate::core::type_bind::CacheTypeBind for $name {
+            type CacheType<'cache> = $crate::types::hash::Hash<'cache, $t>;
         }
     };
     (hash $name:ident::<$t:ty> => $key:literal) => {
@@ -32,10 +30,8 @@ macro_rules! redis_key {
             }
         }
 
-        impl $crate::core::type_bind::RedisTypeBind for $name {
-            type RedisType<'redis, R> = $crate::types::hash::Hash<'redis, R, $t>
-                where
-                    R: 'redis;
+        impl $crate::core::type_bind::CacheTypeBind for $name {
+            type CacheType<'cache> = $crate::types::hash::Hash<'cache, $t>;
         }
     };
     ($name:ident::<$t:ty> => $format_key:literal[$($arg:ident:$ty:ident),*])=>{
@@ -52,10 +48,8 @@ macro_rules! redis_key {
             }
         }
 
-        impl $crate::core::type_bind::RedisTypeBind for $name {
-            type RedisType<'redis, R> = $crate::types::normal::Normal<'redis, R, $t>
-                where
-                    R: 'redis;
+        impl $crate::core::type_bind::CacheTypeBind for $name {
+            type CacheType<'cache> = $crate::types::normal::Normal<'cache, $t>;
         }
     };
     ($name:ident::<$t:ty> => $key:literal) => {
@@ -70,10 +64,8 @@ macro_rules! redis_key {
             }
         }
 
-        impl $crate::core::type_bind::RedisTypeBind for $name {
-            type RedisType<'redis, R> = $crate::types::normal::Normal<'redis, R, $t>
-                where
-                    R: 'redis;
+        impl $crate::core::type_bind::CacheTypeBind for $name {
+            type CacheType<'cache> = $crate::types::normal::Normal<'cache, $t>;
         }
     };
     // Redis Set support
@@ -91,10 +83,8 @@ macro_rules! redis_key {
             }
         }
 
-        impl $crate::core::type_bind::RedisTypeBind for $name {
-            type RedisType<'redis, R> = $crate::types::set::Set<'redis, R, $t>
-                where
-                    R: 'redis;
+        impl $crate::core::type_bind::CacheTypeBind for $name {
+            type CacheType<'cache> = $crate::types::set::Set<'cache, $t>;
         }
     };
     (set $name:ident::<$t:ty> => $key:literal) => {
@@ -109,10 +99,8 @@ macro_rules! redis_key {
             }
         }
 
-        impl $crate::core::type_bind::RedisTypeBind for $name {
-            type RedisType<'redis, R> = $crate::types::set::Set<'redis, R, $t>
-                where
-                    R: 'redis;
+        impl $crate::core::type_bind::CacheTypeBind for $name {
+            type CacheType<'cache> = $crate::types::set::Set<'cache, $t>;
         }
     };
     // Redis Sorted Set (ZSet) support
@@ -130,10 +118,8 @@ macro_rules! redis_key {
             }
         }
 
-        impl $crate::core::type_bind::RedisTypeBind for $name {
-            type RedisType<'redis, R> = $crate::types::zset::SortedSet<'redis, R, $t>
-                where
-                    R: 'redis;
+        impl $crate::core::type_bind::CacheTypeBind for $name {
+            type CacheType<'cache> = $crate::types::zset::SortedSet<'cache, $t>;
         }
     };
     (zset $name:ident::<$t:ty> => $key:literal) => {
@@ -148,10 +134,8 @@ macro_rules! redis_key {
             }
         }
 
-        impl $crate::core::type_bind::RedisTypeBind for $name {
-            type RedisType<'redis, R> = $crate::types::zset::SortedSet<'redis, R, $t>
-                where
-                    R: 'redis;
+        impl $crate::core::type_bind::CacheTypeBind for $name {
+            type CacheType<'cache> = $crate::types::zset::SortedSet<'cache, $t>;
         }
     };
     // Redis List support
@@ -169,10 +153,8 @@ macro_rules! redis_key {
             }
         }
 
-        impl $crate::core::type_bind::RedisTypeBind for $name {
-            type RedisType<'redis, R> = $crate::types::list::List<'redis, R, $t>
-                where
-                    R: 'redis;
+        impl $crate::core::type_bind::CacheTypeBind for $name {
+            type CacheType<'cache> = $crate::types::list::List<'cache, $t>;
         }
     };
     (list $name:ident::<$t:ty> => $key:literal) => {
@@ -187,10 +169,8 @@ macro_rules! redis_key {
             }
         }
 
-        impl $crate::core::type_bind::RedisTypeBind for $name {
-            type RedisType<'redis, R> = $crate::types::list::List<'redis, R, $t>
-                where
-                    R: 'redis;
+        impl $crate::core::type_bind::CacheTypeBind for $name {
+            type CacheType<'cache> = $crate::types::list::List<'cache, $t>;
         }
     };
     // Redis Stream support
@@ -208,10 +188,8 @@ macro_rules! redis_key {
             }
         }
 
-        impl $crate::core::type_bind::RedisTypeBind for $name {
-            type RedisType<'redis, R> = $crate::types::stream::Stream<'redis, R, $t>
-                where
-                    R: 'redis;
+        impl $crate::core::type_bind::CacheTypeBind for $name {
+            type CacheType<'cache> = $crate::types::stream::Stream<'cache, $t>;
         }
     };
     (stream $name:ident::<$t:ty> => $key:literal) => {
@@ -226,10 +204,8 @@ macro_rules! redis_key {
             }
         }
 
-        impl $crate::core::type_bind::RedisTypeBind for $name {
-            type RedisType<'redis, R> = $crate::types::stream::Stream<'redis, R, $t>
-                where
-                    R: 'redis;
+        impl $crate::core::type_bind::CacheTypeBind for $name {
+            type CacheType<'cache> = $crate::types::stream::Stream<'cache, $t>;
         }
     };
 }

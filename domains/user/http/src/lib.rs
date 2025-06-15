@@ -18,9 +18,7 @@ pub struct UserResponse {
     pub events: Vec<SimpleEventResponse>,
 }
 
-pub use user_queries::{
-    GetUserByNameResponse,
-};
+pub use user_queries::GetUserByNameResponse;
 
 impl From<user_models::User> for UserResponse {
     fn from(user: user_models::User) -> Self {
@@ -57,6 +55,11 @@ impl UserResponse {
     }
 }
 
-pub use analytics_integration::{UserAnalyticsFactory, UserAnalyticsIntegration};
-pub use command_handlers::{CreateUserHandler, UpdateUserHandler, DeleteUserHandler, CreateUserError, UpdateUserError, DeleteUserError};
+pub use analytics_integration::{
+    UserAnalyticsFactory, UserAnalyticsIntegration,
+};
+pub use command_handlers::{
+    CreateUserError, CreateUserHandler, DeleteUserError, DeleteUserHandler,
+    UpdateUserError, UpdateUserHandler,
+};
 pub use handlers::*;

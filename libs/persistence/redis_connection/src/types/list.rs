@@ -6,21 +6,29 @@ use deadpool_redis::redis::{
     AsyncCommands, FromRedisValue, RedisResult, ToRedisArgs,
 };
 use moka::future::Cache;
+use serde::{Deserialize, Serialize};
 
-use crate::core::{value::{Json, CacheValue}, type_bind::RedisTypeTrait};
-use serde::{Serialize, Deserialize};
+use crate::core::{
+    backend::CacheBackend,
+    type_bind::CacheTypeTrait,
+    value::{CacheValue, Json},
+};
 
-pub struct List<'redis, R: 'redis, T> {
-    redis: &'redis mut R,
+pub struct List<'cache, T> {
+    redis: &'cache mut deadpool_redis::Connection,
     key: Cow<'static, str>,
     __phantom: PhantomData<T>,
 }
 
-impl<'redis, R, T> RedisTypeTrait<'redis, R> for List<'redis, R, T> {
-    fn from_redis_and_key(
-        redis: &'redis mut R, key: Cow<'static, str>,
-        memory: Option<Cache<String, Bytes>>,
+impl<'cache, T> CacheTypeTrait<'cache> for List<'cache, T> {
+    fn from_cache_and_key(
+        backend: CacheBackend<'cache>, key: Cow<'static, str>,
     ) -> Self {
+        let redis = match backend {
+            CacheBackend::Redis(redis) => redis,
+            _ => panic!("List type can only be created from Redis backend"),
+        };
+
         Self {
             redis,
             key,
@@ -29,13 +37,14 @@ impl<'redis, R, T> RedisTypeTrait<'redis, R> for List<'redis, R, T> {
     }
 }
 
-impl<'redis, R, T> List<'redis, R, T>
+impl<'cache, T> List<'cache, T>
 where
-    R: redis::aio::ConnectionLike + Send + Sync,
-    T: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone + 'redis,
+    T: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone + 'cache,
 {
     /// Push element to the left (beginning) of the list
-    pub async fn push_left<RV>(&mut self, value: impl Into<Json<T>>) -> RedisResult<RV>
+    pub async fn push_left<RV>(
+        &mut self, value: impl Into<Json<T>>,
+    ) -> RedisResult<RV>
     where
         RV: FromRedisValue,
     {
@@ -43,7 +52,9 @@ where
     }
 
     /// Push multiple elements to the left of the list
-    pub async fn push_left_multiple<RV>(&mut self, values: Vec<T>) -> RedisResult<RV>
+    pub async fn push_left_multiple<RV>(
+        &mut self, values: Vec<T>,
+    ) -> RedisResult<RV>
     where
         RV: FromRedisValue,
     {
@@ -56,7 +67,9 @@ where
     }
 
     /// Push element to the right (end) of the list
-    pub async fn push_right<RV>(&mut self, value: impl Into<Json<T>>) -> RedisResult<RV>
+    pub async fn push_right<RV>(
+        &mut self, value: impl Into<Json<T>>,
+    ) -> RedisResult<RV>
     where
         RV: FromRedisValue,
     {
@@ -64,7 +77,9 @@ where
     }
 
     /// Push multiple elements to the right of the list
-    pub async fn push_right_multiple<RV>(&mut self, values: Vec<T>) -> RedisResult<RV>
+    pub async fn push_right_multiple<RV>(
+        &mut self, values: Vec<T>,
+    ) -> RedisResult<RV>
     where
         RV: FromRedisValue,
     {
@@ -89,45 +104,66 @@ where
     }
 
     /// Pop multiple elements from the left
-    pub async fn pop_left_multiple(&mut self, count: usize) -> RedisResult<Vec<T>> {
+    pub async fn pop_left_multiple(
+        &mut self, count: usize,
+    ) -> RedisResult<Vec<T>> {
         if let Some(non_zero_count) = std::num::NonZero::new(count) {
-            let jsons: Vec<Json<T>> = self.redis.lpop(&*self.key, Some(non_zero_count)).await?;
+            let jsons: Vec<Json<T>> =
+                self.redis.lpop(&*self.key, Some(non_zero_count)).await?;
             Ok(jsons.into_iter().map(|j| j.inner()).collect())
-        } else {
+        }
+        else {
             Ok(vec![])
         }
     }
 
     /// Pop multiple elements from the right
-    pub async fn pop_right_multiple(&mut self, count: usize) -> RedisResult<Vec<T>> {
+    pub async fn pop_right_multiple(
+        &mut self, count: usize,
+    ) -> RedisResult<Vec<T>> {
         if let Some(non_zero_count) = std::num::NonZero::new(count) {
-            let jsons: Vec<Json<T>> = self.redis.rpop(&*self.key, Some(non_zero_count)).await?;
+            let jsons: Vec<Json<T>> =
+                self.redis.rpop(&*self.key, Some(non_zero_count)).await?;
             Ok(jsons.into_iter().map(|j| j.inner()).collect())
-        } else {
+        }
+        else {
             Ok(vec![])
         }
     }
 
     /// Blocking pop from left with timeout
-    pub async fn blocking_pop_left(&mut self, timeout: Duration) -> RedisResult<Option<(String, T)>> {
-        let result: Option<(String, Json<T>)> = self.redis.blpop(&*self.key, timeout.as_secs() as f64).await?;
+    pub async fn blocking_pop_left(
+        &mut self, timeout: Duration,
+    ) -> RedisResult<Option<(String, T)>> {
+        let result: Option<(String, Json<T>)> = self
+            .redis
+            .blpop(&*self.key, timeout.as_secs() as f64)
+            .await?;
         Ok(result.map(|(k, v)| (k, v.inner())))
     }
 
     /// Blocking pop from right with timeout
-    pub async fn blocking_pop_right(&mut self, timeout: Duration) -> RedisResult<Option<(String, T)>> {
-        let result: Option<(String, Json<T>)> = self.redis.brpop(&*self.key, timeout.as_secs() as f64).await?;
+    pub async fn blocking_pop_right(
+        &mut self, timeout: Duration,
+    ) -> RedisResult<Option<(String, T)>> {
+        let result: Option<(String, Json<T>)> = self
+            .redis
+            .brpop(&*self.key, timeout.as_secs() as f64)
+            .await?;
         Ok(result.map(|(k, v)| (k, v.inner())))
     }
 
     /// Get element at index
     pub async fn get(&mut self, index: isize) -> RedisResult<Option<T>> {
-        let json: Option<Json<T>> = self.redis.lindex(&*self.key, index).await?;
+        let json: Option<Json<T>> =
+            self.redis.lindex(&*self.key, index).await?;
         Ok(json.map(|j| j.inner()))
     }
 
     /// Set element at index
-    pub async fn set<RV>(&mut self, index: isize, value: impl Into<Json<T>>) -> RedisResult<RV>
+    pub async fn set<RV>(
+        &mut self, index: isize, value: impl Into<Json<T>>,
+    ) -> RedisResult<RV>
     where
         RV: FromRedisValue,
     {
@@ -135,8 +171,11 @@ where
     }
 
     /// Get range of elements
-    pub async fn range(&mut self, start: isize, stop: isize) -> RedisResult<Vec<T>> {
-        let jsons: Vec<Json<T>> = self.redis.lrange(&*self.key, start, stop).await?;
+    pub async fn range(
+        &mut self, start: isize, stop: isize,
+    ) -> RedisResult<Vec<T>> {
+        let jsons: Vec<Json<T>> =
+            self.redis.lrange(&*self.key, start, stop).await?;
         Ok(jsons.into_iter().map(|j| j.inner()).collect())
     }
 
@@ -154,21 +193,31 @@ where
     }
 
     /// Insert element before or after pivot
-    pub async fn insert<RV>(&mut self, before: bool, pivot: impl Into<Json<T>>, value: impl Into<Json<T>>) -> RedisResult<RV>
+    pub async fn insert<RV>(
+        &mut self, before: bool, pivot: impl Into<Json<T>>,
+        value: impl Into<Json<T>>,
+    ) -> RedisResult<RV>
     where
         RV: FromRedisValue,
     {
         let pivot_json = pivot.into();
         let value_json = value.into();
         if before {
-            self.redis.linsert_before(&*self.key, pivot_json, value_json).await
-        } else {
-            self.redis.linsert_after(&*self.key, pivot_json, value_json).await
+            self.redis
+                .linsert_before(&*self.key, pivot_json, value_json)
+                .await
+        }
+        else {
+            self.redis
+                .linsert_after(&*self.key, pivot_json, value_json)
+                .await
         }
     }
 
     /// Remove occurrences of element
-    pub async fn remove<RV>(&mut self, count: isize, value: impl Into<Json<T>>) -> RedisResult<RV>
+    pub async fn remove<RV>(
+        &mut self, count: isize, value: impl Into<Json<T>>,
+    ) -> RedisResult<RV>
     where
         RV: FromRedisValue,
     {
@@ -176,7 +225,9 @@ where
     }
 
     /// Trim list to specified range
-    pub async fn trim<RV>(&mut self, start: isize, stop: isize) -> RedisResult<RV>
+    pub async fn trim<RV>(
+        &mut self, start: isize, stop: isize,
+    ) -> RedisResult<RV>
     where
         RV: FromRedisValue,
     {
@@ -184,37 +235,50 @@ where
     }
 
     /// Move element from one list to another (non-blocking version)
-    pub async fn move_to(&mut self, dest_key: &str, from_left: bool, to_left: bool) -> RedisResult<Option<T>> {
+    pub async fn move_to(
+        &mut self, dest_key: &str, from_left: bool, to_left: bool,
+    ) -> RedisResult<Option<T>> {
         // Use the simpler RPOPLPUSH or equivalent operations
         if from_left {
             let value: Option<T> = self.pop_left().await?;
             if let Some(val) = value.clone() {
                 if to_left {
-                    let _: i32 = self.redis.lpush(dest_key, Json(val)).await?;
-                } else {
-                    let _: i32 = self.redis.rpush(dest_key, Json(val)).await?;
+                    let _: i32 =
+                        self.redis.lpush(dest_key, Json(val)).await?;
+                }
+                else {
+                    let _: i32 =
+                        self.redis.rpush(dest_key, Json(val)).await?;
                 }
                 Ok(value)
-            } else {
+            }
+            else {
                 Ok(None)
             }
-        } else {
+        }
+        else {
             let value: Option<T> = self.pop_right().await?;
             if let Some(val) = value.clone() {
                 if to_left {
-                    let _: i32 = self.redis.lpush(dest_key, Json(val)).await?;
-                } else {
-                    let _: i32 = self.redis.rpush(dest_key, Json(val)).await?;
+                    let _: i32 =
+                        self.redis.lpush(dest_key, Json(val)).await?;
+                }
+                else {
+                    let _: i32 =
+                        self.redis.rpush(dest_key, Json(val)).await?;
                 }
                 Ok(value)
-            } else {
+            }
+            else {
                 Ok(None)
             }
         }
     }
 
     /// Push element only if list exists
-    pub async fn push_left_if_exists<RV>(&mut self, value: impl Into<Json<T>>) -> RedisResult<RV>
+    pub async fn push_left_if_exists<RV>(
+        &mut self, value: impl Into<Json<T>>,
+    ) -> RedisResult<RV>
     where
         RV: FromRedisValue,
     {
@@ -222,13 +286,16 @@ where
         let exists: bool = self.redis.exists(&*self.key).await?;
         if exists {
             self.redis.lpush(&*self.key, value.into()).await
-        } else {
+        }
+        else {
             FromRedisValue::from_redis_value(&redis::Value::Int(0))
         }
     }
 
     /// Push element only if list exists
-    pub async fn push_right_if_exists<RV>(&mut self, value: impl Into<Json<T>>) -> RedisResult<RV>
+    pub async fn push_right_if_exists<RV>(
+        &mut self, value: impl Into<Json<T>>,
+    ) -> RedisResult<RV>
     where
         RV: FromRedisValue,
     {
@@ -236,7 +303,8 @@ where
         let exists: bool = self.redis.exists(&*self.key).await?;
         if exists {
             self.redis.rpush(&*self.key, value.into()).await
-        } else {
+        }
+        else {
             FromRedisValue::from_redis_value(&redis::Value::Int(0))
         }
     }

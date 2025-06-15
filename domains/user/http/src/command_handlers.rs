@@ -5,9 +5,13 @@ use flume::Sender;
 use sql_connection::SqlConnect;
 use thiserror::Error;
 use tracing::{instrument, warn};
-use user_commands::{CreateUserCommand, CreateUserResponse, CreateUserResult, UpdateUserCommand, UpdateUserResponse, UpdateUserResult, DeleteUserCommand};
-use user_events::UserAnalyticsEvent;
+use user_commands::{
+    CreateUserCommand, CreateUserResponse, CreateUserResult,
+    DeleteUserCommand, UpdateUserCommand, UpdateUserResponse,
+    UpdateUserResult,
+};
 use user_dao::{UserDao, UserDaoError};
+use user_events::UserAnalyticsEvent;
 use uuid::Uuid;
 
 #[derive(Debug, Error)]
@@ -48,12 +52,16 @@ impl CreateUserHandler {
         }
     }
 
-    pub fn with_analytics_event_sender(mut self, analytics_event_sender: Sender<UserAnalyticsEvent>) -> Self {
+    pub fn with_analytics_event_sender(
+        mut self, analytics_event_sender: Sender<UserAnalyticsEvent>,
+    ) -> Self {
         self.analytics_event_sender = Some(analytics_event_sender);
         self
     }
 
-    pub fn with_event_sender(mut self, event_sender: Sender<CreateEventCommand>) -> Self {
+    pub fn with_event_sender(
+        mut self, event_sender: Sender<CreateEventCommand>,
+    ) -> Self {
         self.event_sender = Some(event_sender);
         self
     }
@@ -70,7 +78,8 @@ impl CreateUserHandler {
                 user_id: saved_user.id,
                 name: saved_user.name.clone(),
                 created_at: saved_user.created_at,
-                registration_source: None, // TODO: extract from request context if needed
+                registration_source: None, /* TODO: extract from request
+                                            * context if needed */
             };
             if let Err(e) = analytics_event_sender.send(analytics_event) {
                 warn!("Failed to emit user analytics event: {}", e);
@@ -101,12 +110,16 @@ impl UpdateUserHandler {
         }
     }
 
-    pub fn with_analytics_event_sender(mut self, analytics_event_sender: Sender<UserAnalyticsEvent>) -> Self {
+    pub fn with_analytics_event_sender(
+        mut self, analytics_event_sender: Sender<UserAnalyticsEvent>,
+    ) -> Self {
         self.analytics_event_sender = Some(analytics_event_sender);
         self
     }
 
-    pub fn with_event_sender(self, _event_sender: Sender<CreateEventCommand>) -> Self {
+    pub fn with_event_sender(
+        self, _event_sender: Sender<CreateEventCommand>,
+    ) -> Self {
         // No-op for now - UpdateUserHandler doesn't emit regular events
         self
     }
@@ -127,14 +140,13 @@ impl UpdateUserHandler {
         let user_id = command.user_id;
         let old_name = existing_user.name.clone();
 
-        let updated_user = self
-            .user_dao
-            .update(command.user_id, command)
-            .await?;
+        let updated_user =
+            self.user_dao.update(command.user_id, command).await?;
 
         // Emit analytics event if name was updated
         if name_updated {
-            if let Some(analytics_event_sender) = &self.analytics_event_sender {
+            if let Some(analytics_event_sender) = &self.analytics_event_sender
+            {
                 let analytics_event = UserAnalyticsEvent::UserNameUpdated {
                     user_id,
                     old_name,
@@ -171,12 +183,16 @@ impl DeleteUserHandler {
         }
     }
 
-    pub fn with_analytics_event_sender(mut self, analytics_event_sender: Sender<UserAnalyticsEvent>) -> Self {
+    pub fn with_analytics_event_sender(
+        mut self, analytics_event_sender: Sender<UserAnalyticsEvent>,
+    ) -> Self {
         self.analytics_event_sender = Some(analytics_event_sender);
         self
     }
 
-    pub fn with_event_sender(self, _event_sender: Sender<CreateEventCommand>) -> Self {
+    pub fn with_event_sender(
+        self, _event_sender: Sender<CreateEventCommand>,
+    ) -> Self {
         // No-op for now - DeleteUserHandler doesn't emit regular events
         self
     }
@@ -195,7 +211,7 @@ impl DeleteUserHandler {
             )?;
 
         self.user_dao.delete(command.user_id).await?;
-        
+
         // Emit analytics event for user deletion
         if let Some(analytics_event_sender) = &self.analytics_event_sender {
             let analytics_event = UserAnalyticsEvent::UserDeleted {
@@ -206,64 +222,70 @@ impl DeleteUserHandler {
                 warn!("Failed to emit user analytics event: {}", e);
             }
         }
-        
+
         Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use flume;
     use test_utils::*;
+
+    use super::*;
 
     async fn setup_test_handlers() -> anyhow::Result<(
         test_utils::postgres::TestPostgresContainer,
         CreateUserHandler,
-        UpdateUserHandler, 
+        UpdateUserHandler,
         DeleteUserHandler,
     )> {
-        let container = test_utils::postgres::TestPostgresContainer::new().await?;
+        let container =
+            test_utils::postgres::TestPostgresContainer::new().await?;
         let sql_connect = create_sql_connect(&container);
-        
+
         let create_handler = CreateUserHandler::new(sql_connect.clone());
         let update_handler = UpdateUserHandler::new(sql_connect.clone());
         let delete_handler = DeleteUserHandler::new(sql_connect);
-        
+
         Ok((container, create_handler, update_handler, delete_handler))
     }
 
     #[tokio::test]
     async fn test_create_user_handler() {
-        let (_container, create_handler, _, _) = setup_test_handlers().await.unwrap();
-        
+        let (_container, create_handler, ..) =
+            setup_test_handlers().await.unwrap();
+
         let command = CreateUserCommand {
             name: "test_user".to_string(),
         };
-        
+
         let result = create_handler.execute(command).await.unwrap();
-        
+
         assert_eq!(result.user.name, "test_user");
         assert!(!result.user.id.is_nil());
     }
 
     #[tokio::test]
     async fn test_user_analytics_event_publishing() {
-        let (_container, create_handler, _, _) = setup_test_handlers().await.unwrap();
-        
+        let (_container, create_handler, ..) =
+            setup_test_handlers().await.unwrap();
+
         // Set up analytics event channel
-        let (analytics_event_sender, analytics_event_receiver) = flume::unbounded();
-        let create_handler = create_handler.with_analytics_event_sender(analytics_event_sender);
-        
+        let (analytics_event_sender, analytics_event_receiver) =
+            flume::unbounded();
+        let create_handler = create_handler
+            .with_analytics_event_sender(analytics_event_sender);
+
         let command = CreateUserCommand {
             name: "analytics_event_test_user".to_string(),
         };
-        
+
         let result = create_handler.execute(command).await.unwrap();
-        
+
         // Verify user was created
         assert_eq!(result.user.name, "analytics_event_test_user");
-        
+
         // Verify analytics event was published
         let published_event = analytics_event_receiver.try_recv().unwrap();
         match published_event {
@@ -277,32 +299,41 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_user_analytics_event() {
-        let (_container, create_handler, update_handler, _) = setup_test_handlers().await.unwrap();
-        
+        let (_container, create_handler, update_handler, _) =
+            setup_test_handlers().await.unwrap();
+
         // Create a user first
         let create_command = CreateUserCommand {
             name: "update_analytics_test_user".to_string(),
         };
-        let created_user = create_handler.execute(create_command).await.unwrap();
-        
+        let created_user =
+            create_handler.execute(create_command).await.unwrap();
+
         // Set up analytics event channel for updates
-        let (analytics_event_sender, analytics_event_receiver) = flume::unbounded();
-        let update_handler = update_handler.with_analytics_event_sender(analytics_event_sender);
-        
+        let (analytics_event_sender, analytics_event_receiver) =
+            flume::unbounded();
+        let update_handler = update_handler
+            .with_analytics_event_sender(analytics_event_sender);
+
         // Update the user
         let update_command = UpdateUserCommand {
             user_id: created_user.user.id,
             name: Some("updated_analytics_test_user".to_string()),
         };
         let result = update_handler.execute(update_command).await.unwrap();
-        
+
         // Verify user was updated
         assert_eq!(result.user.name, "updated_analytics_test_user");
-        
+
         // Verify analytics event was published
         let published_event = analytics_event_receiver.try_recv().unwrap();
         match published_event {
-            UserAnalyticsEvent::UserNameUpdated { user_id, old_name, new_name, .. } => {
+            UserAnalyticsEvent::UserNameUpdated {
+                user_id,
+                old_name,
+                new_name,
+                ..
+            } => {
                 assert_eq!(user_id, created_user.user.id);
                 assert_eq!(old_name, "update_analytics_test_user");
                 assert_eq!(new_name, "updated_analytics_test_user");
@@ -313,27 +344,31 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_user_analytics_event() {
-        let (_container, create_handler, _, delete_handler) = setup_test_handlers().await.unwrap();
-        
+        let (_container, create_handler, _, delete_handler) =
+            setup_test_handlers().await.unwrap();
+
         // Create a user first
         let create_command = CreateUserCommand {
             name: "delete_analytics_test_user".to_string(),
         };
-        let created_user = create_handler.execute(create_command).await.unwrap();
-        
+        let created_user =
+            create_handler.execute(create_command).await.unwrap();
+
         // Set up analytics event channel for deletes
-        let (analytics_event_sender, analytics_event_receiver) = flume::unbounded();
-        let delete_handler = delete_handler.with_analytics_event_sender(analytics_event_sender);
-        
+        let (analytics_event_sender, analytics_event_receiver) =
+            flume::unbounded();
+        let delete_handler = delete_handler
+            .with_analytics_event_sender(analytics_event_sender);
+
         // Delete the user
         let delete_command = DeleteUserCommand {
             user_id: created_user.user.id,
         };
         let result = delete_handler.execute(delete_command).await;
-        
+
         // Verify deletion was successful
         assert!(result.is_ok());
-        
+
         // Verify analytics event was published
         let published_event = analytics_event_receiver.try_recv().unwrap();
         match published_event {

@@ -1,11 +1,14 @@
-use std::collections::{HashMap, HashSet};
-use std::time::Duration;
+use std::{
+    collections::{HashMap, HashSet},
+    time::Duration,
+};
 
 use async_trait::async_trait;
 use deadpool_redis::redis::{FromRedisValue, RedisResult, ToRedisArgs};
 
 /// A high-level trait for Redis commands that abstracts away the underlying
-/// redis::AsyncCommands trait and provides a cleaner, more ergonomic interface.
+/// redis::AsyncCommands trait and provides a cleaner, more ergonomic
+/// interface.
 #[async_trait]
 pub trait RedisCommands {
     // String commands
@@ -19,7 +22,9 @@ pub trait RedisCommands {
         K: ToRedisArgs + Send + Sync,
         V: ToRedisArgs + Send + Sync;
 
-    async fn set_ex<K, V>(&mut self, key: K, value: V, seconds: u64) -> RedisResult<()>
+    async fn set_ex<K, V>(
+        &mut self, key: K, value: V, seconds: u64,
+    ) -> RedisResult<()>
     where
         K: ToRedisArgs + Send + Sync,
         V: ToRedisArgs + Send + Sync;
@@ -52,7 +57,9 @@ pub trait RedisCommands {
     where
         K: ToRedisArgs + Send + Sync;
 
-    async fn rename<K1, K2>(&mut self, old_key: K1, new_key: K2) -> RedisResult<()>
+    async fn rename<K1, K2>(
+        &mut self, old_key: K1, new_key: K2,
+    ) -> RedisResult<()>
     where
         K1: ToRedisArgs + Send + Sync,
         K2: ToRedisArgs + Send + Sync;
@@ -64,7 +71,9 @@ pub trait RedisCommands {
         F: ToRedisArgs + Send + Sync,
         V: FromRedisValue;
 
-    async fn hset<K, F, V>(&mut self, key: K, field: F, value: V) -> RedisResult<bool>
+    async fn hset<K, F, V>(
+        &mut self, key: K, field: F, value: V,
+    ) -> RedisResult<bool>
     where
         K: ToRedisArgs + Send + Sync,
         F: ToRedisArgs + Send + Sync,
@@ -80,7 +89,9 @@ pub trait RedisCommands {
         K: ToRedisArgs + Send + Sync,
         F: ToRedisArgs + Send + Sync;
 
-    async fn hgetall<K, FK, FV>(&mut self, key: K) -> RedisResult<HashMap<FK, FV>>
+    async fn hgetall<K, FK, FV>(
+        &mut self, key: K,
+    ) -> RedisResult<HashMap<FK, FV>>
     where
         K: ToRedisArgs + Send + Sync,
         FK: FromRedisValue + Eq + std::hash::Hash,
@@ -121,7 +132,9 @@ pub trait RedisCommands {
     where
         K: ToRedisArgs + Send + Sync;
 
-    async fn lrange<K, V>(&mut self, key: K, start: i32, stop: i32) -> RedisResult<Vec<V>>
+    async fn lrange<K, V>(
+        &mut self, key: K, start: i32, stop: i32,
+    ) -> RedisResult<Vec<V>>
     where
         K: ToRedisArgs + Send + Sync,
         V: FromRedisValue;
@@ -137,7 +150,9 @@ pub trait RedisCommands {
         K: ToRedisArgs + Send + Sync,
         V: ToRedisArgs + Send + Sync;
 
-    async fn sismember<K, V>(&mut self, key: K, member: V) -> RedisResult<bool>
+    async fn sismember<K, V>(
+        &mut self, key: K, member: V,
+    ) -> RedisResult<bool>
     where
         K: ToRedisArgs + Send + Sync,
         V: ToRedisArgs + Send + Sync;
@@ -153,31 +168,24 @@ pub trait RedisCommands {
 
     // Utility commands
     async fn ping(&mut self) -> RedisResult<String>;
-    
+
     async fn flushdb(&mut self) -> RedisResult<()>;
 }
 
-/// A Redis command executor that wraps a connection and implements RedisCommands
+/// A Redis command executor that wraps a connection and implements
+/// RedisCommands
 pub struct RedisCommandExecutor<C> {
     connection: C,
 }
 
 impl<C> RedisCommandExecutor<C> {
-    pub fn new(connection: C) -> Self {
-        Self { connection }
-    }
+    pub fn new(connection: C) -> Self { Self { connection } }
 
-    pub fn into_inner(self) -> C {
-        self.connection
-    }
+    pub fn into_inner(self) -> C { self.connection }
 
-    pub fn as_connection(&self) -> &C {
-        &self.connection
-    }
+    pub fn as_connection(&self) -> &C { &self.connection }
 
-    pub fn as_connection_mut(&mut self) -> &mut C {
-        &mut self.connection
-    }
+    pub fn as_connection_mut(&mut self) -> &mut C { &mut self.connection }
 }
 
 #[async_trait]
@@ -204,7 +212,9 @@ where
         self.connection.set(key, value).await
     }
 
-    async fn set_ex<K, V>(&mut self, key: K, value: V, seconds: u64) -> RedisResult<()>
+    async fn set_ex<K, V>(
+        &mut self, key: K, value: V, seconds: u64,
+    ) -> RedisResult<()>
     where
         K: ToRedisArgs + Send + Sync,
         V: ToRedisArgs + Send + Sync,
@@ -265,7 +275,9 @@ where
         self.connection.ttl(key).await
     }
 
-    async fn rename<K1, K2>(&mut self, old_key: K1, new_key: K2) -> RedisResult<()>
+    async fn rename<K1, K2>(
+        &mut self, old_key: K1, new_key: K2,
+    ) -> RedisResult<()>
     where
         K1: ToRedisArgs + Send + Sync,
         K2: ToRedisArgs + Send + Sync,
@@ -285,7 +297,9 @@ where
         self.connection.hget(key, field).await
     }
 
-    async fn hset<K, F, V>(&mut self, key: K, field: F, value: V) -> RedisResult<bool>
+    async fn hset<K, F, V>(
+        &mut self, key: K, field: F, value: V,
+    ) -> RedisResult<bool>
     where
         K: ToRedisArgs + Send + Sync,
         F: ToRedisArgs + Send + Sync,
@@ -313,7 +327,9 @@ where
         self.connection.hexists(key, field).await
     }
 
-    async fn hgetall<K, FK, FV>(&mut self, key: K) -> RedisResult<HashMap<FK, FV>>
+    async fn hgetall<K, FK, FV>(
+        &mut self, key: K,
+    ) -> RedisResult<HashMap<FK, FV>>
     where
         K: ToRedisArgs + Send + Sync,
         FK: FromRedisValue + Eq + std::hash::Hash,
@@ -386,13 +402,17 @@ where
         self.connection.llen(key).await
     }
 
-    async fn lrange<K, V>(&mut self, key: K, start: i32, stop: i32) -> RedisResult<Vec<V>>
+    async fn lrange<K, V>(
+        &mut self, key: K, start: i32, stop: i32,
+    ) -> RedisResult<Vec<V>>
     where
         K: ToRedisArgs + Send + Sync,
         V: FromRedisValue,
     {
         use deadpool_redis::redis::AsyncCommands;
-        self.connection.lrange(key, start as isize, stop as isize).await
+        self.connection
+            .lrange(key, start as isize, stop as isize)
+            .await
     }
 
     // Set commands
@@ -414,7 +434,9 @@ where
         self.connection.srem(key, member).await
     }
 
-    async fn sismember<K, V>(&mut self, key: K, member: V) -> RedisResult<bool>
+    async fn sismember<K, V>(
+        &mut self, key: K, member: V,
+    ) -> RedisResult<bool>
     where
         K: ToRedisArgs + Send + Sync,
         V: ToRedisArgs + Send + Sync,
@@ -514,7 +536,9 @@ impl<K, V> SetCommandBuilder<K, V> {
                 if exists {
                     return Ok(false);
                 }
-                commands.set_ex(self.key, self.value, duration.as_secs()).await?;
+                commands
+                    .set_ex(self.key, self.value, duration.as_secs())
+                    .await?;
                 Ok(true)
             }
             (None, true, false) => {
@@ -523,7 +547,9 @@ impl<K, V> SetCommandBuilder<K, V> {
             }
             (Some(duration), false, false) => {
                 // SET key value EX seconds
-                commands.set_ex(self.key, self.value, duration.as_secs()).await?;
+                commands
+                    .set_ex(self.key, self.value, duration.as_secs())
+                    .await?;
                 Ok(true)
             }
             (None, false, false) => {
@@ -542,7 +568,9 @@ impl<K, V> SetCommandBuilder<K, V> {
 
 /// Extension trait for more ergonomic command building
 pub trait RedisCommandsExt: RedisCommands {
-    fn set_builder<K, V>(&mut self, key: K, value: V) -> SetCommandBuilder<K, V> {
+    fn set_builder<K, V>(
+        &mut self, key: K, value: V,
+    ) -> SetCommandBuilder<K, V> {
         SetCommandBuilder::new(key, value)
     }
 }

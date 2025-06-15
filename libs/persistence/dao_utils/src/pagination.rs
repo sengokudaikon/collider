@@ -11,7 +11,9 @@ impl PaginationParams {
         Self { limit, offset }
     }
 
-    pub fn build_query_parts(&self, base_query: &str, order_by: &str) -> (String, Vec<i64>) {
+    pub fn build_query_parts(
+        &self, base_query: &str, order_by: &str,
+    ) -> (String, Vec<i64>) {
         let mut query = format!("{} {}", base_query, order_by);
         let mut params = Vec::new();
         let mut param_count = 0;
@@ -19,7 +21,11 @@ impl PaginationParams {
         match (self.limit, self.offset) {
             (Some(l), Some(o)) => {
                 param_count += 2;
-                query.push_str(&format!(" LIMIT ${} OFFSET ${}", param_count - 1, param_count));
+                query.push_str(&format!(
+                    " LIMIT ${} OFFSET ${}",
+                    param_count - 1,
+                    param_count
+                ));
                 params.extend([l as i64, o as i64]);
             }
             (Some(l), None) => {
@@ -38,7 +44,9 @@ impl PaginationParams {
         (query, params)
     }
 
-    pub fn build_query_with_existing_params(&self, base_query: &str, order_by: &str, existing_param_count: usize) -> (String, Vec<i64>) {
+    pub fn build_query_with_existing_params(
+        &self, base_query: &str, order_by: &str, existing_param_count: usize,
+    ) -> (String, Vec<i64>) {
         let mut query = format!("{} {}", base_query, order_by);
         let mut params = Vec::new();
         let mut param_count = existing_param_count;
@@ -82,11 +90,11 @@ impl<T> CursorPagination<T> {
         }
     }
 
-    pub fn limit_plus_one(&self) -> i64 {
-        self.limit as i64 + 1
-    }
+    pub fn limit_plus_one(&self) -> i64 { self.limit as i64 + 1 }
 }
 
-pub fn create_param_refs<T: ToSql + Sync>(params: &[T]) -> Vec<&(dyn ToSql + Sync)> {
+pub fn create_param_refs<T: ToSql + Sync>(
+    params: &[T],
+) -> Vec<&(dyn ToSql + Sync)> {
     params.iter().map(|p| p as &(dyn ToSql + Sync)).collect()
 }

@@ -1,20 +1,21 @@
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
+
 use analytics::RedisAnalyticsMetricsUpdater;
 use analytics_dao::AnalyticsViewsDao;
 use analytics_models::{
-    EventHourlySummary, EventMetrics, PopularEvent, UserDailyActivity, UserMetrics,
+    EventHourlySummary, EventMetrics, PopularEvent, UserDailyActivity,
+    UserMetrics,
 };
 use analytics_queries::{
-    DashboardMetrics, EventMetricsQuery, HourlySummariesQuery, PopularEventsQuery,
-    RealtimeMetricsQuery, RefreshViewsQuery, RefreshViewsResponse, UserActivityQuery,
-    UserMetricsQuery,
+    DashboardMetrics, EventMetricsQuery, HourlySummariesQuery,
+    PopularEventsQuery, RealtimeMetricsQuery, RefreshViewsQuery,
+    RefreshViewsResponse, UserActivityQuery, UserMetricsQuery,
 };
 use axum::{
+    Router,
     extract::{Path, Query, State},
     response::Json,
     routing::{get, post},
-    Router,
 };
 use chrono::Utc;
 use domain::{AppError, AppResult};
@@ -29,7 +30,9 @@ pub struct AnalyticsServices {
 }
 
 impl AnalyticsServices {
-    pub fn new(db: SqlConnect, redis_updater: RedisAnalyticsMetricsUpdater) -> Self {
+    pub fn new(
+        db: SqlConnect, redis_updater: RedisAnalyticsMetricsUpdater,
+    ) -> Self {
         Self {
             dao: Arc::new(AnalyticsViewsDao::new(db)),
             redis_updater: Arc::new(tokio::sync::Mutex::new(redis_updater)),
@@ -47,10 +50,13 @@ impl AnalyticsHandlers {
             .route("/views/user-activity", get(get_user_activity))
             .route("/views/popular-events", get(get_popular_events))
             .route("/views/refresh", post(refresh_views))
-            // Metrics endpoints  
+            // Metrics endpoints
             .route("/metrics/events", get(get_event_metrics))
             .route("/metrics/users/:user_id", get(get_user_metrics))
-            .route("/metrics/realtime/:bucket_type", get(get_realtime_metrics))
+            .route(
+                "/metrics/realtime/:bucket_type",
+                get(get_realtime_metrics),
+            )
             .route("/metrics/dashboard", get(get_dashboard_metrics))
     }
 }
@@ -165,10 +171,7 @@ pub async fn refresh_views(
         concurrent: params.concurrent.unwrap_or(true),
     };
 
-    let response = services
-        .dao
-        .refresh_views(command)
-        .await?;
+    let response = services.dao.refresh_views(command).await?;
 
     Ok(Json(RefreshViewsResponse {
         refreshed_views: response.refreshed_views,
@@ -220,13 +223,14 @@ pub async fn get_event_metrics(
 )]
 #[instrument(skip_all)]
 pub async fn get_user_metrics(
-    State(services): State<AnalyticsServices>,
-    Path(user_id): Path<Uuid>,
+    State(services): State<AnalyticsServices>, Path(user_id): Path<Uuid>,
     Query(params): Query<UserMetricsQuery>,
 ) -> AppResult<Json<UserMetrics>> {
     // First try to get cached metrics from Redis
     let mut redis_updater = services.redis_updater.lock().await;
-    if let Ok(Some(cached_metrics)) = redis_updater.get_user_metrics(&user_id).await {
+    if let Ok(Some(cached_metrics)) =
+        redis_updater.get_user_metrics(&user_id).await
+    {
         return Ok(Json(cached_metrics));
     }
     drop(redis_updater);
@@ -265,7 +269,8 @@ pub async fn get_realtime_metrics(
     if !["minute", "hour", "day"].contains(&bucket_type.as_str()) {
         return Err(anyhow::anyhow!(
             "Invalid bucket type. Must be 'minute', 'hour', or 'day'"
-        ).into());
+        )
+        .into());
     }
 
     let redis_updater = services.redis_updater.lock().await;
@@ -290,7 +295,8 @@ pub async fn get_dashboard_metrics(
     State(services): State<AnalyticsServices>,
 ) -> AppResult<Json<DashboardMetrics>> {
     let now = Utc::now();
-    let today_start = now.date_naive().and_hms_opt(0, 0, 0).unwrap().and_utc();
+    let today_start =
+        now.date_naive().and_hms_opt(0, 0, 0).unwrap().and_utc();
     let week_start = now - chrono::Duration::days(7);
 
     // Get today's event metrics
@@ -301,9 +307,8 @@ pub async fn get_dashboard_metrics(
 
     // Get realtime activity from Redis
     let redis_updater = services.redis_updater.lock().await;
-    let realtime_activity = redis_updater
-        .get_real_time_metrics("hour", now)
-        .await?;
+    let realtime_activity =
+        redis_updater.get_real_time_metrics("hour", now).await?;
 
     // Get weekly event metrics for growth calculation
     let week_metrics = services
@@ -321,7 +326,8 @@ pub async fn get_dashboard_metrics(
             .get("session_end:metadata")
             .unwrap_or(&0)) as f64,
         popular_events: event_metrics.top_events,
-        user_growth_this_week: week_metrics.unique_users - event_metrics.unique_users,
+        user_growth_this_week: week_metrics.unique_users
+            - event_metrics.unique_users,
         realtime_activity,
     };
 

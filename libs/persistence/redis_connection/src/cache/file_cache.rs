@@ -4,54 +4,52 @@
 //! This module provides persistent file-based caching as a third layer in the
 //! caching system. Useful for data that should survive server restarts.
 
-use std::{
-    borrow::Cow, marker::PhantomData, path::PathBuf,
-    sync::Arc,
-};
+use std::{borrow::Cow, marker::PhantomData, sync::Arc, time::Duration};
 
-use bytes::Bytes;
-use deadpool_redis::redis::{
-    FromRedisValue, RedisResult, ToRedisArgs, Value,
-};
-use moka::future::Cache;
-use redis::AsyncCommands;
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 #[cfg(feature = "file-cache")] use sled::Db;
 #[cfg(feature = "file-cache")] use tokio::sync::RwLock;
 
 #[cfg(feature = "file-cache")]
 use crate::config::FileConfig;
-use crate::core::{value::{Json, CacheValue}, type_bind::RedisTypeTrait};
-use serde::{Serialize, Deserialize};
+use crate::{
+    cache::r#trait::{CacheError, CacheResult, CacheTrait},
+    core::{
+        type_bind::CacheTypeTrait,
+        value::{CacheValue, Json},
+    },
+};
 
 /// File-based cache implementation using sled database
 #[cfg(feature = "file-cache")]
-pub struct FileCache<'redis, R, T> {
-    redis: &'redis mut R,
+pub struct FileCache<'cache, T> {
     key: Cow<'static, str>,
     file_db: Arc<RwLock<Db>>,
     tree_name: String,
     config: FileConfig,
-    __phantom: PhantomData<T>,
+    __phantom: PhantomData<(&'cache (), T)>,
 }
 
 #[cfg(feature = "file-cache")]
-impl<'redis, R, T> RedisTypeTrait<'redis, R> for FileCache<'redis, R, T> {
-    fn from_redis_and_key(
-        redis: &'redis mut R, key: Cow<'static, str>,
-        _memory: Option<Cache<String, Bytes>>,
+impl<'cache, T> CacheTypeTrait<'cache> for FileCache<'cache, T> {
+    fn from_cache_and_key(
+        backend: super::super::core::backend::CacheBackend<'cache>,
+        key: Cow<'static, str>,
     ) -> Self {
-        let config = FileConfig {
-            path: PathBuf::from("/tmp/redis_file_cache"),
-            max_size_mb: 1024,
+        let (path, config) = match backend {
+            super::super::core::backend::CacheBackend::File {
+                path,
+                config,
+            } => (path, config),
+            _ => panic!("FileCache can only be created from File backend"),
         };
 
         let file_db = Arc::new(RwLock::new(
-            sled::open(&config.path)
-                .expect("Failed to open file cache database"),
+            sled::open(&path).expect("Failed to open file cache database"),
         ));
 
         Self {
-            redis,
             key: key.clone(),
             file_db,
             tree_name: format!("cache_{}", key.replace(':', "_")),
@@ -62,10 +60,9 @@ impl<'redis, R, T> RedisTypeTrait<'redis, R> for FileCache<'redis, R, T> {
 }
 
 #[cfg(feature = "file-cache")]
-impl<'redis, R, T> FileCache<'redis, R, T>
+impl<'cache, T> FileCache<'cache, T>
 where
-    R: deadpool_redis::redis::aio::ConnectionLike + Send + Sync,
-    T: Serialize + for<'de> Deserialize<'de> + Clone + Send + Sync + 'redis,
+    T: Serialize + for<'de> Deserialize<'de> + Clone + Send + Sync + 'cache,
 {
     pub fn with_config(mut self, config: FileConfig) -> Self {
         self.config = config;
@@ -74,206 +71,6 @@ where
                 .expect("Failed to open file cache database"),
         ));
         self
-    }
-
-    /// Check if key exists in any layer (file -> Redis)
-    pub async fn exists<RV>(&mut self) -> RedisResult<RV>
-    where
-        RV: FromRedisValue,
-    {
-        // Check file cache first
-        if self.exists_in_file().await.unwrap_or(false) {
-            return FromRedisValue::from_redis_value(&Value::Int(1));
-        }
-
-        // Check Redis
-        self.redis.exists(&*self.key).await
-    }
-
-    /// Get value from layered cache (file -> Redis)
-    pub async fn get(&mut self) -> RedisResult<T> {
-        // Try file cache first
-        if let Some(value) = self.get_from_file().await.unwrap_or(None) {
-            return Ok(value);
-        }
-
-        // Get from Redis
-        let json: Json<T> = self.redis.get(&*self.key).await?;
-        Ok(json.inner())
-    }
-
-    /// Try to get value, returning None if not found
-    pub async fn try_get(&mut self) -> RedisResult<Option<T>> {
-        if !bool::from_redis_value(&self.exists::<Value>().await?)? {
-            return Ok(None);
-        }
-        self.get().await.map(Some)
-    }
-
-    /// Set value in all layers
-    pub async fn set<RV>(&mut self, value: impl Into<Json<T>> + Clone) -> RedisResult<RV>
-    where
-        RV: FromRedisValue,
-    {
-        let json = value.clone().into();
-        // Set in Redis first
-        let result: RV = self.redis.set(&*self.key, json.clone()).await?;
-
-        // Cache in file for persistence
-        let _ = self.set_in_file(&json.inner()).await;
-
-        Ok(result)
-    }
-
-    /// Set value with expiration
-    pub async fn set_with_expire<RV>(
-        &mut self, value: impl Into<Json<T>> + Clone, duration: std::time::Duration,
-    ) -> RedisResult<RV>
-    where
-        RV: FromRedisValue,
-    {
-        let json = value.clone().into();
-        // Set in Redis with TTL
-        let result: RV = self
-            .redis
-            .set_ex(&*self.key, json.clone(), duration.as_secs() as _)
-            .await?;
-
-        // Set in file cache with expiration metadata
-        let _ = self.set_in_file_with_ttl(&json.inner(), duration).await;
-
-        Ok(result)
-    }
-
-    /// Set value only if it doesn't exist
-    pub async fn set_if_not_exist<RV>(
-        &mut self, value: impl Into<Json<T>> + Clone,
-    ) -> RedisResult<RV>
-    where
-        RV: FromRedisValue,
-    {
-        // Check if exists in any layer
-        if bool::from_redis_value(&self.exists::<Value>().await?)? {
-            return FromRedisValue::from_redis_value(&Value::Int(0));
-        }
-
-        let json = value.clone().into();
-        // Set in Redis
-        let result = self.redis.set_nx(&*self.key, json.clone()).await;
-
-        if let Ok(_val) = &result {
-            // Cache in file
-            let _ = self.set_in_file(&json.inner()).await;
-        }
-
-        result
-    }
-
-    /// Remove value from all layers
-    pub async fn remove<RV>(&mut self) -> RedisResult<RV>
-    where
-        RV: FromRedisValue,
-    {
-        // Remove from file cache
-        let _ = self.remove_from_file().await;
-
-        // Remove from Redis
-        self.redis.del(&*self.key).await
-    }
-
-    /// File cache operations
-    async fn exists_in_file(&self) -> Result<bool, sled::Error> {
-        let db = self.file_db.read().await;
-        let tree = db.open_tree(&self.tree_name)?;
-        tree.contains_key(&*self.key)
-    }
-
-    async fn get_from_file(
-        &self,
-    ) -> Result<Option<T>, Box<dyn std::error::Error + Send + Sync>>
-    {
-        let db = self.file_db.read().await;
-        let tree = db.open_tree(&self.tree_name)?;
-
-        if let Some(data) = tree.get(&*self.key)? {
-            // Check if expired
-            if self.is_expired(&data).await? {
-                drop(db);
-                let _ = self.remove_from_file().await;
-                return Ok(None);
-            }
-
-            let payload = self.extract_payload(&data)?;
-            let json = Json::<T>::from_bytes(&payload)
-                .map_err(|e| format!("Deserialization failed: {}", e))?;
-            Ok(Some(json.inner()))
-        }
-        else {
-            Ok(None)
-        }
-    }
-
-    async fn set_in_file(
-        &self, value: &T,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
-    {
-        let json = Json(value.clone());
-        let bytes = json.to_bytes()
-            .map_err(|e| format!("Serialization failed: {}", e))?;
-
-        let db = self.file_db.write().await;
-        let tree = db.open_tree(&self.tree_name)?;
-        tree.insert(&*self.key, bytes)?;
-        tree.flush_async().await?;
-        Ok(())
-    }
-
-    async fn set_in_file_raw(
-        &self, value: &T,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
-    {
-        let json = Json(value.clone());
-        let bytes = json.to_bytes()
-            .map_err(|e| format!("Serialization failed: {}", e))?;
-
-        let db = self.file_db.write().await;
-        let tree = db.open_tree(&self.tree_name)?;
-        tree.insert(&*self.key, bytes)?;
-        tree.flush_async().await?;
-        Ok(())
-    }
-
-    async fn set_in_file_with_ttl(
-        &self, value: &T, ttl: std::time::Duration,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
-    {
-        let json = Json(value.clone());
-        let bytes = json.to_bytes()
-            .map_err(|e| format!("Serialization failed: {}", e))?;
-
-        // Prepend expiration timestamp
-        let expiry = std::time::SystemTime::now() + ttl;
-        let expiry_bytes = expiry
-            .duration_since(std::time::UNIX_EPOCH)?
-            .as_secs()
-            .to_be_bytes();
-
-        let mut payload = expiry_bytes.to_vec();
-        payload.extend(bytes);
-
-        let db = self.file_db.write().await;
-        let tree = db.open_tree(&self.tree_name)?;
-        tree.insert(&*self.key, payload)?;
-        tree.flush_async().await?;
-        Ok(())
-    }
-
-    async fn remove_from_file(&self) -> Result<(), sled::Error> {
-        let db = self.file_db.write().await;
-        let tree = db.open_tree(&self.tree_name)?;
-        tree.remove(&*self.key)?;
-        tree.flush_async().await?;
-        Ok(())
     }
 
     async fn is_expired(
@@ -339,6 +136,152 @@ where
 }
 
 #[cfg(feature = "file-cache")]
+#[async_trait]
+impl<T> CacheTrait for FileCache<'_, T>
+where
+    T: Serialize + for<'de> Deserialize<'de> + Clone + Send + Sync + 'static,
+{
+    type Value = T;
+
+    async fn exists(&mut self, key: &str) -> CacheResult<bool> {
+        let db = self.file_db.read().await;
+        let tree = db
+            .open_tree(&self.tree_name)
+            .map_err(|e| CacheError::Other(e.to_string()))?;
+        tree.contains_key(key)
+            .map_err(|e| CacheError::Other(e.to_string()))
+    }
+
+    async fn get(&mut self, key: &str) -> CacheResult<Self::Value> {
+        let db = self.file_db.read().await;
+        let tree = db
+            .open_tree(&self.tree_name)
+            .map_err(|e| CacheError::Other(e.to_string()))?;
+
+        if let Some(data) = tree
+            .get(key)
+            .map_err(|e| CacheError::Other(e.to_string()))?
+        {
+            // Check if expired
+            if self
+                .is_expired(&data)
+                .await
+                .map_err(|e| CacheError::Other(e.to_string()))?
+            {
+                drop(db);
+                // Remove expired key
+                let db = self.file_db.write().await;
+                let tree = db
+                    .open_tree(&self.tree_name)
+                    .map_err(|e| CacheError::Other(e.to_string()))?;
+                let _ = tree.remove(key);
+                let _ = tree.flush_async().await;
+                return Err(CacheError::KeyNotFound);
+            }
+
+            let payload = self
+                .extract_payload(&data)
+                .map_err(|e| CacheError::Other(e.to_string()))?;
+            let json = Json::<T>::from_bytes(&payload).map_err(|e| {
+                CacheError::DeserializationError(e.to_string())
+            })?;
+            Ok(json.inner())
+        }
+        else {
+            Err(CacheError::KeyNotFound)
+        }
+    }
+
+    async fn try_get(
+        &mut self, key: &str,
+    ) -> CacheResult<Option<Self::Value>> {
+        match self.get(key).await {
+            Ok(value) => Ok(Some(value)),
+            Err(CacheError::KeyNotFound) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    async fn set(
+        &mut self, key: &str, value: &Self::Value,
+    ) -> CacheResult<()> {
+        let json = Json(value.clone());
+        let bytes = json
+            .to_bytes()
+            .map_err(|e| CacheError::SerializationError(e.to_string()))?;
+
+        let db = self.file_db.write().await;
+        let tree = db
+            .open_tree(&self.tree_name)
+            .map_err(|e| CacheError::Other(e.to_string()))?;
+        tree.insert(key, bytes)
+            .map_err(|e| CacheError::Other(e.to_string()))?;
+        tree.flush_async()
+            .await
+            .map_err(|e| CacheError::Other(e.to_string()))?;
+        Ok(())
+    }
+
+    async fn set_with_ttl(
+        &mut self, key: &str, value: &Self::Value, ttl: Duration,
+    ) -> CacheResult<()> {
+        let json = Json(value.clone());
+        let bytes = json
+            .to_bytes()
+            .map_err(|e| CacheError::SerializationError(e.to_string()))?;
+
+        // Prepend expiration timestamp
+        let expiry = std::time::SystemTime::now() + ttl;
+        let expiry_bytes = expiry
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| CacheError::Other(e.to_string()))?
+            .as_secs()
+            .to_be_bytes();
+
+        let mut payload = expiry_bytes.to_vec();
+        payload.extend(bytes);
+
+        let db = self.file_db.write().await;
+        let tree = db
+            .open_tree(&self.tree_name)
+            .map_err(|e| CacheError::Other(e.to_string()))?;
+        tree.insert(key, payload)
+            .map_err(|e| CacheError::Other(e.to_string()))?;
+        tree.flush_async()
+            .await
+            .map_err(|e| CacheError::Other(e.to_string()))?;
+        Ok(())
+    }
+
+    async fn set_if_not_exist(
+        &mut self, key: &str, value: &Self::Value,
+    ) -> CacheResult<bool> {
+        if self.exists(key).await? {
+            Ok(false) // Already exists
+        }
+        else {
+            self.set(key, value).await?;
+            Ok(true) // Successfully set
+        }
+    }
+
+    async fn remove(&mut self, key: &str) -> CacheResult<bool> {
+        let db = self.file_db.write().await;
+        let tree = db
+            .open_tree(&self.tree_name)
+            .map_err(|e| CacheError::Other(e.to_string()))?;
+        let existed = tree
+            .remove(key)
+            .map_err(|e| CacheError::Other(e.to_string()))?
+            .is_some();
+        tree.flush_async()
+            .await
+            .map_err(|e| CacheError::Other(e.to_string()))?;
+        Ok(existed)
+    }
+}
+
+#[cfg(feature = "file-cache")]
 #[derive(Debug)]
 pub struct FileCacheStats {
     pub total_keys: usize,
@@ -348,18 +291,73 @@ pub struct FileCacheStats {
 
 // Stubs when file-cache feature is disabled
 #[cfg(not(feature = "file-cache"))]
-pub struct FileCache<'redis, R, T> {
-    _phantom: PhantomData<(&'redis R, T)>,
+pub struct FileCache<'cache, T> {
+    _phantom: PhantomData<(&'cache (), T)>,
 }
 
 #[cfg(not(feature = "file-cache"))]
-impl<'redis, R, T> RedisTypeTrait<'redis, R> for FileCache<'redis, R, T> {
-    fn from_redis_and_key(
-        _redis: &'redis mut R, _key: Cow<'static, str>,
-        _memory: Option<Cache<String, Bytes>>,
+impl<'cache, T> CacheTypeTrait<'cache> for FileCache<'cache, T> {
+    fn from_cache_and_key(
+        _backend: super::super::core::backend::CacheBackend<'cache>,
+        _key: Cow<'static, str>,
     ) -> Self {
         Self {
             _phantom: PhantomData,
         }
+    }
+}
+
+#[cfg(not(feature = "file-cache"))]
+#[async_trait]
+impl<T> CacheTrait for FileCache<'_, T>
+where
+    T: Serialize + for<'de> Deserialize<'de> + Clone + Send + Sync + 'static,
+{
+    type Value = T;
+
+    async fn exists(&self, _key: &str) -> CacheResult<bool> {
+        Err(CacheError::Unsupported(
+            "File cache not compiled".to_string(),
+        ))
+    }
+
+    async fn get(&self, _key: &str) -> CacheResult<Self::Value> {
+        Err(CacheError::Unsupported(
+            "File cache not compiled".to_string(),
+        ))
+    }
+
+    async fn try_get(&self, _key: &str) -> CacheResult<Option<Self::Value>> {
+        Err(CacheError::Unsupported(
+            "File cache not compiled".to_string(),
+        ))
+    }
+
+    async fn set(&self, _key: &str, _value: &Self::Value) -> CacheResult<()> {
+        Err(CacheError::Unsupported(
+            "File cache not compiled".to_string(),
+        ))
+    }
+
+    async fn set_with_ttl(
+        &self, _key: &str, _value: &Self::Value, _ttl: Duration,
+    ) -> CacheResult<()> {
+        Err(CacheError::Unsupported(
+            "File cache not compiled".to_string(),
+        ))
+    }
+
+    async fn set_if_not_exist(
+        &self, _key: &str, _value: &Self::Value,
+    ) -> CacheResult<bool> {
+        Err(CacheError::Unsupported(
+            "File cache not compiled".to_string(),
+        ))
+    }
+
+    async fn remove(&self, _key: &str) -> CacheResult<bool> {
+        Err(CacheError::Unsupported(
+            "File cache not compiled".to_string(),
+        ))
     }
 }

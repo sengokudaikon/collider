@@ -6,21 +6,29 @@ use deadpool_redis::redis::{
     AsyncCommands, FromRedisValue, RedisResult, ToRedisArgs,
 };
 use moka::future::Cache;
+use serde::{Deserialize, Serialize};
 
-use crate::core::{value::{Json, CacheValue}, type_bind::RedisTypeTrait};
-use serde::{Serialize, Deserialize};
+use crate::core::{
+    backend::CacheBackend,
+    type_bind::CacheTypeTrait,
+    value::{CacheValue, Json},
+};
 
-pub struct Hash<'redis, R: 'redis, T> {
-    redis: &'redis mut R,
+pub struct Hash<'cache, T> {
+    redis: &'cache mut deadpool_redis::Connection,
     key: Cow<'static, str>,
     __phantom: PhantomData<T>,
 }
 
-impl<'redis, R, T> RedisTypeTrait<'redis, R> for Hash<'redis, R, T> {
-    fn from_redis_and_key(
-        redis: &'redis mut R, key: Cow<'static, str>,
-        memory: Option<Cache<String, Bytes>>,
+impl<'cache, T> CacheTypeTrait<'cache> for Hash<'cache, T> {
+    fn from_cache_and_key(
+        backend: CacheBackend<'cache>, key: Cow<'static, str>,
     ) -> Self {
+        let redis = match backend {
+            CacheBackend::Redis(redis) => redis,
+            _ => panic!("Hash type can only be created from Redis backend"),
+        };
+
         Self {
             redis,
             key,
@@ -29,10 +37,9 @@ impl<'redis, R, T> RedisTypeTrait<'redis, R> for Hash<'redis, R, T> {
     }
 }
 
-impl<'redis, R, T> Hash<'redis, R, T>
+impl<'cache, T> Hash<'cache, T>
 where
-    R: redis::aio::ConnectionLike + Send + Sync,
-    T: Serialize + for<'de> Deserialize<'de> + Send + Sync + 'redis,
+    T: Serialize + for<'de> Deserialize<'de> + Send + Sync + 'cache,
 {
     pub async fn exists<'arg, RV, F>(&mut self, field: F) -> RedisResult<RV>
     where

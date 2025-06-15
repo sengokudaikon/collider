@@ -4,9 +4,9 @@ use analytics_models::UserMetrics;
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use redis_connection::{
-    connection::RedisConnectionManager, core::command::{IntoRedisCommands, RedisCommands},
-    PoolError,
-    RedisError,
+    PoolError, RedisError,
+    connection::RedisConnectionManager,
+    core::command::{IntoRedisCommands, RedisCommands},
 };
 use serde_json::json;
 use thiserror::Error;

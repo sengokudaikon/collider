@@ -1,43 +1,44 @@
 use std::{borrow::Cow, marker::PhantomData, time::Duration};
 
+use async_trait::async_trait;
 use bytes::Bytes;
-use deadpool_redis::redis::{
-    FromRedisValue, RedisResult, Value,
-};
 use moka::future::Cache;
+use serde::{Deserialize, Serialize};
 
+use super::r#trait::{CacheError, CacheResult, CacheTrait};
 use crate::{
-    config::MemoryConfig, 
-    core::{value::{Json, CacheValue}, type_bind::RedisTypeTrait},
+    config::MemoryConfig,
+    core::{
+        type_bind::CacheTypeTrait,
+        value::{CacheValue, Json},
+    },
 };
-use serde::{Serialize, Deserialize};
 
-pub struct Memory<'redis, R, T> {
+pub struct Memory<'cache, T> {
     memory: Cache<String, Bytes>,
+    #[allow(dead_code)]
     key: Cow<'static, str>,
     config: MemoryConfig,
-    __phantom: PhantomData<(&'redis R, T)>,
+    __phantom: PhantomData<(&'cache (), T)>,
 }
 
-impl<'redis, R, T> RedisTypeTrait<'redis, R> for Memory<'redis, R, T> {
-    fn from_redis_and_key(
-        _redis: &'redis mut R, key: Cow<'static, str>,
-        memory: Option<Cache<String, Bytes>>,
+impl<'cache, T> CacheTypeTrait<'cache> for Memory<'cache, T> {
+    fn from_cache_and_key(
+        backend: super::super::core::backend::CacheBackend<'cache>,
+        key: Cow<'static, str>,
     ) -> Self {
-        let config = MemoryConfig {
-            capacity: 10_000,
-            ttl_secs: 300,
+        let (cache, config) = match backend {
+            super::super::core::backend::CacheBackend::Memory {
+                cache,
+                config,
+            } => (cache, config),
+            _ => {
+                panic!("Memory cache can only be created from Memory backend")
+            }
         };
 
-        let memory = memory.unwrap_or_else(|| {
-            Cache::builder()
-                .max_capacity(config.capacity)
-                .time_to_live(config.ttl())
-                .build()
-        });
-
         Self {
-            memory,
+            memory: cache,
             key,
             config,
             __phantom: PhantomData,
@@ -45,9 +46,9 @@ impl<'redis, R, T> RedisTypeTrait<'redis, R> for Memory<'redis, R, T> {
     }
 }
 
-impl<'redis, R, T> Memory<'redis, R, T>
+impl<'cache, T> Memory<'cache, T>
 where
-    T: Serialize + for<'de> Deserialize<'de> + Send + Sync + 'redis,
+    T: Serialize + for<'de> Deserialize<'de> + Send + Sync + 'cache,
 {
     pub fn with_config(mut self, config: MemoryConfig) -> Self {
         self.memory = Cache::builder()
@@ -57,87 +58,98 @@ where
         self.config = config;
         self
     }
+}
 
-    pub async fn exists<RV>(&mut self) -> RedisResult<RV>
-    where
-        RV: FromRedisValue,
-    {
-        let exists = self.memory.get(&self.key.to_string()).await.is_some();
-        FromRedisValue::from_redis_value(&Value::Int(exists as i64))
+#[async_trait]
+impl<T> CacheTrait for Memory<'_, T>
+where
+    T: Serialize + for<'de> Deserialize<'de> + Clone + Send + Sync + 'static,
+{
+    type Value = T;
+
+    async fn exists(&mut self, key: &str) -> CacheResult<bool> {
+        Ok(self.memory.get(key).await.is_some())
     }
 
-    pub async fn get(&mut self) -> RedisResult<T> {
-        if let Some(bytes) = self.memory.get(&self.key.to_string()).await {
-            let json = Json::<T>::from_bytes(&bytes)
-                .map_err(|e| deadpool_redis::redis::RedisError::from((deadpool_redis::redis::ErrorKind::TypeError, "Deserialization failed", e.to_string())))?;
+    async fn get(&mut self, key: &str) -> CacheResult<Self::Value> {
+        if let Some(bytes) = self.memory.get(key).await {
+            let json = Json::<T>::from_bytes(&bytes).map_err(|e| {
+                CacheError::DeserializationError(e.to_string())
+            })?;
             Ok(json.inner())
         }
         else {
-            Err(deadpool_redis::redis::RedisError::from((
-                deadpool_redis::redis::ErrorKind::TypeError,
-                "Key not found in memory cache",
-            )))
+            Err(CacheError::KeyNotFound)
         }
     }
 
-    pub async fn try_get(&mut self) -> RedisResult<Option<T>> {
-        if !bool::from_redis_value(&self.exists::<Value>().await?)? {
-            return Ok(None);
-        }
-        self.get().await.map(Some)
-    }
-
-    pub async fn set<RV>(&mut self, value: impl Into<Json<T>>) -> RedisResult<RV>
-    where
-        RV: FromRedisValue,
-    {
-        let json = value.into();
-        let serialized = json.to_bytes()
-            .map_err(|e| deadpool_redis::redis::RedisError::from((deadpool_redis::redis::ErrorKind::IoError, "Serialization failed", e.to_string())))?;
-        self.memory
-            .insert(self.key.to_string(), Bytes::from(serialized))
-            .await;
-        FromRedisValue::from_redis_value(&Value::SimpleString(
-            "OK".to_string(),
-        ))
-    }
-
-    pub async fn set_with_expire<RV>(
-        &mut self, value: impl Into<Json<T>>, _duration: Duration,
-    ) -> RedisResult<RV>
-    where
-        RV: FromRedisValue,
-    {
-        self.set(value).await
-    }
-
-    pub async fn set_if_not_exist<RV>(
-        &mut self, value: impl Into<Json<T>>,
-    ) -> RedisResult<RV>
-    where
-        RV: FromRedisValue,
-    {
-        let exists = self.memory.get(&self.key.to_string()).await.is_some();
-        if !exists {
-            let json = value.into();
-            let serialized = json.to_bytes()
-                .map_err(|e| deadpool_redis::redis::RedisError::from((deadpool_redis::redis::ErrorKind::IoError, "Serialization failed", e.to_string())))?;
-            self.memory
-                .insert(self.key.to_string(), Bytes::from(serialized))
-                .await;
-            FromRedisValue::from_redis_value(&Value::Int(1))
+    async fn try_get(
+        &mut self, key: &str,
+    ) -> CacheResult<Option<Self::Value>> {
+        if let Some(bytes) = self.memory.get(key).await {
+            let json = Json::<T>::from_bytes(&bytes).map_err(|e| {
+                CacheError::DeserializationError(e.to_string())
+            })?;
+            Ok(Some(json.inner()))
         }
         else {
-            FromRedisValue::from_redis_value(&Value::Int(0))
+            Ok(None)
         }
     }
 
-    pub async fn remove<RV>(&mut self) -> RedisResult<RV>
-    where
-        RV: FromRedisValue,
-    {
-        let existed = self.memory.get(&self.key.to_string()).await.is_some();
-        self.memory.invalidate(&self.key.to_string()).await;
-        FromRedisValue::from_redis_value(&Value::Int(existed as i64))
+    async fn set(
+        &mut self, key: &str, value: &Self::Value,
+    ) -> CacheResult<()> {
+        let json = Json(value.clone());
+        let bytes = json
+            .to_bytes()
+            .map_err(|e| CacheError::SerializationError(e.to_string()))?;
+        self.memory
+            .insert(key.to_string(), Bytes::from(bytes))
+            .await;
+        Ok(())
+    }
+
+    async fn set_with_ttl(
+        &mut self, key: &str, value: &Self::Value, _ttl: Duration,
+    ) -> CacheResult<()> {
+        // Note: Moka cache uses global TTL, not per-key TTL
+        let json = Json(value.clone());
+        let bytes = json
+            .to_bytes()
+            .map_err(|e| CacheError::SerializationError(e.to_string()))?;
+        self.memory
+            .insert(key.to_string(), Bytes::from(bytes))
+            .await;
+        Ok(())
+    }
+
+    async fn set_if_not_exist(
+        &mut self, key: &str, value: &Self::Value,
+    ) -> CacheResult<bool> {
+        if self.memory.get(key).await.is_none() {
+            let json = Json(value.clone());
+            let bytes = json
+                .to_bytes()
+                .map_err(|e| CacheError::SerializationError(e.to_string()))?;
+            self.memory
+                .insert(key.to_string(), Bytes::from(bytes))
+                .await;
+            Ok(true)
+        }
+        else {
+            Ok(false)
+        }
+    }
+
+    async fn remove(&mut self, key: &str) -> CacheResult<bool> {
+        let existed = self.memory.get(key).await.is_some();
+        self.memory.invalidate(key).await;
+        Ok(existed)
+    }
+
+    async fn clear(&mut self) -> CacheResult<()> {
+        self.memory.invalidate_all();
+        Ok(())
     }
 }

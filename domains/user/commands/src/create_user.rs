@@ -18,5 +18,3 @@ pub struct CreateUserResponse {
 pub struct CreateUserResult {
     pub user: CreateUserResponse,
 }
-
-

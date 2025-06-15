@@ -1,9 +1,9 @@
 use axum::{
+    Router,
     extract::{Path, Query, State},
     http::StatusCode,
     response::Json,
     routing::{delete, get, post, put},
-    Router,
 };
 use chrono::{DateTime, Utc};
 use domain::AppError;
@@ -22,11 +22,11 @@ use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::{
+    EventResponse,
     command_handlers::{
         BulkDeleteEventsHandler, CreateEventHandler, DeleteEventHandler,
         UpdateEventHandler,
     },
-    EventResponse,
 };
 
 #[derive(Clone)]

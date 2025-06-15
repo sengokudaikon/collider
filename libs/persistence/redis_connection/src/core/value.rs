@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 pub trait CacheValue: Sized + Send + Sync {
     /// Serialize to bytes for any cache backend
     fn to_bytes(&self) -> Result<Vec<u8>, CacheError>;
-    
+
     /// Deserialize from bytes
     fn from_bytes(bytes: &[u8]) -> Result<Self, CacheError>;
 }
@@ -31,46 +31,31 @@ pub enum CacheError {
 pub struct Json<T>(pub T);
 
 impl<T> Json<T> {
-    pub fn new(value: T) -> Self {
-        Self(value)
-    }
-    
-    pub fn inner(self) -> T {
-        self.0
-    }
-    
-    pub fn as_inner(&self) -> &T {
-        &self.0
-    }
-    
-    pub fn as_inner_mut(&mut self) -> &mut T {
-        &mut self.0
-    }
+    pub fn new(value: T) -> Self { Self(value) }
+
+    pub fn inner(self) -> T { self.0 }
+
+    pub fn as_inner(&self) -> &T { &self.0 }
+
+    pub fn as_inner_mut(&mut self) -> &mut T { &mut self.0 }
 }
 
 // Implement Deref for ergonomic access
 impl<T> Deref for Json<T> {
     type Target = T;
-    
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
+
+    fn deref(&self) -> &Self::Target { &self.0 }
 }
 
 impl<T> DerefMut for Json<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
+    fn deref_mut(&mut self) -> &mut Self::Target { &mut self.0 }
 }
 
 // Implement From for easy conversion
 impl<T> From<T> for Json<T> {
-    fn from(value: T) -> Self {
-        Json(value)
-    }
+    fn from(value: T) -> Self { Json(value) }
 }
 
-// Direct implementation of CacheValue for Json<T>
 impl<T> CacheValue for Json<T>
 where
     T: Serialize + for<'de> Deserialize<'de> + Send + Sync,
@@ -79,7 +64,7 @@ where
         serde_json::to_vec(&self.0)
             .map_err(|e| CacheError::Serialization(e.to_string()))
     }
-    
+
     fn from_bytes(bytes: &[u8]) -> Result<Self, CacheError> {
         serde_json::from_slice(bytes)
             .map(Json)
@@ -87,7 +72,6 @@ where
     }
 }
 
-// Direct Redis support for Json<T> - no more SerdeJson needed!
 impl<T> ToRedisArgs for Json<T>
 where
     T: Serialize + for<'de> Deserialize<'de> + Send + Sync,
@@ -110,37 +94,39 @@ where
     fn from_redis_value(v: &Value) -> RedisResult<Self> {
         match v {
             Value::BulkString(data) => {
-                Self::from_bytes(data)
-                    .map_err(|e| RedisError::from((
+                Self::from_bytes(data).map_err(|e| {
+                    RedisError::from((
                         ErrorKind::TypeError,
                         "JSON deserialization failed",
                         e.to_string(),
-                    )))
+                    ))
+                })
             }
-            Value::Nil => Err(RedisError::from((
-                ErrorKind::TypeError,
-                "Cannot convert nil to JSON value",
-            ))),
-            _ => Err(RedisError::from((
-                ErrorKind::TypeError,
-                "Expected bulk string for JSON",
-            ))),
+            Value::Nil => {
+                Err(RedisError::from((
+                    ErrorKind::TypeError,
+                    "Cannot convert nil to JSON value",
+                )))
+            }
+            _ => {
+                Err(RedisError::from((
+                    ErrorKind::TypeError,
+                    "Expected bulk string for JSON",
+                )))
+            }
         }
     }
 }
 
-// For primitive types, we can use a different wrapper that uses efficient encoding
+// For primitive types, we can use a different wrapper that uses efficient
+// encoding
 #[derive(Clone, Debug)]
 pub struct Primitive<T>(pub T);
 
 impl<T> Primitive<T> {
-    pub fn new(value: T) -> Self {
-        Self(value)
-    }
-    
-    pub fn inner(self) -> T {
-        self.0
-    }
+    pub fn new(value: T) -> Self { Self(value) }
+
+    pub fn inner(self) -> T { self.0 }
 }
 
 // Efficient implementations for primitives
@@ -148,7 +134,7 @@ impl CacheValue for Primitive<String> {
     fn to_bytes(&self) -> Result<Vec<u8>, CacheError> {
         Ok(self.0.as_bytes().to_vec())
     }
-    
+
     fn from_bytes(bytes: &[u8]) -> Result<Self, CacheError> {
         String::from_utf8(bytes.to_vec())
             .map(Primitive)
@@ -160,7 +146,7 @@ impl CacheValue for Primitive<i64> {
     fn to_bytes(&self) -> Result<Vec<u8>, CacheError> {
         Ok(self.0.to_le_bytes().to_vec())
     }
-    
+
     fn from_bytes(bytes: &[u8]) -> Result<Self, CacheError> {
         if bytes.len() != 8 {
             return Err(CacheError::InvalidFormat);
@@ -207,7 +193,7 @@ impl FromRedisValue for Primitive<i64> {
 // Helper trait for easy conversion
 pub trait IntoCacheValue: Sized {
     type Wrapped: CacheValue;
-    
+
     fn into_cache_value(self) -> Self::Wrapped;
 }
 
@@ -216,47 +202,51 @@ where
     T: Serialize + for<'de> Deserialize<'de> + Send + Sync,
 {
     type Wrapped = Json<T>;
-    
-    fn into_cache_value(self) -> Self::Wrapped {
-        Json(self)
-    }
+
+    fn into_cache_value(self) -> Self::Wrapped { Json(self) }
 }
 
 // Convenience for the RedisValue trait
-pub trait RedisValue<'redis>: CacheValue + ToRedisArgs + FromRedisValue + 'redis {}
+pub trait RedisValue<'redis>:
+    CacheValue + ToRedisArgs + FromRedisValue + 'redis
+{
+}
 
-impl<'redis, T> RedisValue<'redis> for T 
-where
-    T: CacheValue + ToRedisArgs + FromRedisValue + 'redis,
-{}
+impl<'redis, T> RedisValue<'redis> for T where
+    T: CacheValue + ToRedisArgs + FromRedisValue + 'redis
+{
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
     struct User {
         id: u64,
         name: String,
     }
-    
+
     #[test]
     fn test_json_roundtrip() {
-        let user = User { id: 1, name: "Alice".into() };
+        let user = User {
+            id: 1,
+            name: "Alice".into(),
+        };
         let json = Json(user.clone());
-        
+
         let bytes = json.to_bytes().unwrap();
         let recovered = Json::<User>::from_bytes(&bytes).unwrap();
-        
+
         assert_eq!(recovered.0, user);
     }
-    
+
     #[test]
     fn test_primitive_string() {
         let value = Primitive("Hello".to_string());
         let bytes = value.to_bytes().unwrap();
         let recovered = Primitive::<String>::from_bytes(&bytes).unwrap();
-        
+
         assert_eq!(recovered.0, "Hello");
     }
 }

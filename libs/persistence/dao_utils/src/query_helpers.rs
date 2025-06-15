@@ -7,18 +7,14 @@ pub type PgParamBox = Box<PgSendParam>;
 pub type PgParamVec = Vec<PgParamBox>;
 
 pub async fn execute_with_not_found_check(
-    client: &Client,
-    stmt: &tokio_postgres::Statement,
-    params: &[&PgParam],
+    client: &Client, stmt: &tokio_postgres::Statement, params: &[&PgParam],
 ) -> Result<u64, tokio_postgres::Error> {
     let affected = client.execute(stmt, params).await?;
     Ok(affected)
 }
 
 pub fn first_row_or_not_found<T, E, F>(
-    rows: &[Row],
-    mapper: F,
-    not_found_error: E,
+    rows: &[Row], mapper: F, not_found_error: E,
 ) -> Result<T, E>
 where
     F: FnOnce(&Row) -> T,
@@ -27,8 +23,7 @@ where
 }
 
 pub async fn count_query(
-    client: &Client,
-    table_name: &str,
+    client: &Client, table_name: &str,
 ) -> Result<i64, tokio_postgres::Error> {
     let query = format!("SELECT COUNT(*) FROM {}", table_name);
     let stmt = client.prepare(&query).await?;
@@ -46,7 +41,7 @@ pub fn build_where_clause_with_params<'a>(
 
     let mut where_clauses = Vec::new();
     let mut params = Vec::new();
-    
+
     for (i, (column, param)) in filters.iter().enumerate() {
         where_clauses.push(format!("{} = ${}", column, i + 1));
         params.push(*param);

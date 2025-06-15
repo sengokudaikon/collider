@@ -26,15 +26,12 @@ pub struct UserMetrics {
     pub favorite_events: Vec<EventTypeCount>,
 }
 
-
 #[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
 pub struct EventTypeCount {
     pub event_type: String,
     pub count: i64,
     pub percentage: f64,
 }
-
-
 
 /// Model for event_hourly_summaries materialized view
 #[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]

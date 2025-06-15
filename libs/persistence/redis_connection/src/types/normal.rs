@@ -4,21 +4,29 @@ use std::{borrow::Cow, marker::PhantomData, time::Duration};
 use bytes::Bytes;
 use deadpool_redis::redis::{AsyncCommands, FromRedisValue, RedisResult};
 use moka::future::Cache;
+use serde::{Deserialize, Serialize};
 
-use crate::core::{value::{Json, CacheValue}, type_bind::RedisTypeTrait};
-use serde::{Serialize, Deserialize};
+use crate::core::{
+    type_bind::CacheTypeTrait,
+    value::{CacheValue, Json},
+};
 
-pub struct Normal<'redis, R, T> {
-    redis: &'redis mut R,
+pub struct Normal<'cache, T> {
+    redis: &'cache mut deadpool_redis::Connection,
     key: Cow<'static, str>,
     __phantom: PhantomData<T>,
 }
 
-impl<'redis, R, T> RedisTypeTrait<'redis, R> for Normal<'redis, R, T> {
-    fn from_redis_and_key(
-        redis: &'redis mut R, key: Cow<'static, str>,
-        memory: Option<Cache<String, Bytes>>,
+impl<'cache, T> CacheTypeTrait<'cache> for Normal<'cache, T> {
+    fn from_cache_and_key(
+        backend: super::super::core::backend::CacheBackend<'cache>,
+        key: Cow<'static, str>,
     ) -> Self {
+        let redis = match backend {
+            super::super::core::backend::CacheBackend::Redis(redis) => redis,
+            _ => panic!("Normal type can only be created from Redis backend"),
+        };
+
         Self {
             redis,
             key,
@@ -27,10 +35,9 @@ impl<'redis, R, T> RedisTypeTrait<'redis, R> for Normal<'redis, R, T> {
     }
 }
 
-impl<'redis, R, T> Normal<'redis, R, T>
+impl<'cache, T> Normal<'cache, T>
 where
-    R: redis::aio::ConnectionLike + Send + Sync,
-    T: Serialize + for<'de> Deserialize<'de> + Send + Sync + 'redis,
+    T: Serialize + for<'de> Deserialize<'de> + Send + Sync + 'cache,
 {
     pub async fn exists<RV>(&mut self) -> RedisResult<RV>
     where
@@ -39,7 +46,9 @@ where
         self.redis.exists(&*self.key).await
     }
 
-    pub async fn set<RV>(&mut self, value: impl Into<Json<T>>) -> RedisResult<RV>
+    pub async fn set<RV>(
+        &mut self, value: impl Into<Json<T>>,
+    ) -> RedisResult<RV>
     where
         RV: FromRedisValue,
     {

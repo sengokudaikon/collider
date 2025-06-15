@@ -1,8 +1,8 @@
 use database_traits::dao::GenericDao;
 use events_commands::{
-    BulkDeleteEventsCommand, BulkDeleteEventsResponse,
-    CreateEventCommand, CreateEventResponse, CreateEventResult,
-    DeleteEventCommand, UpdateEventCommand, UpdateEventResponse, UpdateEventResult,
+    BulkDeleteEventsCommand, BulkDeleteEventsResponse, CreateEventCommand,
+    CreateEventResponse, CreateEventResult, DeleteEventCommand,
+    UpdateEventCommand, UpdateEventResponse, UpdateEventResult,
 };
 use events_dao::{EventDao, EventDaoError, EventTypeDaoError};
 use sql_connection::SqlConnect;
@@ -81,10 +81,8 @@ impl UpdateEventHandler {
     pub async fn execute(
         &self, command: UpdateEventCommand,
     ) -> Result<UpdateEventResult, UpdateEventError> {
-        let updated_event = self
-            .event_dao
-            .update(command.event_id, command)
-            .await?;
+        let updated_event =
+            self.event_dao.update(command.event_id, command).await?;
 
         Ok(UpdateEventResult {
             event: UpdateEventResponse {
@@ -135,7 +133,10 @@ impl BulkDeleteEventsHandler {
     pub async fn execute(
         &self, command: BulkDeleteEventsCommand,
     ) -> Result<BulkDeleteEventsResponse, BulkDeleteEventsError> {
-        let deleted_count = self.event_dao.delete_before_timestamp(command.before).await?;
+        let deleted_count = self
+            .event_dao
+            .delete_before_timestamp(command.before)
+            .await?;
 
         Ok(BulkDeleteEventsResponse {
             deleted_count,

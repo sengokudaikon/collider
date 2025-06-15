@@ -15,9 +15,7 @@ impl From<Box<dyn std::error::Error + Send + Sync>> for AppError {
 }
 
 impl From<anyhow::Error> for AppError {
-    fn from(err: anyhow::Error) -> Self {
-        Self(err.into())
-    }
+    fn from(err: anyhow::Error) -> Self { Self(err.into()) }
 }
 
 impl From<analytics_dao::AnalyticsViewsDaoError> for AppError {

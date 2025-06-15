@@ -5,7 +5,7 @@ use events_dao::EventDao;
 use events_models::Event;
 use redis_connection::{
     connection::RedisConnectionManager,
-    core::{value::Json, RedisTypeBind},
+    core::{CacheTypeBind, value::Json},
 };
 use serde::Deserialize;
 use sql_connection::SqlConnect;
@@ -53,7 +53,7 @@ impl GetEventQueryHandler {
 
         // Try to get from cache first
         let cache_key = EventCacheKey;
-        let mut cache = cache_key.bind_with(&mut *conn, &query.event_id);
+        let mut cache = cache_key.bind_with(&mut conn, &query.event_id);
 
         if let Ok(Some(event)) = cache.try_get().await {
             tracing::debug!("Cache hit for event {}", query.event_id);

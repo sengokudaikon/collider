@@ -10,9 +10,9 @@ pub mod connection;
 pub mod macros;
 
 // Organized submodules
+pub mod cache;
 pub mod core;
 pub mod types;
-pub mod cache;
 
 #[instrument(skip_all, name = "connect-redis")]
 pub async fn connect_redis_db<C>(config: &C) -> Result<Pool, CreatePoolError>

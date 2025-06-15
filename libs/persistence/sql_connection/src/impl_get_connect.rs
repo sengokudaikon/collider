@@ -1,8 +1,6 @@
 use std::convert::Infallible;
 
-use database_traits::connection::{
-    FromRequestParts, Parts,
-};
+use database_traits::connection::{FromRequestParts, Parts};
 use deadpool_postgres::{Object, Pool};
 
 use crate::static_vars::get_sql_pool;

@@ -22,7 +22,8 @@ impl SqlMigrator {
             (
                 "002_create_event_types",
                 include_str!(
-                    "../../../domains/events/migrations/sql/001_create_event_types.sql"
+                    "../../../domains/events/migrations/sql/\
+                     001_create_event_types.sql"
                 ),
             ),
             (
@@ -35,7 +36,8 @@ impl SqlMigrator {
             (
                 "004_create_analytics_views",
                 include_str!(
-                    "../../../domains/analytics/migrations/sql/002_analytics_views.sql"
+                    "../../../domains/analytics/migrations/sql/\
+                     002_analytics_views.sql"
                 ),
             ),
         ];
@@ -239,19 +241,22 @@ impl SqlMigrator {
             (
                 "004_create_analytics_views",
                 include_str!(
-                    "../../../domains/analytics/migrations/sql/002_analytics_views.down.sql"
+                    "../../../domains/analytics/migrations/sql/\
+                     002_analytics_views.down.sql"
                 ),
             ),
             (
                 "003_create_events",
                 include_str!(
-                    "../../../domains/events/migrations/sql/002_create_events.down.sql"
+                    "../../../domains/events/migrations/sql/\
+                     002_create_events.down.sql"
                 ),
             ),
             (
                 "002_create_event_types",
                 include_str!(
-                    "../../../domains/events/migrations/sql/001_create_event_types.down.sql"
+                    "../../../domains/events/migrations/sql/\
+                     001_create_event_types.down.sql"
                 ),
             ),
             (

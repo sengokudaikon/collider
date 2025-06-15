@@ -21,4 +21,3 @@ pub struct UpdateUserResponse {
 pub struct UpdateUserResult {
     pub user: UpdateUserResponse,
 }
-

@@ -5,18 +5,14 @@ use axum::{
     response::Json,
     routing::{delete, get, post, put},
 };
-use crate::analytics_integration::UserAnalyticsFactory;
 use domain::AppError;
 use events_commands::CreateEventCommand;
 use flume::Sender;
 use serde::Deserialize;
 use tracing::instrument;
 use user_commands::{
-    CreateUserCommand, CreateUserResponse, DeleteUserCommand, 
+    CreateUserCommand, CreateUserResponse, DeleteUserCommand,
     UpdateUserCommand, UpdateUserResponse,
-};
-use crate::command_handlers::{
-    CreateUserHandler, UpdateUserHandler, DeleteUserHandler,
 };
 use user_events::UserAnalyticsEvent;
 use user_queries::{
@@ -25,7 +21,13 @@ use user_queries::{
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
-use crate::UserResponse;
+use crate::{
+    UserResponse,
+    analytics_integration::UserAnalyticsFactory,
+    command_handlers::{
+        CreateUserHandler, DeleteUserHandler, UpdateUserHandler,
+    },
+};
 
 #[derive(Clone)]
 pub struct UserServices {
@@ -50,27 +52,42 @@ impl UserServices {
         }
     }
 
-    pub fn with_event_sender(mut self, event_sender: Sender<CreateEventCommand>) -> Self {
-        self.create_user = self.create_user.with_event_sender(event_sender.clone());
-        self.update_user = self.update_user.with_event_sender(event_sender.clone());
+    pub fn with_event_sender(
+        mut self, event_sender: Sender<CreateEventCommand>,
+    ) -> Self {
+        self.create_user =
+            self.create_user.with_event_sender(event_sender.clone());
+        self.update_user =
+            self.update_user.with_event_sender(event_sender.clone());
         self.delete_user = self.delete_user.with_event_sender(event_sender);
         self
     }
 
     /// Create UserServices with analytics integration enabled
-    pub fn new_with_analytics(db: sql_connection::SqlConnect) -> (Self, tokio::task::JoinHandle<()>) {
-        let (analytics_sender, analytics_task) = UserAnalyticsFactory::create_integration();
-        
+    pub fn new_with_analytics(
+        db: sql_connection::SqlConnect,
+    ) -> (Self, tokio::task::JoinHandle<()>) {
+        let (analytics_sender, analytics_task) =
+            UserAnalyticsFactory::create_integration();
+
         let services = Self::new(db).with_analytics_sender(analytics_sender);
-        
+
         (services, analytics_task)
     }
 
     /// Configure command handlers with analytics event sender
-    pub fn with_analytics_sender(mut self, analytics_sender: Sender<UserAnalyticsEvent>) -> Self {
-        self.create_user = self.create_user.with_analytics_event_sender(analytics_sender.clone());
-        self.update_user = self.update_user.with_analytics_event_sender(analytics_sender.clone());
-        self.delete_user = self.delete_user.with_analytics_event_sender(analytics_sender);
+    pub fn with_analytics_sender(
+        mut self, analytics_sender: Sender<UserAnalyticsEvent>,
+    ) -> Self {
+        self.create_user = self
+            .create_user
+            .with_analytics_event_sender(analytics_sender.clone());
+        self.update_user = self
+            .update_user
+            .with_analytics_event_sender(analytics_sender.clone());
+        self.delete_user = self
+            .delete_user
+            .with_analytics_event_sender(analytics_sender);
         self
     }
 }

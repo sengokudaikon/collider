@@ -2,7 +2,8 @@ use std::time::Duration;
 
 use database_traits::dao::GenericDao;
 use redis_connection::{
-    connection::RedisConnectionManager, core::{value::Json, RedisTypeBind},
+    connection::RedisConnectionManager,
+    core::{CacheTypeBind, value::Json},
 };
 use serde::Deserialize;
 use sql_connection::SqlConnect;
@@ -52,7 +53,7 @@ impl GetUserQueryHandler {
 
         // Try to get from cache first
         let cache_key = UserCacheKey;
-        let mut cache = cache_key.bind_with(&mut *conn, &query.user_id);
+        let mut cache = cache_key.bind_with(&mut conn, &query.user_id);
 
         if let Ok(Some(user)) = cache.try_get().await {
             tracing::debug!("Cache hit for user {}", query.user_id);

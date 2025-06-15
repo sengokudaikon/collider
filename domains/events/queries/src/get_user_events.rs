@@ -4,7 +4,7 @@ use events_dao::EventDao;
 use events_models::Event;
 use redis_connection::{
     connection::RedisConnectionManager,
-    core::{value::Json, RedisTypeBind},
+    core::{CacheTypeBind, value::Json},
 };
 use serde::Deserialize;
 use sql_connection::SqlConnect;
@@ -52,8 +52,8 @@ impl GetUserEventsQueryHandler {
         // Use different cache keys based on whether limit is specified
         if let Some(limit) = query.limit {
             let cache_key = UserEventsLimitCacheKey;
-            let mut cache = cache_key
-                .bind_with_args(&mut *conn, (&query.user_id, &limit));
+            let mut cache =
+                cache_key.bind_with_args(&mut conn, (&query.user_id, &limit));
 
             if let Ok(Some(events)) = cache.try_get().await {
                 tracing::debug!(
@@ -88,7 +88,7 @@ impl GetUserEventsQueryHandler {
         }
         else {
             let cache_key = UserEventsCacheKey;
-            let mut cache = cache_key.bind_with(&mut *conn, &query.user_id);
+            let mut cache = cache_key.bind_with(&mut conn, &query.user_id);
 
             if let Ok(Some(events)) = cache.try_get().await {
                 tracing::debug!(

@@ -18,7 +18,8 @@ impl DaoErrorExt for Result<(), CommonDaoError> {
     fn not_found_if_empty<T>(self, rows: &[T]) -> Result<(), CommonDaoError> {
         if rows.is_empty() {
             Err(CommonDaoError::NotFound)
-        } else {
+        }
+        else {
             self
         }
     }
