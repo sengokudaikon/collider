@@ -14,18 +14,18 @@ use crate::core::{
     value::{CacheValue, Json},
 };
 
-pub struct SortedSet<'cache, T> {
-    redis: &'cache mut deadpool_redis::Connection,
+pub struct SortedSet<T> {
+    pool: deadpool_redis::Pool,
     key: Cow<'static, str>,
     __phantom: PhantomData<T>,
 }
 
-impl<'cache, T> CacheTypeTrait<'cache> for SortedSet<'cache, T> {
+impl<T> CacheTypeTrait<'_> for SortedSet<T> {
     fn from_cache_and_key(
-        backend: CacheBackend<'cache>, key: Cow<'static, str>,
+        backend: CacheBackend<'_>, key: Cow<'static, str>,
     ) -> Self {
-        let redis = match backend {
-            CacheBackend::Redis(redis) => redis,
+        let pool = match backend {
+            CacheBackend::Redis(pool) => pool,
             _ => {
                 panic!(
                     "SortedSet type can only be created from Redis backend"
@@ -34,16 +34,16 @@ impl<'cache, T> CacheTypeTrait<'cache> for SortedSet<'cache, T> {
         };
 
         Self {
-            redis,
+            pool,
             key,
             __phantom: PhantomData,
         }
     }
 }
 
-impl<'cache, T> SortedSet<'cache, T>
+impl<T> SortedSet<T>
 where
-    T: Serialize + for<'de> Deserialize<'de> + Send + Sync + 'cache,
+    T: Serialize + for<'de> Deserialize<'de> + Send + Sync,
 {
     /// Add member with score to sorted set
     pub async fn add_with_score<RV>(
@@ -52,7 +52,14 @@ where
     where
         RV: FromRedisValue,
     {
-        self.redis.zadd(&*self.key, value.into(), score).await
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
+        conn.zadd(&*self.key, value.into(), score).await
     }
 
     /// Add multiple members with scores
@@ -67,7 +74,14 @@ where
             .into_iter()
             .map(|(score, value)| (score, value.into()))
             .collect();
-        self.redis.zadd_multiple(&*self.key, &json_items).await
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
+        conn.zadd_multiple(&*self.key, &json_items).await
     }
 
     /// Remove member from sorted set
@@ -77,28 +91,56 @@ where
     where
         RV: FromRedisValue,
     {
-        self.redis.zrem(&*self.key, value.into()).await
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
+        conn.zrem(&*self.key, value.into()).await
     }
 
     /// Get score of member
     pub async fn score(
         &mut self, value: impl Into<Json<T>>,
     ) -> RedisResult<Option<f64>> {
-        self.redis.zscore(&*self.key, value.into()).await
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
+        conn.zscore(&*self.key, value.into()).await
     }
 
     /// Get rank of member (0-based, lowest score first)
     pub async fn rank(
         &mut self, value: impl Into<Json<T>>,
     ) -> RedisResult<Option<usize>> {
-        self.redis.zrank(&*self.key, value.into()).await
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
+        conn.zrank(&*self.key, value.into()).await
     }
 
     /// Get reverse rank of member (0-based, highest score first)
     pub async fn reverse_rank(
         &mut self, value: impl Into<Json<T>>,
     ) -> RedisResult<Option<usize>> {
-        self.redis.zrevrank(&*self.key, value.into()).await
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
+        conn.zrevrank(&*self.key, value.into()).await
     }
 
     /// Get number of members in sorted set
@@ -106,15 +148,29 @@ where
     where
         RV: FromRedisValue,
     {
-        self.redis.zcard(&*self.key).await
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
+        conn.zcard(&*self.key).await
     }
 
     /// Get members by rank range (0-based)
     pub async fn range(
         &mut self, start: isize, stop: isize,
     ) -> RedisResult<Vec<T>> {
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
         let json_vec: Vec<Json<T>> =
-            self.redis.zrange(&*self.key, start, stop).await?;
+            conn.zrange(&*self.key, start, stop).await?;
         Ok(json_vec.into_iter().map(|json| json.inner()).collect())
     }
 
@@ -122,10 +178,15 @@ where
     pub async fn range_with_scores(
         &mut self, start: isize, stop: isize,
     ) -> RedisResult<Vec<(T, f64)>> {
-        let json_vec: Vec<(Json<T>, f64)> = self
-            .redis
-            .zrange_withscores(&*self.key, start, stop)
-            .await?;
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
+        let json_vec: Vec<(Json<T>, f64)> =
+            conn.zrange_withscores(&*self.key, start, stop).await?;
         Ok(json_vec
             .into_iter()
             .map(|(json, score)| (json.inner(), score))
@@ -136,8 +197,15 @@ where
     pub async fn reverse_range(
         &mut self, start: isize, stop: isize,
     ) -> RedisResult<Vec<T>> {
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
         let json_vec: Vec<Json<T>> =
-            self.redis.zrevrange(&*self.key, start, stop).await?;
+            conn.zrevrange(&*self.key, start, stop).await?;
         Ok(json_vec.into_iter().map(|json| json.inner()).collect())
     }
 
@@ -145,10 +213,15 @@ where
     pub async fn reverse_range_with_scores(
         &mut self, start: isize, stop: isize,
     ) -> RedisResult<Vec<(T, f64)>> {
-        let json_vec: Vec<(Json<T>, f64)> = self
-            .redis
-            .zrevrange_withscores(&*self.key, start, stop)
-            .await?;
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
+        let json_vec: Vec<(Json<T>, f64)> =
+            conn.zrevrange_withscores(&*self.key, start, stop).await?;
         Ok(json_vec
             .into_iter()
             .map(|(json, score)| (json.inner(), score))
@@ -159,8 +232,15 @@ where
     pub async fn range_by_score(
         &mut self, min: f64, max: f64,
     ) -> RedisResult<Vec<T>> {
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
         let json_vec: Vec<Json<T>> =
-            self.redis.zrangebyscore(&*self.key, min, max).await?;
+            conn.zrangebyscore(&*self.key, min, max).await?;
         Ok(json_vec.into_iter().map(|json| json.inner()).collect())
     }
 
@@ -168,10 +248,15 @@ where
     pub async fn range_by_score_with_scores(
         &mut self, min: f64, max: f64,
     ) -> RedisResult<Vec<(T, f64)>> {
-        let json_vec: Vec<(Json<T>, f64)> = self
-            .redis
-            .zrangebyscore_withscores(&*self.key, min, max)
-            .await?;
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
+        let json_vec: Vec<(Json<T>, f64)> =
+            conn.zrangebyscore_withscores(&*self.key, min, max).await?;
         Ok(json_vec
             .into_iter()
             .map(|(json, score)| (json.inner(), score))
@@ -182,8 +267,14 @@ where
     pub async fn range_by_score_limit(
         &mut self, min: f64, max: f64, offset: isize, count: isize,
     ) -> RedisResult<Vec<T>> {
-        let json_vec: Vec<Json<T>> = self
-            .redis
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
+        let json_vec: Vec<Json<T>> = conn
             .zrangebyscore_limit(&*self.key, min, max, offset, count)
             .await?;
         Ok(json_vec.into_iter().map(|json| json.inner()).collect())
@@ -196,14 +287,28 @@ where
     where
         RV: FromRedisValue,
     {
-        self.redis.zcount(&*self.key, min, max).await
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
+        conn.zcount(&*self.key, min, max).await
     }
 
     /// Increment score of member
     pub async fn increment_score(
         &mut self, value: impl Into<Json<T>>, increment: f64,
     ) -> RedisResult<f64> {
-        self.redis.zincr(&*self.key, value.into(), increment).await
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
+        conn.zincr(&*self.key, value.into(), increment).await
     }
 
     /// Remove members by rank range
@@ -213,7 +318,14 @@ where
     where
         RV: FromRedisValue,
     {
-        self.redis.zremrangebyrank(&*self.key, start, stop).await
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
+        conn.zremrangebyrank(&*self.key, start, stop).await
     }
 
     /// Remove members by score range (simplified implementation)
@@ -225,10 +337,16 @@ where
     {
         // Get members in range and remove them individually
         let members: Vec<T> = self.range_by_score(min, max).await?;
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
         let mut removed_count = 0u32;
         for member in members {
-            let count: u32 =
-                self.redis.zrem(&*self.key, Json(member)).await?;
+            let count: u32 = conn.zrem(&*self.key, Json(member)).await?;
             removed_count += count;
         }
         FromRedisValue::from_redis_value(&redis::Value::Int(

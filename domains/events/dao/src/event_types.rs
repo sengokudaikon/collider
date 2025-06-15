@@ -1,21 +1,9 @@
+use events_errors::EventTypeError;
 use events_models::{
     CreateEventTypeRequest, EventTypeResponse, UpdateEventTypeRequest,
 };
 use sql_connection::SqlConnect;
-use thiserror::Error;
 use tracing::instrument;
-
-#[derive(Debug, Error)]
-pub enum EventTypeDaoError {
-    #[error("Database error: {0}")]
-    Database(#[from] tokio_postgres::Error),
-    #[error("Connection error: {0}")]
-    Connection(#[from] deadpool_postgres::PoolError),
-    #[error("Event type not found")]
-    NotFound,
-    #[error("Event type with this name already exists")]
-    AlreadyExists,
-}
 
 #[derive(Clone)]
 pub struct EventTypeDao {
@@ -30,7 +18,7 @@ impl EventTypeDao {
     #[instrument(skip_all)]
     pub async fn find_by_id(
         &self, id: i32,
-    ) -> Result<EventTypeResponse, EventTypeDaoError> {
+    ) -> Result<EventTypeResponse, EventTypeError> {
         let client = self.db.get_client().await?;
         let stmt = client
             .prepare("SELECT id, name FROM event_types WHERE id = $1")
@@ -45,7 +33,7 @@ impl EventTypeDao {
                     name: row.get(1),
                 }
             })
-            .ok_or(EventTypeDaoError::NotFound)?;
+            .ok_or(EventTypeError::NotFound)?;
 
         Ok(event_type)
     }
@@ -53,7 +41,7 @@ impl EventTypeDao {
     #[instrument(skip_all)]
     pub async fn all(
         &self,
-    ) -> Result<Vec<EventTypeResponse>, EventTypeDaoError> {
+    ) -> Result<Vec<EventTypeResponse>, EventTypeError> {
         let client = self.db.get_client().await?;
         let stmt = client
             .prepare("SELECT id, name FROM event_types ORDER BY name ASC")
@@ -76,7 +64,7 @@ impl EventTypeDao {
     #[instrument(skip_all)]
     pub async fn create(
         &self, req: CreateEventTypeRequest,
-    ) -> Result<EventTypeResponse, EventTypeDaoError> {
+    ) -> Result<EventTypeResponse, EventTypeError> {
         let client = self.db.get_client().await?;
 
         // Check if name already exists
@@ -85,7 +73,7 @@ impl EventTypeDao {
             .await?;
         let check_rows = client.query(&check_stmt, &[&req.name]).await?;
         if !check_rows.is_empty() {
-            return Err(EventTypeDaoError::AlreadyExists);
+            return Err(EventTypeError::AlreadyExists);
         }
 
         let stmt = client
@@ -105,7 +93,7 @@ impl EventTypeDao {
                 }
             })
             .ok_or_else(|| {
-                EventTypeDaoError::Database(
+                EventTypeError::Database(
                     tokio_postgres::Error::__private_api_timeout(),
                 )
             })?;
@@ -116,7 +104,7 @@ impl EventTypeDao {
     #[instrument(skip_all)]
     pub async fn update(
         &self, id: i32, req: UpdateEventTypeRequest,
-    ) -> Result<EventTypeResponse, EventTypeDaoError> {
+    ) -> Result<EventTypeResponse, EventTypeError> {
         let client = self.db.get_client().await?;
 
         // Check if event type exists
@@ -125,7 +113,7 @@ impl EventTypeDao {
             .await?;
         let check_rows = client.query(&check_stmt, &[&id]).await?;
         if check_rows.is_empty() {
-            return Err(EventTypeDaoError::NotFound);
+            return Err(EventTypeError::NotFound);
         }
 
         if let Some(name) = req.name {
@@ -138,7 +126,7 @@ impl EventTypeDao {
             let check_name_rows =
                 client.query(&check_name_stmt, &[&name, &id]).await?;
             if !check_name_rows.is_empty() {
-                return Err(EventTypeDaoError::AlreadyExists);
+                return Err(EventTypeError::AlreadyExists);
             }
 
             let stmt = client
@@ -157,7 +145,7 @@ impl EventTypeDao {
                         name: row.get(1),
                     }
                 })
-                .ok_or(EventTypeDaoError::NotFound)?;
+                .ok_or(EventTypeError::NotFound)?;
 
             Ok(event_type)
         }
@@ -176,14 +164,14 @@ impl EventTypeDao {
                         name: row.get(1),
                     }
                 })
-                .ok_or(EventTypeDaoError::NotFound)?;
+                .ok_or(EventTypeError::NotFound)?;
 
             Ok(event_type)
         }
     }
 
     #[instrument(skip_all)]
-    pub async fn delete(&self, id: i32) -> Result<(), EventTypeDaoError> {
+    pub async fn delete(&self, id: i32) -> Result<(), EventTypeError> {
         let client = self.db.get_client().await?;
         let stmt = client
             .prepare("DELETE FROM event_types WHERE id = $1")
@@ -191,7 +179,7 @@ impl EventTypeDao {
         let affected = client.execute(&stmt, &[&id]).await?;
 
         if affected == 0 {
-            return Err(EventTypeDaoError::NotFound);
+            return Err(EventTypeError::NotFound);
         }
 
         Ok(())
@@ -200,7 +188,7 @@ impl EventTypeDao {
     #[instrument(skip_all)]
     pub async fn find_by_name(
         &self, name: &str,
-    ) -> Result<EventTypeResponse, EventTypeDaoError> {
+    ) -> Result<EventTypeResponse, EventTypeError> {
         let client = self.db.get_client().await?;
         let stmt = client
             .prepare("SELECT id, name FROM event_types WHERE name = $1")
@@ -215,7 +203,7 @@ impl EventTypeDao {
                     name: row.get(1),
                 }
             })
-            .ok_or(EventTypeDaoError::NotFound)?;
+            .ok_or(EventTypeError::NotFound)?;
 
         Ok(event_type)
     }

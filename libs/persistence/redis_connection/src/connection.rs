@@ -29,6 +29,8 @@ impl RedisConnectionManager {
 
     pub fn init_static(pool: Pool) { REDIS_POOL.set(pool).ok(); }
 
+    pub fn get_pool(&self) -> &Pool { &self.pool }
+
     pub async fn get_connection(&self) -> Result<Connection, PoolError> {
         self.pool.get().await
     }

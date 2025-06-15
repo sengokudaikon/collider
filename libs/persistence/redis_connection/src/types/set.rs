@@ -14,36 +14,35 @@ use crate::core::{
     value::{CacheValue, Json},
 };
 
-pub struct Set<'cache, T> {
-    redis: &'cache mut deadpool_redis::Connection,
+pub struct Set<T> {
+    pool: deadpool_redis::Pool,
     key: Cow<'static, str>,
     __phantom: PhantomData<T>,
 }
 
-impl<'cache, T> CacheTypeTrait<'cache> for Set<'cache, T> {
+impl<T> CacheTypeTrait<'_> for Set<T> {
     fn from_cache_and_key(
-        backend: CacheBackend<'cache>, key: Cow<'static, str>,
+        backend: CacheBackend<'_>, key: Cow<'static, str>,
     ) -> Self {
-        let redis = match backend {
-            CacheBackend::Redis(redis) => redis,
+        let pool = match backend {
+            CacheBackend::Redis(pool) => pool,
             _ => panic!("Set type can only be created from Redis backend"),
         };
 
         Self {
-            redis,
+            pool,
             key,
             __phantom: PhantomData,
         }
     }
 }
 
-impl<'cache, T> Set<'cache, T>
+impl<T> Set<T>
 where
     T: Serialize
         + for<'de> Deserialize<'de>
         + Send
         + Sync
-        + 'cache
         + std::hash::Hash
         + Eq,
 {
@@ -54,7 +53,14 @@ where
     where
         RV: FromRedisValue,
     {
-        self.redis.sadd(&*self.key, value.into()).await
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
+        conn.sadd(&*self.key, value.into()).await
     }
 
     /// Add multiple members to a set
@@ -68,7 +74,14 @@ where
         let json_values: Vec<Json<T>> =
             values.into_iter().map(|v| v.into()).collect();
         // Redis can handle multiple values in a single sadd call
-        self.redis.sadd(&*self.key, json_values).await
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
+        conn.sadd(&*self.key, json_values).await
     }
 
     /// Remove one or more members from a set
@@ -78,7 +91,14 @@ where
     where
         RV: FromRedisValue,
     {
-        self.redis.srem(&*self.key, value.into()).await
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
+        conn.srem(&*self.key, value.into()).await
     }
 
     /// Check if a member exists in the set
@@ -88,13 +108,26 @@ where
     where
         RV: FromRedisValue,
     {
-        self.redis.sismember(&*self.key, value.into()).await
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
+        conn.sismember(&*self.key, value.into()).await
     }
 
     /// Get all members of the set
     pub async fn members(&mut self) -> RedisResult<HashSet<T>> {
-        let json_set: HashSet<Json<T>> =
-            self.redis.smembers(&*self.key).await?;
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
+        let json_set: HashSet<Json<T>> = conn.smembers(&*self.key).await?;
         Ok(json_set.into_iter().map(|json| json.inner()).collect())
     }
 
@@ -103,12 +136,26 @@ where
     where
         RV: FromRedisValue,
     {
-        self.redis.scard(&*self.key).await
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
+        conn.scard(&*self.key).await
     }
 
     /// Remove and return a random member from the set
     pub async fn pop(&mut self) -> RedisResult<Option<T>> {
-        let result: Option<Json<T>> = self.redis.spop(&*self.key).await?;
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
+        let result: Option<Json<T>> = conn.spop(&*self.key).await?;
         Ok(result.map(|json| json.inner()))
     }
 
@@ -116,8 +163,15 @@ where
     pub async fn random_members(
         &mut self, count: usize,
     ) -> RedisResult<Vec<T>> {
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
         let json_vec: Vec<Json<T>> =
-            self.redis.srandmember_multiple(&*self.key, count).await?;
+            conn.srandmember_multiple(&*self.key, count).await?;
         Ok(json_vec.into_iter().map(|json| json.inner()).collect())
     }
 
@@ -125,9 +179,16 @@ where
     pub async fn union(
         &mut self, other_keys: &[&str],
     ) -> RedisResult<HashSet<T>> {
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
         let mut keys = vec![&*self.key];
         keys.extend(other_keys);
-        let json_set: HashSet<Json<T>> = self.redis.sunion(&keys).await?;
+        let json_set: HashSet<Json<T>> = conn.sunion(&keys).await?;
         Ok(json_set.into_iter().map(|json| json.inner()).collect())
     }
 
@@ -135,9 +196,16 @@ where
     pub async fn intersect(
         &mut self, other_keys: &[&str],
     ) -> RedisResult<HashSet<T>> {
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
         let mut keys = vec![&*self.key];
         keys.extend(other_keys);
-        let json_set: HashSet<Json<T>> = self.redis.sinter(&keys).await?;
+        let json_set: HashSet<Json<T>> = conn.sinter(&keys).await?;
         Ok(json_set.into_iter().map(|json| json.inner()).collect())
     }
 
@@ -145,9 +213,16 @@ where
     pub async fn diff(
         &mut self, other_keys: &[&str],
     ) -> RedisResult<HashSet<T>> {
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
         let mut keys = vec![&*self.key];
         keys.extend(other_keys);
-        let json_set: HashSet<Json<T>> = self.redis.sdiff(&keys).await?;
+        let json_set: HashSet<Json<T>> = conn.sdiff(&keys).await?;
         Ok(json_set.into_iter().map(|json| json.inner()).collect())
     }
 
@@ -158,6 +233,13 @@ where
     where
         RV: FromRedisValue,
     {
-        self.redis.smove(&*self.key, dest_key, value.into()).await
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
+        conn.smove(&*self.key, dest_key, value.into()).await
     }
 }

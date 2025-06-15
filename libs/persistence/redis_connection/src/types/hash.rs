@@ -14,15 +14,15 @@ use crate::core::{
     value::{CacheValue, Json},
 };
 
-pub struct Hash<'cache, T> {
+pub struct Hash<T> {
     pool: deadpool_redis::Pool,
     key: Cow<'static, str>,
     __phantom: PhantomData<T>,
 }
 
-impl<'cache, T> CacheTypeTrait<'cache> for Hash<'cache, T> {
+impl<T> CacheTypeTrait<'_> for Hash<T> {
     fn from_cache_and_key(
-        backend: CacheBackend<'cache>, key: Cow<'static, str>,
+        backend: CacheBackend<'_>, key: Cow<'static, str>,
     ) -> Self {
         let pool = match backend {
             CacheBackend::Redis(pool) => pool,
@@ -37,16 +37,22 @@ impl<'cache, T> CacheTypeTrait<'cache> for Hash<'cache, T> {
     }
 }
 
-impl<'cache, T> Hash<'cache, T>
+impl<T> Hash<T>
 where
-    T: Serialize + for<'de> Deserialize<'de> + Send + Sync + 'cache,
+    T: Serialize + for<'de> Deserialize<'de> + Send + Sync,
 {
     pub async fn exists<'arg, RV, F>(&mut self, field: F) -> RedisResult<RV>
     where
         F: ToRedisArgs + Send + Sync + 'arg,
         RV: FromRedisValue,
     {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
         conn.hexists(&*self.key, field).await
     }
 
@@ -57,7 +63,13 @@ where
         F: ToRedisArgs + Send + Sync + 'arg,
         RV: FromRedisValue,
     {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
         conn.hset(&*self.key, field, value.into()).await
     }
 
@@ -65,7 +77,13 @@ where
     where
         F: ToRedisArgs + Send + Sync + 'arg,
     {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
         let json: Json<T> = conn.hget(&*self.key, field).await?;
         Ok(json.inner())
     }
@@ -74,7 +92,13 @@ where
     where
         K: FromRedisValue + Eq + std::hash::Hash,
     {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
         let map: HashMap<K, Json<T>> = conn.hgetall(&*self.key).await?;
         Ok(map.into_iter().map(|(k, v)| (k, v.inner())).collect())
     }
@@ -98,7 +122,13 @@ where
         F: ToRedisArgs + Send + Sync + 'arg,
         RV: FromRedisValue,
     {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
         conn.hdel(&*self.key, field).await
     }
 }

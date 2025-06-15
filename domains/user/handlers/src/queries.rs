@@ -1,14 +1,15 @@
 use std::time::Duration;
 
 use database_traits::dao::GenericDao;
+use redis_connection::{cache_provider::CacheProvider, core::CacheTypeBind};
 use sql_connection::SqlConnect;
 use tracing::instrument;
 use user_dao::UserDao;
 use user_errors::UserError;
-use user_queries::{
-    GetUserByNameQuery, GetUserQuery, ListUsersQuery, UserByNameCacheKey,
-    UserCacheKey, UserListCacheKey, UserResponse,
-};
+use user_queries::{GetUserByNameQuery, GetUserQuery, ListUsersQuery};
+use user_responses::UserResponse;
+
+use crate::{UserByNameCacheKey, UserCacheKey, UserListCacheKey};
 
 #[derive(Clone)]
 pub struct GetUserQueryHandler {
@@ -26,12 +27,11 @@ impl GetUserQueryHandler {
     pub async fn execute(
         &self, query: GetUserQuery,
     ) -> Result<user_models::User, UserError> {
-        let redis = RedisConnectionManager::from_static();
-        let mut conn = redis.get_connection().await?;
+        let backend = CacheProvider::get_backend();
 
         // Try to get from cache first
         let cache_key = UserCacheKey;
-        let mut cache = cache_key.bind_with(&mut conn, &query.user_id);
+        let mut cache = cache_key.bind_with(backend.clone(), &query.user_id);
 
         if let Ok(Some(user)) = cache.try_get().await {
             tracing::debug!("Cache hit for user {}", query.user_id);
@@ -62,19 +62,16 @@ impl GetUserQueryHandler {
 #[cfg(test)]
 mod tests {
     use test_utils::{redis::TestRedisContainer, *};
-    use user_queries::GetUserQuery;
+    use user_queries::{GetUserByNameQuery, GetUserQuery, ListUsersQuery};
     use uuid::Uuid;
 
     use super::*;
 
-    async fn setup_test_db() -> anyhow::Result<(
-        test_utils::postgres::TestPostgresContainer,
-        GetUserQueryHandler,
-    )> {
-        let container =
-            test_utils::postgres::TestPostgresContainer::new().await?;
-        let redis_container = TestRedisContainer::new().await.unwrap();
-        redis_container.flush_db().await.unwrap();
+    async fn setup_test_db()
+    -> anyhow::Result<(TestPostgresContainer, GetUserQueryHandler)> {
+        let container = TestPostgresContainer::new().await?;
+        let redis_container = TestRedisContainer::new().await?;
+        redis_container.flush_db().await?;
         let sql_connect = create_sql_connect(&container);
         let handler = GetUserQueryHandler::new(sql_connect);
         Ok((container, handler))
@@ -110,6 +107,106 @@ mod tests {
             _ => panic!("Expected NotFound error"),
         }
     }
+
+    async fn setup_test_db_for_name_queries()
+    -> anyhow::Result<(TestPostgresContainer, GetUserByNameQueryHandler)>
+    {
+        let container = TestPostgresContainer::new().await?;
+        let redis_container = TestRedisContainer::new().await?;
+        redis_container.flush_db().await?;
+        let sql_connect = create_sql_connect(&container);
+        let handler = GetUserByNameQueryHandler::new(sql_connect);
+        Ok((container, handler))
+    }
+
+    #[tokio::test]
+    async fn test_get_user_by_name_success() {
+        let (container, handler) =
+            setup_test_db_for_name_queries().await.unwrap();
+        let user_id = create_test_user_with_name(&container, "Alice")
+            .await
+            .unwrap();
+
+        let query = GetUserByNameQuery {
+            name: "Alice".to_string(),
+        };
+        let result = handler.execute(query).await.unwrap();
+
+        assert_eq!(result.id, user_id);
+        assert_eq!(result.name, "Alice");
+    }
+
+    #[tokio::test]
+    async fn test_get_user_by_name_not_found() {
+        let (_container, handler) =
+            setup_test_db_for_name_queries().await.unwrap();
+
+        let query = GetUserByNameQuery {
+            name: "NonExistentUser".to_string(),
+        };
+        let result = handler.execute(query).await;
+
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            UserError::NameNotFound { username } => {
+                assert_eq!(username, "NonExistentUser");
+            }
+            _ => panic!("Expected NameNotFound error"),
+        }
+    }
+
+    async fn setup_test_db_for_list_queries()
+    -> anyhow::Result<(TestPostgresContainer, ListUsersQueryHandler)> {
+        let container = TestPostgresContainer::new().await?;
+        let redis_container = TestRedisContainer::new().await?;
+        redis_container.flush_db().await?;
+        let sql_connect = create_sql_connect(&container);
+        let handler = ListUsersQueryHandler::new(sql_connect);
+        Ok((container, handler))
+    }
+
+    #[tokio::test]
+    async fn test_list_users_with_limit() {
+        let (container, handler) =
+            setup_test_db_for_list_queries().await.unwrap();
+        create_test_users(&container).await.unwrap();
+
+        let query = ListUsersQuery {
+            limit: Some(1),
+            offset: None,
+        };
+        let result = handler.execute(query).await.unwrap();
+
+        assert_eq!(result.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_list_users_with_offset() {
+        let (container, handler) =
+            setup_test_db_for_list_queries().await.unwrap();
+        create_test_users(&container).await.unwrap();
+
+        let query = ListUsersQuery {
+            limit: None,
+            offset: Some(1),
+        };
+        let result = handler.execute(query).await.unwrap();
+        assert!(!result.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_list_users_empty() {
+        let (_container, handler) =
+            setup_test_db_for_list_queries().await.unwrap();
+
+        let query = ListUsersQuery {
+            limit: None,
+            offset: None,
+        };
+        let result = handler.execute(query).await.unwrap();
+
+        assert_eq!(result.len(), 0);
+    }
 }
 
 #[derive(Clone)]
@@ -128,12 +225,11 @@ impl GetUserByNameQueryHandler {
     pub async fn execute(
         &self, query: GetUserByNameQuery,
     ) -> Result<UserResponse, UserError> {
-        let redis = RedisConnectionManager::from_static();
-        let mut conn = redis.get_connection().await?;
+        let backend = CacheProvider::get_backend();
 
         // Try to get from cache first
         let cache_key = UserByNameCacheKey;
-        let mut cache = cache_key.bind_with(&mut conn, &query.name);
+        let mut cache = cache_key.bind_with(backend.clone(), &query.name);
 
         if let Ok(Some(user)) = cache.try_get().await {
             tracing::debug!("Cache hit for user by name {}", query.name);
@@ -145,11 +241,14 @@ impl GetUserByNameQueryHandler {
             query.name
         );
 
-        let user = self
-            .user_dao
-            .find_by_name(&query.name)
-            .await?
-            .ok_or_else(|| UserError::NotFound(query.name.clone()))?;
+        let user =
+            self.user_dao.find_by_name(&query.name).await?.ok_or_else(
+                || {
+                    UserError::NameNotFound {
+                        username: query.name,
+                    }
+                },
+            )?;
 
         // Cache for 5 minutes - user data doesn't change often
         let _ = cache
@@ -157,61 +256,6 @@ impl GetUserByNameQueryHandler {
             .await;
 
         Ok(user.into())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use test_utils::{redis::TestRedisContainer, *};
-    use user_queries::GetUserByNameQuery;
-
-    use super::*;
-
-    async fn setup_test_db() -> anyhow::Result<(
-        test_utils::postgres::TestPostgresContainer,
-        GetUserByNameQueryHandler,
-    )> {
-        let container =
-            test_utils::postgres::TestPostgresContainer::new().await?;
-        let redis_container = TestRedisContainer::new().await.unwrap();
-        redis_container.flush_db().await?;
-        let sql_connect = create_sql_connect(&container);
-        let handler = GetUserByNameQueryHandler::new(sql_connect);
-        Ok((container, handler))
-    }
-
-    #[tokio::test]
-    async fn test_get_user_by_name_success() {
-        let (container, handler) = setup_test_db().await.unwrap();
-        let user_id = create_test_user_with_name(&container, "Alice")
-            .await
-            .unwrap();
-
-        let query = GetUserByNameQuery {
-            name: "Alice".to_string(),
-        };
-        let result = handler.execute(query).await.unwrap();
-
-        assert_eq!(result.id, user_id);
-        assert_eq!(result.name, "Alice");
-    }
-
-    #[tokio::test]
-    async fn test_get_user_by_name_not_found() {
-        let (_container, handler) = setup_test_db().await.unwrap();
-
-        let query = GetUserByNameQuery {
-            name: "NonExistentUser".to_string(),
-        };
-        let result = handler.execute(query).await;
-
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            UserError::NotFound(name) => {
-                assert_eq!(name, "NonExistentUser");
-            }
-            _ => panic!("Expected NotFound error"),
-        }
     }
 }
 
@@ -235,11 +279,10 @@ impl ListUsersQueryHandler {
         // limit/offset For now, we'll only cache the default list (no
         // pagination)
         if query.limit.is_none() && query.offset.is_none() {
-            let redis = RedisConnectionManager::from_static();
-            let mut conn = redis.get_connection().await?;
+            let backend = CacheProvider::get_backend();
 
             let cache_key = UserListCacheKey;
-            let mut cache = cache_key.bind(&mut conn);
+            let mut cache = cache_key.bind(backend);
 
             if let Ok(Some(users)) = cache.try_get().await {
                 tracing::debug!("Cache hit for user list");
@@ -269,64 +312,5 @@ impl ListUsersQueryHandler {
                 .await?;
             Ok(users)
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use test_utils::{redis::TestRedisContainer, *};
-    use user_queries::ListUsersQuery;
-
-    use super::*;
-
-    async fn setup_test_db()
-    -> anyhow::Result<(TestPostgresContainer, ListUsersQueryHandler)> {
-        let container = TestPostgresContainer::new().await?;
-        let redis_container = TestRedisContainer::new().await?;
-        redis_container.flush_db().await?;
-        let sql_connect = create_sql_connect(&container);
-        let handler = ListUsersQueryHandler::new(sql_connect);
-        Ok((container, handler))
-    }
-
-    #[tokio::test]
-    async fn test_list_users_with_limit() {
-        let (container, handler) = setup_test_db().await.unwrap();
-        create_test_users(&container).await.unwrap();
-
-        let query = ListUsersQuery {
-            limit: Some(1),
-            offset: None,
-        };
-        let result = handler.execute(query).await.unwrap();
-
-        assert_eq!(result.len(), 1);
-    }
-
-    #[tokio::test]
-    async fn test_list_users_with_offset() {
-        let (container, handler) = setup_test_db().await.unwrap();
-        create_test_users(&container).await.unwrap();
-
-        let query = ListUsersQuery {
-            limit: None,
-            offset: Some(1),
-        };
-        let result = handler.execute(query).await.unwrap();
-
-        assert!(!result.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_list_users_empty() {
-        let (_container, handler) = setup_test_db().await.unwrap();
-
-        let query = ListUsersQuery {
-            limit: None,
-            offset: None,
-        };
-        let result = handler.execute(query).await.unwrap();
-
-        assert_eq!(result.len(), 0);
     }
 }

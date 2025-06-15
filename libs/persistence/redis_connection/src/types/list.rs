@@ -14,32 +14,32 @@ use crate::core::{
     value::{CacheValue, Json},
 };
 
-pub struct List<'cache, T> {
-    redis: &'cache mut deadpool_redis::Connection,
+pub struct List<T> {
+    pool: deadpool_redis::Pool,
     key: Cow<'static, str>,
     __phantom: PhantomData<T>,
 }
 
-impl<'cache, T> CacheTypeTrait<'cache> for List<'cache, T> {
+impl<T> CacheTypeTrait<'_> for List<T> {
     fn from_cache_and_key(
-        backend: CacheBackend<'cache>, key: Cow<'static, str>,
+        backend: CacheBackend<'_>, key: Cow<'static, str>,
     ) -> Self {
-        let redis = match backend {
-            CacheBackend::Redis(redis) => redis,
+        let pool = match backend {
+            CacheBackend::Redis(pool) => pool,
             _ => panic!("List type can only be created from Redis backend"),
         };
 
         Self {
-            redis,
+            pool,
             key,
             __phantom: PhantomData,
         }
     }
 }
 
-impl<'cache, T> List<'cache, T>
+impl<T> List<T>
 where
-    T: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone + 'cache,
+    T: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone,
 {
     /// Push element to the left (beginning) of the list
     pub async fn push_left<RV>(
@@ -48,7 +48,14 @@ where
     where
         RV: FromRedisValue,
     {
-        self.redis.lpush(&*self.key, value.into()).await
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
+        conn.lpush(&*self.key, value.into()).await
     }
 
     /// Push multiple elements to the left of the list
@@ -59,9 +66,16 @@ where
         RV: FromRedisValue,
     {
         // Redis doesn't have lpush_multiple, so we use multiple lpush calls
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
         let mut result: i32 = 0;
         for value in values {
-            result = self.redis.lpush(&*self.key, Json(value)).await?;
+            result = conn.lpush(&*self.key, Json(value)).await?;
         }
         FromRedisValue::from_redis_value(&redis::Value::Int(result as i64))
     }
@@ -73,7 +87,14 @@ where
     where
         RV: FromRedisValue,
     {
-        self.redis.rpush(&*self.key, value.into()).await
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
+        conn.rpush(&*self.key, value.into()).await
     }
 
     /// Push multiple elements to the right of the list
@@ -84,22 +105,43 @@ where
         RV: FromRedisValue,
     {
         // Redis doesn't have rpush_multiple, so we use multiple rpush calls
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
         let mut result: i32 = 0;
         for value in values {
-            result = self.redis.rpush(&*self.key, Json(value)).await?;
+            result = conn.rpush(&*self.key, Json(value)).await?;
         }
         FromRedisValue::from_redis_value(&redis::Value::Int(result as i64))
     }
 
     /// Pop element from the left (beginning) of the list
     pub async fn pop_left(&mut self) -> RedisResult<Option<T>> {
-        let json: Option<Json<T>> = self.redis.lpop(&*self.key, None).await?;
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
+        let json: Option<Json<T>> = conn.lpop(&*self.key, None).await?;
         Ok(json.map(|j| j.inner()))
     }
 
     /// Pop element from the right (end) of the list
     pub async fn pop_right(&mut self) -> RedisResult<Option<T>> {
-        let json: Option<Json<T>> = self.redis.rpop(&*self.key, None).await?;
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
+        let json: Option<Json<T>> = conn.rpop(&*self.key, None).await?;
         Ok(json.map(|j| j.inner()))
     }
 
@@ -108,8 +150,15 @@ where
         &mut self, count: usize,
     ) -> RedisResult<Vec<T>> {
         if let Some(non_zero_count) = std::num::NonZero::new(count) {
+            let mut conn = self.pool.get().await.map_err(|e| {
+                redis::RedisError::from((
+                    redis::ErrorKind::IoError,
+                    "Pool connection error",
+                    e.to_string(),
+                ))
+            })?;
             let jsons: Vec<Json<T>> =
-                self.redis.lpop(&*self.key, Some(non_zero_count)).await?;
+                conn.lpop(&*self.key, Some(non_zero_count)).await?;
             Ok(jsons.into_iter().map(|j| j.inner()).collect())
         }
         else {
@@ -122,8 +171,15 @@ where
         &mut self, count: usize,
     ) -> RedisResult<Vec<T>> {
         if let Some(non_zero_count) = std::num::NonZero::new(count) {
+            let mut conn = self.pool.get().await.map_err(|e| {
+                redis::RedisError::from((
+                    redis::ErrorKind::IoError,
+                    "Pool connection error",
+                    e.to_string(),
+                ))
+            })?;
             let jsons: Vec<Json<T>> =
-                self.redis.rpop(&*self.key, Some(non_zero_count)).await?;
+                conn.rpop(&*self.key, Some(non_zero_count)).await?;
             Ok(jsons.into_iter().map(|j| j.inner()).collect())
         }
         else {
@@ -135,10 +191,15 @@ where
     pub async fn blocking_pop_left(
         &mut self, timeout: Duration,
     ) -> RedisResult<Option<(String, T)>> {
-        let result: Option<(String, Json<T>)> = self
-            .redis
-            .blpop(&*self.key, timeout.as_secs() as f64)
-            .await?;
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
+        let result: Option<(String, Json<T>)> =
+            conn.blpop(&*self.key, timeout.as_secs() as f64).await?;
         Ok(result.map(|(k, v)| (k, v.inner())))
     }
 
@@ -146,17 +207,28 @@ where
     pub async fn blocking_pop_right(
         &mut self, timeout: Duration,
     ) -> RedisResult<Option<(String, T)>> {
-        let result: Option<(String, Json<T>)> = self
-            .redis
-            .brpop(&*self.key, timeout.as_secs() as f64)
-            .await?;
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
+        let result: Option<(String, Json<T>)> =
+            conn.brpop(&*self.key, timeout.as_secs() as f64).await?;
         Ok(result.map(|(k, v)| (k, v.inner())))
     }
 
     /// Get element at index
     pub async fn get(&mut self, index: isize) -> RedisResult<Option<T>> {
-        let json: Option<Json<T>> =
-            self.redis.lindex(&*self.key, index).await?;
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
+        let json: Option<Json<T>> = conn.lindex(&*self.key, index).await?;
         Ok(json.map(|j| j.inner()))
     }
 
@@ -167,15 +239,29 @@ where
     where
         RV: FromRedisValue,
     {
-        self.redis.lset(&*self.key, index, value.into()).await
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
+        conn.lset(&*self.key, index, value.into()).await
     }
 
     /// Get range of elements
     pub async fn range(
         &mut self, start: isize, stop: isize,
     ) -> RedisResult<Vec<T>> {
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
         let jsons: Vec<Json<T>> =
-            self.redis.lrange(&*self.key, start, stop).await?;
+            conn.lrange(&*self.key, start, stop).await?;
         Ok(jsons.into_iter().map(|j| j.inner()).collect())
     }
 
@@ -189,7 +275,14 @@ where
     where
         RV: FromRedisValue,
     {
-        self.redis.llen(&*self.key).await
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
+        conn.llen(&*self.key).await
     }
 
     /// Insert element before or after pivot
@@ -200,17 +293,21 @@ where
     where
         RV: FromRedisValue,
     {
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
         let pivot_json = pivot.into();
         let value_json = value.into();
         if before {
-            self.redis
-                .linsert_before(&*self.key, pivot_json, value_json)
+            conn.linsert_before(&*self.key, pivot_json, value_json)
                 .await
         }
         else {
-            self.redis
-                .linsert_after(&*self.key, pivot_json, value_json)
-                .await
+            conn.linsert_after(&*self.key, pivot_json, value_json).await
         }
     }
 
@@ -221,7 +318,14 @@ where
     where
         RV: FromRedisValue,
     {
-        self.redis.lrem(&*self.key, count, value.into()).await
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
+        conn.lrem(&*self.key, count, value.into()).await
     }
 
     /// Trim list to specified range
@@ -231,7 +335,14 @@ where
     where
         RV: FromRedisValue,
     {
-        self.redis.ltrim(&*self.key, start, stop).await
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
+        conn.ltrim(&*self.key, start, stop).await
     }
 
     /// Move element from one list to another (non-blocking version)
@@ -239,16 +350,21 @@ where
         &mut self, dest_key: &str, from_left: bool, to_left: bool,
     ) -> RedisResult<Option<T>> {
         // Use the simpler RPOPLPUSH or equivalent operations
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
         if from_left {
             let value: Option<T> = self.pop_left().await?;
             if let Some(val) = value.clone() {
                 if to_left {
-                    let _: i32 =
-                        self.redis.lpush(dest_key, Json(val)).await?;
+                    let _: i32 = conn.lpush(dest_key, Json(val)).await?;
                 }
                 else {
-                    let _: i32 =
-                        self.redis.rpush(dest_key, Json(val)).await?;
+                    let _: i32 = conn.rpush(dest_key, Json(val)).await?;
                 }
                 Ok(value)
             }
@@ -260,12 +376,10 @@ where
             let value: Option<T> = self.pop_right().await?;
             if let Some(val) = value.clone() {
                 if to_left {
-                    let _: i32 =
-                        self.redis.lpush(dest_key, Json(val)).await?;
+                    let _: i32 = conn.lpush(dest_key, Json(val)).await?;
                 }
                 else {
-                    let _: i32 =
-                        self.redis.rpush(dest_key, Json(val)).await?;
+                    let _: i32 = conn.rpush(dest_key, Json(val)).await?;
                 }
                 Ok(value)
             }
@@ -283,9 +397,16 @@ where
         RV: FromRedisValue,
     {
         // Check if list exists first, then push
-        let exists: bool = self.redis.exists(&*self.key).await?;
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
+        let exists: bool = conn.exists(&*self.key).await?;
         if exists {
-            self.redis.lpush(&*self.key, value.into()).await
+            conn.lpush(&*self.key, value.into()).await
         }
         else {
             FromRedisValue::from_redis_value(&redis::Value::Int(0))
@@ -300,9 +421,16 @@ where
         RV: FromRedisValue,
     {
         // Check if list exists first, then push
-        let exists: bool = self.redis.exists(&*self.key).await?;
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
+        let exists: bool = conn.exists(&*self.key).await?;
         if exists {
-            self.redis.rpush(&*self.key, value.into()).await
+            conn.rpush(&*self.key, value.into()).await
         }
         else {
             FromRedisValue::from_redis_value(&redis::Value::Int(0))

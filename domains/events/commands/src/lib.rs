@@ -1,15 +1,30 @@
-pub mod bulk_delete_events;
-pub mod create_event;
-pub mod delete_event;
-pub mod update_event;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
+use uuid::Uuid;
 
-pub use bulk_delete_events::{
-    BulkDeleteEventsCommand, BulkDeleteEventsResponse,
-};
-pub use create_event::{
-    CreateEventCommand, CreateEventResponse, CreateEventResult,
-};
-pub use delete_event::DeleteEventCommand;
-pub use update_event::{
-    UpdateEventCommand, UpdateEventResponse, UpdateEventResult,
-};
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct BulkDeleteEventsCommand {
+    pub before: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CreateEventCommand {
+    pub user_id: Uuid,
+    pub event_type: String,
+    pub timestamp: Option<DateTime<Utc>>,
+    pub metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct DeleteEventCommand {
+    pub event_id: Uuid,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct UpdateEventCommand {
+    #[serde(skip)]
+    pub event_id: Uuid,
+    pub event_type_id: Option<i32>,
+    pub metadata: Option<serde_json::Value>,
+}

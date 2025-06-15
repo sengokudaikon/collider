@@ -11,15 +11,15 @@ use crate::core::{
     value::{CacheValue, Json},
 };
 
-pub struct Normal<'cache, T> {
+pub struct Normal<T> {
     pool: deadpool_redis::Pool,
     key: Cow<'static, str>,
     __phantom: PhantomData<T>,
 }
 
-impl<'cache, T> CacheTypeTrait<'cache> for Normal<'cache, T> {
+impl<T> CacheTypeTrait<'_> for Normal<T> {
     fn from_cache_and_key(
-        backend: super::super::core::backend::CacheBackend<'cache>,
+        backend: super::super::core::backend::CacheBackend<'_>,
         key: Cow<'static, str>,
     ) -> Self {
         let pool = match backend {
@@ -35,15 +35,21 @@ impl<'cache, T> CacheTypeTrait<'cache> for Normal<'cache, T> {
     }
 }
 
-impl<'cache, T> Normal<'cache, T>
+impl<T> Normal<T>
 where
-    T: Serialize + for<'de> Deserialize<'de> + Send + Sync + 'cache,
+    T: Serialize + for<'de> Deserialize<'de> + Send + Sync,
 {
     pub async fn exists<RV>(&mut self) -> RedisResult<RV>
     where
         RV: FromRedisValue,
     {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
         conn.exists(&*self.key).await
     }
 
@@ -53,7 +59,13 @@ where
     where
         RV: FromRedisValue,
     {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
         conn.set(&*self.key, value.into()).await
     }
 
@@ -63,7 +75,13 @@ where
     where
         RV: FromRedisValue,
     {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
         conn.set_nx(&*self.key, value.into()).await
     }
 
@@ -73,13 +91,25 @@ where
     where
         RV: FromRedisValue,
     {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
         conn.set_ex(&*self.key, value.into(), duration.as_secs() as _)
             .await
     }
 
     pub async fn get(&mut self) -> RedisResult<T> {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
         let json: Json<T> = conn.get(&*self.key).await?;
         Ok(json.inner())
     }
@@ -97,7 +127,13 @@ where
     where
         RV: FromRedisValue,
     {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get().await.map_err(|e| {
+            redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Pool connection error",
+                e.to_string(),
+            ))
+        })?;
         conn.del(&*self.key).await
     }
 }

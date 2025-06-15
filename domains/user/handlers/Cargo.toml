@@ -14,6 +14,7 @@ tracing.workspace = true
 # Database
 database-traits.workspace = true
 sql-connection.workspace = true
+redis-connection.workspace = true
 
 user-models = { path = "../models" }
 user-errors = { path = "../errors" }
@@ -21,6 +22,7 @@ user-dao = { path = "../dao" }
 user-commands = { path = "../commands" }
 user-queries = { path = "../queries" }
 user-events = { path = "../events" }
+user-responses = { path = "../responses" }
 events-commands = { path = "../../events/commands" }
 
 # Channel communication

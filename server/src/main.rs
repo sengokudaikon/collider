@@ -1,10 +1,11 @@
 use std::net::SocketAddr;
 
-use analytics_http::analytics_routes;
+use analytics::RedisAnalyticsMetricsUpdater;
+use analytics_http::AnalyticsHandlers;
 use axum::{Router, http::StatusCode, response::IntoResponse, routing::get};
-use events_http::{event_routes};
+use events_http::EventHandlers;
 use redis_connection::{
-    config::RedisDbConfig, connect_redis_db,
+    cache_provider::CacheProvider, config::RedisDbConfig, connect_redis_db,
     connection::RedisConnectionManager,
 };
 use sql_connection::{
@@ -51,8 +52,9 @@ async fn main() -> anyhow::Result<()> {
         db: 0,
     };
     let redis_pool = connect_redis_db(&redis_config).await?;
-    RedisConnectionManager::init_static(redis_pool);
-    info!("Redis connection pool initialized");
+    RedisConnectionManager::init_static(redis_pool.clone());
+    CacheProvider::init_redis_static(redis_pool);
+    info!("Redis connection pool and cache backend initialized");
 
     info!("Connection pools initialized successfully");
 
@@ -60,10 +62,22 @@ async fn main() -> anyhow::Result<()> {
     let (user_services, _analytics_task) =
         UserServices::new_with_analytics(db.clone());
 
+    let event_services = events_http::EventServices::new(db.clone());
+    let analytics_services = analytics_http::AnalyticsServices::new(
+        db.clone(),
+        RedisAnalyticsMetricsUpdater::new(),
+    );
+
     let app = Router::new()
         .route("/health", get(health_check))
-        .nest("/api/events", event_routes())
-        .nest("/api/analytics", analytics_routes())
+        .nest(
+            "/api/events",
+            EventHandlers::routes().with_state(event_services),
+        )
+        .nest(
+            "/api/analytics",
+            AnalyticsHandlers::routes().with_state(analytics_services),
+        )
         .nest(
             "/api/users",
             UserHandlers::routes().with_state(user_services),
@@ -89,42 +103,37 @@ async fn main() -> anyhow::Result<()> {
 #[openapi(
     paths(
         health_check,
-        events_http::handlers::create_event,
-        events_http::handlers::update_event,
-        events_http::handlers::delete_event,
-        events_http::handlers::get_event,
-        events_http::handlers::list_events,
-        events_http::handlers::bulk_delete_events,
+        events_http::create_event,
+        events_http::update_event,
+        events_http::delete_event,
+        events_http::get_event,
+        events_http::list_events,
+        events_http::bulk_delete_events,
         events_http::stats::get_stats,
-        analytics_http::handlers::get_realtime_metrics,
-        analytics_http::handlers::get_hourly_summaries,
-        analytics_http::handlers::get_user_activity,
-        analytics_http::handlers::get_popular_events,
-        user_http::handlers::create_user,
-        user_http::handlers::update_user,
-        user_http::handlers::delete_user,
-        user_http::handlers::get_user,
-        user_http::handlers::list_users,
-        user_http::handlers::get_user_events
+        analytics_http::get_realtime_metrics,
+        analytics_http::get_hourly_summaries,
+        analytics_http::get_user_activity,
+        analytics_http::get_popular_events,
+        user_http::create_user,
+        user_http::update_user,
+        user_http::delete_user,
+        user_http::get_user,
+        user_http::list_users,
+        user_http::get_user_events
     ),
     components(
         schemas(
-            events_http::EventResponse,
-            events_http::EventRequestDto,
+            events_responses::EventResponse,
             events_http::EventsListParams,
             events_http::EventsDeleteParams,
             events_http::stats::StatsQuery,
             events_http::stats::StatsResponse,
             events_commands::CreateEventCommand,
-            events_commands::CreateEventResponse,
             events_commands::UpdateEventCommand,
-            events_commands::UpdateEventResponse,
-            events_commands::BulkDeleteEventsResponse,
-            user_http::UserResponse,
+            events_responses::BulkDeleteEventsResponse,
+            user_responses::UserResponse,
             user_commands::CreateUserCommand,
-            user_commands::UserResponse,
             user_commands::UpdateUserCommand,
-            user_commands::UserResponse
         )
     ),
     tags(

@@ -1,11 +1,13 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use chrono::{DateTime, Utc};
+    use chrono::Utc;
     use test_utils::postgres::TestPostgresContainer;
     use uuid::Uuid;
 
-    async fn setup_test_db() -> anyhow::Result<(TestPostgresContainer, AnalyticsViewsDao)> {
+    use crate::AnalyticsViewsDao;
+
+    async fn setup_test_db()
+    -> anyhow::Result<(TestPostgresContainer, AnalyticsViewsDao)> {
         let container = TestPostgresContainer::new().await?;
         let sql_connect = test_utils::create_sql_connect(&container);
         let dao = AnalyticsViewsDao::new(sql_connect);
@@ -68,7 +70,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_user_session_summaries_with_user_id() -> anyhow::Result<()> {
+    async fn test_get_user_session_summaries_with_user_id()
+    -> anyhow::Result<()> {
         let (_container, dao) = setup_test_db().await?;
 
         let user_id = Uuid::new_v4();
@@ -81,7 +84,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_page_analytics_with_page_filter() -> anyhow::Result<()> {
+    async fn test_get_page_analytics_with_page_filter() -> anyhow::Result<()>
+    {
         let (_container, dao) = setup_test_db().await?;
 
         let start_time = Utc::now() - chrono::Duration::hours(24);
@@ -122,7 +126,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_referrer_analytics_with_referrer_filter() -> anyhow::Result<()> {
+    async fn test_get_referrer_analytics_with_referrer_filter()
+    -> anyhow::Result<()> {
         let (_container, dao) = setup_test_db().await?;
 
         let start_date = Utc::now() - chrono::Duration::days(7);
@@ -153,9 +158,10 @@ mod tests {
         // This should not fail even if views don't exist yet
         // (they will be created by migrations)
         let result = dao.refresh_views(command).await;
-        
-        // We expect this to fail since the materialized views don't exist in test DB
-        // but we're testing that all 7 views are included in the refresh logic
+
+        // We expect this to fail since the materialized views don't exist in
+        // test DB but we're testing that all 7 views are included in
+        // the refresh logic
         assert!(result.is_err());
 
         Ok(())

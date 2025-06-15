@@ -1,10 +1,7 @@
-use std::{env, collections::HashMap};
+use std::env;
 use chrono::{DateTime, Duration, Utc};
 use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod};
-use events_models::{
-    Metadata, BaseMetadata, UserMetadata, EcommerceMetadata,
-    ApiMetadata, AnalyticsMetadata, EventMetadata
-};
+use events_models::Metadata;
 use phf_macros::phf_map;
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use serde_json::Value;
@@ -222,113 +219,71 @@ pub fn create_event_types(count: usize) -> Vec<EventType> {
     event_types
 }
 
-/// Generate typed metadata based on event type category
+/// Generate typed metadata based on event type category that matches materialized view expectations
 pub fn generate_typed_metadata(event_type: &str, rng: &mut SmallRng) -> Metadata {
     let referrer = REFERRERS[rng.gen_range(0..REFERRERS.len())];
-    let session_id = rng.gen_range(100_000_000..999_999_999);
+    let session_id = rng.gen_range(100_000_000..999_999_999).to_string();
     
     // Extract base event category from event type
     let category = event_type.split('.').next().unwrap_or("unknown");
     
+    let mut metadata = Metadata::default();
+    
+    // Set common fields for all events (used by all materialized views)
+    metadata.page = EVENT_TYPES.get(event_type)
+        .and_then(|m| m.get("page"))
+        .map(|p| p.to_string());
+    metadata.referrer = Some(referrer.to_string());
+    metadata.session_id = Some(session_id);
+    
+    // Set category-specific fields to match materialized view columns
     match category {
         "user" => {
-            let user_metadata = UserMetadata {
-                base: BaseMetadata {
-                    page: EVENT_TYPES.get(event_type)
-                        .and_then(|m| m.get("page"))
-                        .map(|p| p.to_string())
-                        .or_else(|| Some("/user".to_string())),
-                    referrer: Some(referrer.to_string()),
-                    session_id: Some(session_id),
-                    extra: HashMap::new(),
-                },
-                user_agent: Some(generate_user_agent(rng)),
-                ip_address: Some(generate_ip_address(rng)),
-                device_type: Some(generate_device_type(rng)),
-                location: Some(generate_location(rng)),
-            };
-            Metadata::User(user_metadata)
+            // Fields used by user-related views
+            metadata.user_agent = Some(generate_user_agent(rng));
+            metadata.ip_address = Some(generate_ip_address(rng));
+            metadata.device_type = Some(generate_device_type(rng));
+            metadata.location = Some(generate_location(rng));
         },
         "order" | "product" | "payment" | "cart" | "checkout" => {
-            let ecommerce_metadata = EcommerceMetadata {
-                base: BaseMetadata {
-                    page: EVENT_TYPES.get(event_type)
-                        .and_then(|m| m.get("page"))
-                        .map(|p| p.to_string())
-                        .or_else(|| Some("/shop".to_string())),
-                    referrer: Some(referrer.to_string()),
-                    session_id: Some(session_id),
-                    extra: HashMap::new(),
-                },
-                product_id: Some(rng.gen_range(1..=5000)),
-                price: Some(rng.gen_range(999..=99999)), // Price in cents
-                currency: Some("USD".to_string()),
-                cart_total: Some(rng.gen_range(999..=199999)),
-                order_id: Some(format!("ORD-{}", rng.gen_range(100000..999999))),
-                category: Some(generate_product_category(rng)),
-                quantity: Some(rng.gen_range(1..=5)),
-            };
-            Metadata::Ecommerce(ecommerce_metadata)
+            // Fields used by product_analytics materialized view
+            metadata.product_id = Some(rng.gen_range(1..=5000));
+            metadata.price = Some(rng.gen_range(999..=99999)); // Price in cents
+            metadata.currency = Some("USD".to_string());
+            metadata.cart_total = Some(rng.gen_range(999..=199999));
+            metadata.order_id = Some(format!("ORD-{}", rng.gen_range(100000..999999)));
+            metadata.category = Some(generate_product_category(rng));
+            metadata.quantity = Some(rng.gen_range(1..=5));
         },
         "api" => {
-            let api_metadata = ApiMetadata {
-                base: BaseMetadata {
-                    page: EVENT_TYPES.get(event_type)
-                        .and_then(|m| m.get("page"))
-                        .map(|p| p.to_string())
-                        .or_else(|| Some("/api".to_string())),
-                    referrer: Some(referrer.to_string()),
-                    session_id: Some(session_id),
-                    extra: HashMap::new(),
-                },
-                endpoint: Some(format!("/api/v1/{}", generate_api_endpoint(rng))),
-                method: Some(generate_http_method(rng)),
-                response_code: Some(generate_response_code(rng)),
-                response_time_ms: Some(rng.gen_range(10..2000)),
-                request_size: Some(rng.gen_range(100..10000)),
-                response_size: Some(rng.gen_range(200..50000)),
-                api_version: Some("v1".to_string()),
-            };
-            Metadata::Api(api_metadata)
+            // Fields used by API monitoring views
+            metadata.endpoint = Some(format!("/api/v1/{}", generate_api_endpoint(rng)));
+            metadata.method = Some(generate_http_method(rng));
+            metadata.response_code = Some(generate_response_code(rng) as i32);
+            metadata.response_time_ms = Some(rng.gen_range(10..2000));
+            metadata.request_size = Some(rng.gen_range(100..10000));
+            metadata.response_size = Some(rng.gen_range(200..50000));
+            metadata.api_version = Some("v1".to_string());
         },
         "search" | "admin" | "settings" => {
-            let analytics_metadata = AnalyticsMetadata {
-                base: BaseMetadata {
-                    page: EVENT_TYPES.get(event_type)
-                        .and_then(|m| m.get("page"))
-                        .map(|p| p.to_string())
-                        .or_else(|| Some("/analytics".to_string())),
-                    referrer: Some(referrer.to_string()),
-                    session_id: Some(session_id),
-                    extra: HashMap::new(),
-                },
-                variant: Some(generate_ab_variant(rng)),
-                campaign_id: Some(format!("CAM-{}", rng.gen_range(1000..9999))),
-                utm_source: Some(generate_utm_source(rng)),
-                utm_medium: Some("web".to_string()),
-                utm_campaign: Some(generate_campaign_name(rng)),
-                conversion_value: if rng.gen_bool(0.1) { 
-                    Some(rng.gen_range(1000..50000)) 
-                } else { 
-                    None 
-                },
+            // Fields used by analytics views
+            metadata.variant = Some(generate_ab_variant(rng));
+            metadata.campaign_id = Some(format!("CAM-{}", rng.gen_range(1000..9999)));
+            metadata.utm_source = Some(generate_utm_source(rng));
+            metadata.utm_medium = Some("web".to_string());
+            metadata.utm_campaign = Some(generate_campaign_name(rng));
+            metadata.conversion_value = if rng.gen_bool(0.1) { 
+                Some(rng.gen_range(1000..50000)) 
+            } else { 
+                None 
             };
-            Metadata::Analytics(analytics_metadata)
         },
         _ => {
-            // Default to base metadata for unknown categories
-            let base_metadata = BaseMetadata {
-                page: EVENT_TYPES.get(event_type)
-                    .and_then(|m| m.get("page"))
-                    .map(|p| p.to_string())
-                    .or_else(|| Some("/unknown".to_string())),
-                referrer: Some(referrer.to_string()),
-                session_id: Some(session_id),
-                extra: HashMap::new(),
-            };
-            Metadata::Base(base_metadata)
+            // Default metadata already has common fields set above
         }
     }
+    
+    metadata
 }
 
 // Helper functions for generating realistic metadata values
@@ -434,7 +389,7 @@ pub fn create_events(count: usize, users: &[User], event_types: &[EventType]) ->
             
             // Generate typed metadata based on event type
             let typed_metadata = generate_typed_metadata(&event_type.name, &mut rng);
-            let metadata = typed_metadata.to_json();
+            let metadata = serde_json::to_value(&typed_metadata).unwrap_or(Value::Null);
             
             Event {
                 id: event_id,
@@ -481,7 +436,7 @@ pub fn create_events_for_batch(
             
             // Generate typed metadata based on event type
             let typed_metadata = generate_typed_metadata(&event_type.name, &mut rng);
-            let metadata = typed_metadata.to_json();
+            let metadata = serde_json::to_value(&typed_metadata).unwrap_or(Value::Null);
             
             Event {
                 id: event_id,

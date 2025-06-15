@@ -1,10 +1,13 @@
-use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
-use tokio_postgres::types::{ToSql, FromSql, Type, IsNull};
 use bytes::BytesMut;
+use serde::{Deserialize, Serialize};
+use tokio_postgres::types::{FromSql, IsNull, ToSql, Type};
+use utoipa::ToSchema;
 
-/// Single flattened metadata type that matches materialized view structure exactly
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, PartialEq, Eq)]
+/// Single flattened metadata type that matches materialized view structure
+/// exactly
+#[derive(
+    Debug, Clone, Serialize, Deserialize, ToSchema, PartialEq, Eq, Default,
+)]
 pub struct Metadata {
     /// The page or URL where the event occurred
     pub page: Option<String>,
@@ -12,7 +15,7 @@ pub struct Metadata {
     pub referrer: Option<String>,
     /// Session identifier for grouping related events
     pub session_id: Option<String>,
-    
+
     /// Product identifier (ecommerce events)
     pub product_id: Option<i32>,
     /// Price in cents (ecommerce events)
@@ -27,7 +30,7 @@ pub struct Metadata {
     pub category: Option<String>,
     /// Quantity of items (ecommerce events)
     pub quantity: Option<i32>,
-    
+
     /// User agent string (user events)
     pub user_agent: Option<String>,
     /// IP address (user events)
@@ -36,7 +39,7 @@ pub struct Metadata {
     pub device_type: Option<String>,
     /// Geographic location (user events)
     pub location: Option<String>,
-    
+
     /// API endpoint path (api events)
     pub endpoint: Option<String>,
     /// HTTP method (api events)
@@ -51,7 +54,7 @@ pub struct Metadata {
     pub response_size: Option<i64>,
     /// API version (api events)
     pub api_version: Option<String>,
-    
+
     /// A/B test variant identifier (analytics events)
     pub variant: Option<String>,
     /// Campaign identifier (analytics events)
@@ -67,90 +70,52 @@ pub struct Metadata {
 }
 
 impl ToSql for Metadata {
-    fn to_sql(&self, _ty: &Type, out: &mut BytesMut) -> Result<IsNull, Box<dyn std::error::Error + Sync + Send>> {
+    tokio_postgres::types::to_sql_checked!();
+
+    fn to_sql(
+        &self, _ty: &Type, out: &mut BytesMut,
+    ) -> Result<IsNull, Box<dyn std::error::Error + Sync + Send>> {
         let json = serde_json::to_value(self)?;
         json.to_sql(&Type::JSONB, out)
     }
 
-    fn accepts(ty: &Type) -> bool {
-        ty == &Type::JSONB || ty == &Type::JSON
-    }
-
-    tokio_postgres::types::to_sql_checked!();
+    fn accepts(ty: &Type) -> bool { ty == &Type::JSONB || ty == &Type::JSON }
 }
 
 impl<'a> FromSql<'a> for Metadata {
-    fn from_sql(_ty: &Type, raw: &'a [u8]) -> Result<Self, Box<dyn std::error::Error + Sync + Send>> {
+    fn from_sql(
+        _ty: &Type, raw: &'a [u8],
+    ) -> Result<Self, Box<dyn std::error::Error + Sync + Send>> {
         let json = serde_json::Value::from_sql(&Type::JSONB, raw)?;
         let metadata = serde_json::from_value(json)?;
         Ok(metadata)
     }
 
-    fn accepts(ty: &Type) -> bool {
-        ty == &Type::JSONB || ty == &Type::JSON
-    }
-}
-
-impl Default for Metadata {
-    fn default() -> Self {
-        Self {
-            page: None,
-            referrer: None,
-            session_id: None,
-            product_id: None,
-            price: None,
-            currency: None,
-            cart_total: None,
-            order_id: None,
-            category: None,
-            quantity: None,
-            user_agent: None,
-            ip_address: None,
-            device_type: None,
-            location: None,
-            endpoint: None,
-            method: None,
-            response_code: None,
-            response_time_ms: None,
-            request_size: None,
-            response_size: None,
-            api_version: None,
-            variant: None,
-            campaign_id: None,
-            utm_source: None,
-            utm_medium: None,
-            utm_campaign: None,
-            conversion_value: None,
-        }
-    }
+    fn accepts(ty: &Type) -> bool { ty == &Type::JSONB || ty == &Type::JSON }
 }
 
 impl Metadata {
     /// Create metadata for user events
-    pub fn user() -> Self {
-        Self::default()
-    }
+    pub fn user() -> Self { Self::default() }
 
     /// Create metadata for ecommerce events
-    pub fn ecommerce() -> Self {
-        Self::default()
-    }
+    pub fn ecommerce() -> Self { Self::default() }
 
     /// Create metadata for API events
-    pub fn api() -> Self {
-        Self::default()
-    }
+    pub fn api() -> Self { Self::default() }
 
     /// Create metadata for analytics events
-    pub fn analytics() -> Self {
-        Self::default()
-    }
+    pub fn analytics() -> Self { Self::default() }
 
     /// Validate the metadata structure
     pub fn validate(&self) -> Result<(), MetadataValidationError> {
         if let Some(ref referrer) = self.referrer {
-            if !referrer.starts_with("http://") && !referrer.starts_with("https://") {
-                return Err(MetadataValidationError::InvalidUrl(referrer.clone()));
+            if !referrer.starts_with("http://")
+                && !referrer.starts_with("https://")
+            {
+                return Err(MetadataValidationError::InvalidUrl(
+                    referrer.clone(),
+                ));
             }
         }
 
@@ -179,18 +144,22 @@ mod tests {
 
     #[test]
     fn test_metadata_validation() {
-        let mut metadata = Metadata::default();
-        metadata.page = Some("/test".to_string());
-        metadata.referrer = Some("https://example.com".to_string());
-        metadata.session_id = Some("12345".to_string());
+        let metadata = Metadata {
+            page: Some("/test".to_string()),
+            referrer: Some("https://example.com".to_string()),
+            session_id: Some("12345".to_string()),
+            ..Default::default()
+        };
 
         assert!(metadata.validate().is_ok());
     }
 
     #[test]
     fn test_invalid_referrer() {
-        let mut metadata = Metadata::default();
-        metadata.referrer = Some("invalid-url".to_string());
+        let metadata = Metadata {
+            referrer: Some("invalid-url".to_string()),
+            ..Default::default()
+        };
 
         assert!(metadata.validate().is_err());
     }

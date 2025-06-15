@@ -3,7 +3,6 @@ use database_traits::dao::GenericDao;
 use events_commands::CreateEventCommand;
 use flume::Sender;
 use sql_connection::SqlConnect;
-use thiserror::Error;
 use tracing::{instrument, warn};
 use user_commands::{
     CreateUserCommand, DeleteUserCommand, UpdateUserCommand,
@@ -11,22 +10,21 @@ use user_commands::{
 use user_dao::UserDao;
 use user_errors::UserError;
 use user_events::UserAnalyticsEvent;
-use user_queries::UserResponse;
-use uuid::Uuid;
+use user_responses::UserResponse;
 
 #[derive(Clone)]
 pub struct CreateUserHandler {
     user_dao: UserDao,
     analytics_event_sender: Option<Sender<UserAnalyticsEvent>>,
+    event_sender: Option<Sender<CreateEventCommand>>,
 }
 
 impl CreateUserHandler {
-    pub fn new(
-        db: SqlConnect, analytics_sender: Option<Sender<UserAnalyticsEvent>>,
-    ) -> Self {
+    pub fn new(db: SqlConnect) -> Self {
         Self {
             user_dao: UserDao::new(db),
-            analytics_event_sender: analytics_sender,
+            analytics_event_sender: None,
+            event_sender: None,
         }
     }
 
@@ -37,8 +35,15 @@ impl CreateUserHandler {
         self
     }
 
+    pub fn with_event_sender(
+        mut self, event_sender: Sender<CreateEventCommand>,
+    ) -> Self {
+        self.event_sender = Some(event_sender);
+        self
+    }
+
     #[instrument(skip(self))]
-    async fn execute(
+    pub async fn execute(
         &self, command: CreateUserCommand,
     ) -> Result<UserResponse, UserError> {
         let saved_user = self.user_dao.create(command).await?;
@@ -68,15 +73,15 @@ impl CreateUserHandler {
 pub struct UpdateUserHandler {
     user_dao: UserDao,
     analytics_event_sender: Option<Sender<UserAnalyticsEvent>>,
+    event_sender: Option<Sender<CreateEventCommand>>,
 }
 
 impl UpdateUserHandler {
-    pub fn new(
-        db: SqlConnect, analytics_sender: Option<Sender<UserAnalyticsEvent>>,
-    ) -> Self {
+    pub fn new(db: SqlConnect) -> Self {
         Self {
             user_dao: UserDao::new(db),
-            analytics_event_sender: analytics_sender,
+            analytics_event_sender: None,
+            event_sender: None,
         }
     }
 
@@ -84,6 +89,13 @@ impl UpdateUserHandler {
         mut self, analytics_event_sender: Sender<UserAnalyticsEvent>,
     ) -> Self {
         self.analytics_event_sender = Some(analytics_event_sender);
+        self
+    }
+
+    pub fn with_event_sender(
+        mut self, event_sender: Sender<CreateEventCommand>,
+    ) -> Self {
+        self.event_sender = Some(event_sender);
         self
     }
 
@@ -134,6 +146,7 @@ impl UpdateUserHandler {
 pub struct DeleteUserHandler {
     user_dao: UserDao,
     analytics_event_sender: Option<Sender<UserAnalyticsEvent>>,
+    event_sender: Option<Sender<CreateEventCommand>>,
 }
 
 impl DeleteUserHandler {
@@ -141,6 +154,7 @@ impl DeleteUserHandler {
         Self {
             user_dao: UserDao::new(db),
             analytics_event_sender: None,
+            event_sender: None,
         }
     }
 
@@ -148,6 +162,13 @@ impl DeleteUserHandler {
         mut self, analytics_event_sender: Sender<UserAnalyticsEvent>,
     ) -> Self {
         self.analytics_event_sender = Some(analytics_event_sender);
+        self
+    }
+
+    pub fn with_event_sender(
+        mut self, event_sender: Sender<CreateEventCommand>,
+    ) -> Self {
+        self.event_sender = Some(event_sender);
         self
     }
 
@@ -200,8 +221,7 @@ mod tests {
             test_utils::postgres::TestPostgresContainer::new().await?;
         let sql_connect = create_sql_connect(&container);
 
-        let create_handler =
-            CreateUserHandler::new(sql_connect.clone(), None);
+        let create_handler = CreateUserHandler::new(sql_connect.clone());
         let update_handler = UpdateUserHandler::new(sql_connect.clone());
         let delete_handler = DeleteUserHandler::new(sql_connect);
 

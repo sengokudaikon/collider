@@ -4,24 +4,5 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-user-models.workspace = true
-user-dao.workspace = true
-database-traits.workspace = true
-sql-connection.workspace = true
-analytics.workspace = true
-redis-connection.workspace = true
 uuid.workspace = true
 serde.workspace = true
-thiserror.workspace = true
-tracing.workspace = true
-chrono.workspace = true
-redis.workspace = true
-futures.workspace = true
-utoipa.workspace = true
-
-[dev-dependencies]
-test-utils.workspace = true
-tokio = { workspace = true, features = ["test-util"] }
-tokio-postgres.workspace = true
-deadpool-postgres.workspace = true
-anyhow.workspace = true

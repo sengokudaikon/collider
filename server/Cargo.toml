@@ -17,9 +17,13 @@ deadpool-postgres.workspace = true
 
 events-http.workspace = true
 events-commands.workspace = true
+events-responses.workspace = true
+events-queries.workspace = true
 analytics-http.workspace = true
+analytics.workspace = true
 user-http.workspace = true
 user-commands.workspace = true
+user-responses.workspace = true
 test-utils.workspace = true
 database-traits.workspace = true
 sql-connection.workspace = true

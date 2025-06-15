@@ -6,6 +6,7 @@ use moka::future::Cache;
 ///
 /// Unlike fixed-size collections like ArrayVec or SmallVec, this allows
 /// the capacity to be determined at runtime from configuration.
+#[derive(Clone)]
 pub struct BoundedBackends<'a> {
     backends: Vec<CacheBackend<'a>>,
     max_capacity: usize,
@@ -61,6 +62,33 @@ impl<'a> From<deadpool_redis::Pool> for CacheBackend<'a> {
     fn from(pool: deadpool_redis::Pool) -> Self { CacheBackend::Redis(pool) }
 }
 
+impl<'a> From<std::sync::Arc<CacheBackend<'a>>> for CacheBackend<'a> {
+    fn from(arc_backend: std::sync::Arc<CacheBackend<'a>>) -> Self {
+        match arc_backend.as_ref() {
+            CacheBackend::Redis(pool) => CacheBackend::Redis(pool.clone()),
+            CacheBackend::Memory { cache, config } => {
+                CacheBackend::Memory {
+                    cache: cache.clone(),
+                    config: config.clone(),
+                }
+            }
+            #[cfg(feature = "file-cache")]
+            CacheBackend::File { file_db, config } => {
+                CacheBackend::File {
+                    file_db: file_db.clone(),
+                    config: config.clone(),
+                }
+            }
+            CacheBackend::Tiered { backends, config } => {
+                CacheBackend::Tiered {
+                    backends: backends.clone(),
+                    config: config.clone(),
+                }
+            }
+        }
+    }
+}
+
 impl<'a> From<(Cache<String, Bytes>, crate::config::MemoryConfig)>
     for CacheBackend<'a>
 {
@@ -89,6 +117,7 @@ impl<'a>
 }
 
 /// Represents different cache backend types
+#[derive(Clone)]
 pub enum CacheBackend<'a> {
     /// Redis backend using a deadpool connection pool
     Redis(deadpool_redis::Pool),

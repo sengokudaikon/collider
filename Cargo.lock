@@ -117,6 +117,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "serde",
+ "serde_json",
  "utoipa",
  "uuid",
 ]
@@ -464,6 +465,7 @@ checksum = "f46ad14479a25103f283c0f10005961cf086d8dc42205bb44c46ac563475dca6"
 name = "collider"
 version = "0.1.0"
 dependencies = [
+ "analytics",
  "analytics-http",
  "anyhow",
  "axum",
@@ -473,6 +475,8 @@ dependencies = [
  "dotenvy",
  "events-commands",
  "events-http",
+ "events-queries",
+ "events-responses",
  "redis-connection",
  "serde",
  "serde_json",
@@ -486,6 +490,7 @@ dependencies = [
  "tracing-subscriber",
  "user-commands",
  "user-http",
+ "user-responses",
  "utoipa",
  "utoipa-rapidoc",
  "uuid",
@@ -752,12 +757,43 @@ dependencies = [
  "database-traits",
  "deadpool-postgres",
  "events-commands",
+ "events-errors",
  "events-models",
  "serde",
  "serde_json",
  "sql-connection",
  "thiserror 2.0.12",
  "tokio-postgres",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "events-errors"
+version = "0.1.0"
+dependencies = [
+ "redis-connection",
+ "sql-connection",
+ "thiserror 2.0.12",
+ "uuid",
+]
+
+[[package]]
+name = "events-handlers"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "database-traits",
+ "events-commands",
+ "events-dao",
+ "events-errors",
+ "events-models",
+ "events-queries",
+ "events-responses",
+ "redis-connection",
+ "sql-connection",
+ "test-utils",
+ "tokio",
  "tracing",
  "uuid",
 ]
@@ -775,8 +811,10 @@ dependencies = [
  "domain",
  "events-commands",
  "events-dao",
+ "events-handlers",
  "events-models",
  "events-queries",
+ "events-responses",
  "flume",
  "serde",
  "serde_json",
@@ -795,6 +833,7 @@ dependencies = [
 name = "events-models"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "chrono",
  "deadpool-postgres",
  "serde",
@@ -810,21 +849,18 @@ dependencies = [
 name = "events-queries"
 version = "0.1.0"
 dependencies = [
- "anyhow",
- "chrono",
- "database-traits",
- "deadpool-postgres",
- "events-dao",
- "events-models",
- "redis-connection",
  "serde",
- "serde_json",
- "sql-connection",
- "test-utils",
- "thiserror 2.0.12",
- "tokio",
- "tokio-postgres",
- "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "events-responses"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "events-models",
+ "serde",
+ "utoipa",
  "uuid",
 ]
 
@@ -2549,7 +2585,6 @@ name = "user-errors"
 version = "0.1.0"
 dependencies = [
  "redis-connection",
- "serde",
  "sql-connection",
  "thiserror 2.0.12",
  "uuid",
@@ -2575,6 +2610,7 @@ dependencies = [
  "database-traits",
  "events-commands",
  "flume",
+ "redis-connection",
  "serde",
  "sql-connection",
  "test-utils",
@@ -2587,6 +2623,7 @@ dependencies = [
  "user-events",
  "user-models",
  "user-queries",
+ "user-responses",
  "uuid",
 ]
 
@@ -2601,8 +2638,9 @@ dependencies = [
  "chrono",
  "domain",
  "events-commands",
- "events-http",
+ "events-handlers",
  "events-queries",
+ "events-responses",
  "flume",
  "http",
  "serde",
@@ -2614,8 +2652,9 @@ dependencies = [
  "tracing",
  "user-commands",
  "user-events",
- "user-models",
+ "user-handlers",
  "user-queries",
+ "user-responses",
  "utoipa",
  "uuid",
 ]
@@ -2635,22 +2674,16 @@ dependencies = [
 name = "user-queries"
 version = "0.1.0"
 dependencies = [
- "analytics",
- "anyhow",
- "chrono",
- "database-traits",
- "deadpool-postgres",
- "futures",
- "redis",
- "redis-connection",
  "serde",
- "sql-connection",
- "test-utils",
- "thiserror 2.0.12",
- "tokio",
- "tokio-postgres",
- "tracing",
- "user-dao",
+ "uuid",
+]
+
+[[package]]
+name = "user-responses"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
  "user-models",
  "utoipa",
  "uuid",

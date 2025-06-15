@@ -10,6 +10,8 @@ use sql_connection::SqlConnect;
 use tracing::instrument;
 use utoipa::{IntoParams, ToSchema};
 
+use crate::EventServices;
+
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct StatsQuery {
     pub from: Option<DateTime<Utc>>,
@@ -50,21 +52,34 @@ impl StatsService {
         }
     }
 
-    pub async fn get_stats(&self, query: StatsQuery) -> Result<StatsResponse, AppError> {
+    pub async fn get_stats(
+        &self, query: StatsQuery,
+    ) -> Result<StatsResponse, AppError> {
         let now = Utc::now();
-        let from = query.from.unwrap_or_else(|| now - chrono::Duration::days(30));
+        let from = query
+            .from
+            .unwrap_or_else(|| now - chrono::Duration::days(30));
         let to = query.to.unwrap_or(now);
 
         // Get total events count
-        let total_events = self.event_dao.count_events(from, to, query.event_type.clone()).await
+        let total_events = self
+            .event_dao
+            .count_events(from, to, query.event_type.clone())
+            .await
             .map_err(AppError::from_error)?;
 
         // Get unique users count
-        let unique_users = self.event_dao.count_unique_users(from, to, query.event_type.clone()).await
+        let unique_users = self
+            .event_dao
+            .count_unique_users(from, to, query.event_type.clone())
+            .await
             .map_err(AppError::from_error)?;
 
         // Get event type stats
-        let event_types = self.event_dao.get_event_type_stats(from, to, query.event_type).await
+        let event_types = self
+            .event_dao
+            .get_event_type_stats(from, to, query.event_type)
+            .await
             .map_err(AppError::from_error)?
             .into_iter()
             .map(|(event_type, count)| EventTypeStats { event_type, count })
@@ -92,8 +107,7 @@ impl StatsService {
 )]
 #[instrument(skip_all)]
 pub async fn get_stats(
-    State(services): State<crate::handlers::EventServices>,
-    Query(query): Query<StatsQuery>,
+    State(services): State<EventServices>, Query(query): Query<StatsQuery>,
 ) -> Result<Json<StatsResponse>, AppError> {
     let stats = services.stats.get_stats(query).await?;
     Ok(Json(stats))

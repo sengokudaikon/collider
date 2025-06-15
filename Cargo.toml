@@ -29,7 +29,7 @@ members = [
     "libs/domain",
     "libs/test-utils",
     # Binaries
-    "binaries/migrator", "domains/user/errors",
+    "binaries/migrator", "domains/user/errors", "domains/events/handlers", "domains/events/errors", "domains/events/responses", "domains/user/responses",
 ]
 
 
@@ -94,12 +94,16 @@ user-handlers = { path = "domains/user/handlers" }
 user-queries = { path = "domains/user/queries" }
 user-http = { path = "domains/user/http" }
 user-events = { path = "domains/user/events" }
+user-errors = { path = "domains/user/errors" }
+user-responses = { path = "domains/user/responses" }
 events-models = { path = "domains/events/models" }
 events-dao = { path = "domains/events/dao" }
 events-commands = { path = "domains/events/commands" }
 events-queries = { path = "domains/events/queries" }
+events-handlers = { path = "domains/events/handlers" }
 events-http = { path = "domains/events/http" }
-
+events-errors = { path = "domains/events/errors" }
+events-responses = { path = "domains/events/responses" }
 # Shared persistence
 database-traits = { path = "libs/persistence/database_traits" }
 sql-connection = { path = "libs/persistence/sql_connection" }

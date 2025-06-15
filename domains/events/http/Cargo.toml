@@ -6,6 +6,8 @@ edition = "2024"
 [dependencies]
 # Domain dependencies
 events-models = { path = "../models" }
+events-handlers = { path = "../handlers" }
+events-responses = { path = "../responses" }
 events-commands = { path = "../commands" }
 events-queries = { path = "../queries" }
 events-dao = { path = "../dao" }

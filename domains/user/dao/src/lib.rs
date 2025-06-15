@@ -1,14 +1,14 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use dao_utils::{
-    pagination::{create_param_refs, CursorPagination, PaginationParams},
-    query_helpers::{count_query, CursorResult},
+    pagination::{CursorPagination, PaginationParams, create_param_refs},
+    query_helpers::{CursorResult, count_query},
 };
 use database_traits::dao::GenericDao;
 use sql_connection::{PgError, SqlConnect};
 use tracing::instrument;
 use user_commands::{CreateUserCommand, UpdateUserCommand};
-use user_errors::UserDaoError;
+use user_errors::UserError;
 use user_models::User;
 use uuid::Uuid;
 
@@ -25,7 +25,7 @@ impl UserDao {
     #[instrument(skip(self))]
     pub async fn find_by_name(
         &self, name: &str,
-    ) -> Result<Option<User>, UserDaoError> {
+    ) -> Result<Option<User>, UserError> {
         let client = self.db.get_client().await?;
         let stmt = client
             .prepare("SELECT id, name, created_at FROM users WHERE name = $1")
@@ -41,25 +41,11 @@ impl UserDao {
 #[async_trait]
 impl GenericDao for UserDao {
     type CreateRequest = CreateUserCommand;
-    type Error = UserDaoError;
+    type Error = UserError;
     type ID = Uuid;
     type Model = User;
     type Response = User;
     type UpdateRequest = UpdateUserCommand;
-
-    fn map_row(&self, row: &tokio_postgres::Row) -> Self::Model {
-        User {
-            id: row.get(0),
-            name: row.get(1),
-            created_at: row.get(2),
-        }
-    }
-
-    async fn count(&self) -> Result<i64, Self::Error> {
-        let client = self.db.get_client().await?;
-        let count = count_query(&client, "users").await?;
-        Ok(count)
-    }
 
     async fn find_by_id(
         &self, id: Self::ID,
@@ -72,7 +58,7 @@ impl GenericDao for UserDao {
         let user = rows
             .first()
             .map(|row| self.map_row(row))
-            .ok_or(UserDaoError::NotFound)?;
+            .ok_or(UserError::NotFound { user_id: id })?;
 
         Ok(user)
     }
@@ -122,7 +108,7 @@ impl GenericDao for UserDao {
         if let Some(row) = rows.first() {
             let name_exists: bool = row.get(3);
             if name_exists {
-                return Err(UserDaoError::NameExists);
+                return Err(UserError::NameExists);
             }
 
             let user = User {
@@ -133,7 +119,7 @@ impl GenericDao for UserDao {
             Ok(user)
         }
         else {
-            Err(UserDaoError::Database(PgError::__private_api_timeout()))
+            Err(UserError::Database(PgError::__private_api_timeout()))
         }
     }
 
@@ -173,23 +159,23 @@ impl GenericDao for UserDao {
                 if let Some(row) = rows.first() {
                     let status: String = row.get(3);
                     match status.as_str() {
-                        "not_found" => Err(UserDaoError::NotFound),
-                        "name_exists" => Err(UserDaoError::NameExists),
+                        "not_found" => {
+                            Err(UserError::NotFound { user_id: id })
+                        }
+                        "name_exists" => Err(UserError::NameExists),
                         "ok" => {
                             let user = self.map_row(row);
                             Ok(user)
                         }
                         _ => {
-                            Err(UserDaoError::Database(
+                            Err(UserError::Database(
                                 PgError::__private_api_timeout(),
                             ))
                         }
                     }
                 }
                 else {
-                    Err(UserDaoError::Database(
-                        PgError::__private_api_timeout(),
-                    ))
+                    Err(UserError::Database(PgError::__private_api_timeout()))
                 }
             }
             None => self.find_by_id(id).await,
@@ -205,10 +191,24 @@ impl GenericDao for UserDao {
         let rows = client.execute(&stmt, &[&id]).await?;
 
         if rows == 0 {
-            return Err(UserDaoError::NotFound);
+            return Err(UserError::NotFound { user_id: id });
         }
 
         Ok(())
+    }
+
+    async fn count(&self) -> Result<i64, Self::Error> {
+        let client = self.db.get_client().await?;
+        let count = count_query(&client, "users").await?;
+        Ok(count)
+    }
+
+    fn map_row(&self, row: &tokio_postgres::Row) -> Self::Model {
+        User {
+            id: row.get(0),
+            name: row.get(1),
+            created_at: row.get(2),
+        }
     }
 }
 
@@ -216,7 +216,7 @@ impl UserDao {
     #[instrument(skip_all)]
     pub async fn find_with_pagination(
         &self, limit: Option<u64>, offset: Option<u64>,
-    ) -> Result<Vec<User>, UserDaoError> {
+    ) -> Result<Vec<User>, UserError> {
         let client = self.db.get_client().await?;
         let pagination = PaginationParams::new(limit, offset);
         let (sql, params) = pagination.build_query_parts(
@@ -235,7 +235,7 @@ impl UserDao {
     #[instrument(skip_all)]
     pub async fn find_with_cursor(
         &self, cursor: Option<String>, limit: u64,
-    ) -> Result<CursorResult<User, String>, UserDaoError> {
+    ) -> Result<CursorResult<User, String>, UserError> {
         let client = self.db.get_client().await?;
         let pagination = CursorPagination::new(cursor.clone(), limit);
         let limit_plus_one = pagination.limit_plus_one();
@@ -284,7 +284,7 @@ mod tests {
     use user_commands::{CreateUserCommand, UpdateUserCommand};
     use uuid::Uuid;
 
-    use crate::{UserDao, UserDaoError};
+    use crate::{UserDao, UserError};
 
     async fn setup_test_db() -> TestPostgresContainer {
         TestPostgresContainer::new().await.unwrap()
@@ -336,9 +336,11 @@ mod tests {
         let container = setup_test_db().await;
         let sql_connect = create_sql_connect(&container);
         let dao = UserDao::new(sql_connect);
-
-        let result = dao.find_by_id(Uuid::now_v7()).await;
-        assert!(matches!(result, Err(UserDaoError::NotFound)));
+        let id = Uuid::now_v7();
+        let result = dao.find_by_id(id).await;
+        assert!(
+            matches!(result, Err(UserError::NotFound { user_id }) if user_id == id)
+        );
     }
 
     #[tokio::test]
@@ -414,14 +416,16 @@ mod tests {
         let container = setup_test_db().await;
         let sql_connect = create_sql_connect(&container);
         let dao = UserDao::new(sql_connect);
-
+        let id = Uuid::now_v7();
         let update_model = UpdateUserCommand {
-            user_id: Uuid::now_v7(),
+            user_id: id,
             name: Some("updated_name".to_string()),
         };
 
-        let result = dao.update(Uuid::now_v7(), update_model).await;
-        assert!(matches!(result, Err(UserDaoError::NotFound)));
+        let result = dao.update(id, update_model).await;
+        assert!(
+            matches!(result, Err(UserError::NotFound { user_id }) if user_id == id)
+        );
     }
 
     #[tokio::test]
@@ -436,7 +440,9 @@ mod tests {
         dao.delete(created_user.id).await.unwrap();
 
         let result = dao.find_by_id(created_user.id).await;
-        assert!(matches!(result, Err(UserDaoError::NotFound)));
+        assert!(
+            matches!(result, Err(UserError::NotFound { user_id }) if user_id == created_user.id)
+        );
     }
 
     #[tokio::test]

@@ -3,25 +3,11 @@ use chrono::{DateTime, Utc};
 use dao_utils::query_helpers::{PgParam, PgParamVec};
 use database_traits::dao::GenericDao;
 use events_commands::{CreateEventCommand, UpdateEventCommand};
+use events_errors::{EventError, EventTypeError};
 use events_models::Event;
 use sql_connection::SqlConnect;
-use thiserror::Error;
 use tracing::instrument;
 use uuid::Uuid;
-
-use crate::EventTypeDaoError;
-
-#[derive(Debug, Error)]
-pub enum EventDaoError {
-    #[error("Database error: {0}")]
-    Database(#[from] tokio_postgres::Error),
-    #[error("Connection error: {0}")]
-    Connection(#[from] deadpool_postgres::PoolError),
-    #[error("Event type DAO error: {0}")]
-    EventTypeDao(#[from] EventTypeDaoError),
-    #[error("Event not found")]
-    NotFound,
-}
 
 #[derive(Clone)]
 pub struct EventDao {
@@ -35,103 +21,123 @@ impl EventDao {
 
     #[instrument(skip(self))]
     pub async fn count_events(
-        &self,
-        from: DateTime<Utc>,
-        to: DateTime<Utc>,
+        &self, from: DateTime<Utc>, to: DateTime<Utc>,
         event_type: Option<String>,
-    ) -> Result<i64, EventDaoError> {
+    ) -> Result<i64, EventError> {
         let client = self.db.get_client().await?;
-        
-        let (query, params): (&str, PgParamVec) = if let Some(event_type) = event_type {
-            (
-                "SELECT COUNT(*) FROM events e 
+
+        let (query, params): (&str, PgParamVec) =
+            if let Some(event_type) = event_type {
+                (
+                    "SELECT COUNT(*) FROM events e 
                  JOIN event_types et ON e.event_type_id = et.id 
-                 WHERE e.timestamp >= $1 AND e.timestamp <= $2 AND et.name = $3",
-                vec![Box::new(from), Box::new(to), Box::new(event_type)]
-            )
-        } else {
-            (
-                "SELECT COUNT(*) FROM events WHERE timestamp >= $1 AND timestamp <= $2",
-                vec![Box::new(from), Box::new(to)]
-            )
-        };
+                 WHERE e.timestamp >= $1 AND e.timestamp <= $2 AND et.name = \
+                     $3",
+                    vec![Box::new(from), Box::new(to), Box::new(event_type)],
+                )
+            }
+            else {
+                (
+                    "SELECT COUNT(*) FROM events WHERE timestamp >= $1 AND \
+                     timestamp <= $2",
+                    vec![Box::new(from), Box::new(to)],
+                )
+            };
 
         let stmt = client.prepare(query).await?;
-        let param_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = 
-            params.iter().map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
-        
+        let param_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
+            params
+                .iter()
+                .map(|p| {
+                    p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)
+                })
+                .collect();
+
         let row = client.query_one(&stmt, &param_refs).await?;
         Ok(row.get(0))
     }
 
     #[instrument(skip(self))]
     pub async fn count_unique_users(
-        &self,
-        from: DateTime<Utc>,
-        to: DateTime<Utc>,
+        &self, from: DateTime<Utc>, to: DateTime<Utc>,
         event_type: Option<String>,
-    ) -> Result<i64, EventDaoError> {
+    ) -> Result<i64, EventError> {
         let client = self.db.get_client().await?;
-        
-        let (query, params): (&str, PgParamVec) = if let Some(event_type) = event_type {
-            (
-                "SELECT COUNT(DISTINCT e.user_id) FROM events e 
+
+        let (query, params): (&str, PgParamVec) =
+            if let Some(event_type) = event_type {
+                (
+                    "SELECT COUNT(DISTINCT e.user_id) FROM events e 
                  JOIN event_types et ON e.event_type_id = et.id 
-                 WHERE e.timestamp >= $1 AND e.timestamp <= $2 AND et.name = $3",
-                vec![Box::new(from), Box::new(to), Box::new(event_type)]
-            )
-        } else {
-            (
-                "SELECT COUNT(DISTINCT user_id) FROM events WHERE timestamp >= $1 AND timestamp <= $2",
-                vec![Box::new(from), Box::new(to)]
-            )
-        };
+                 WHERE e.timestamp >= $1 AND e.timestamp <= $2 AND et.name = \
+                     $3",
+                    vec![Box::new(from), Box::new(to), Box::new(event_type)],
+                )
+            }
+            else {
+                (
+                    "SELECT COUNT(DISTINCT user_id) FROM events WHERE \
+                     timestamp >= $1 AND timestamp <= $2",
+                    vec![Box::new(from), Box::new(to)],
+                )
+            };
 
         let stmt = client.prepare(query).await?;
-        let param_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = 
-            params.iter().map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
-        
+        let param_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
+            params
+                .iter()
+                .map(|p| {
+                    p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)
+                })
+                .collect();
+
         let row = client.query_one(&stmt, &param_refs).await?;
         Ok(row.get(0))
     }
 
     #[instrument(skip(self))]
     pub async fn get_event_type_stats(
-        &self,
-        from: DateTime<Utc>,
-        to: DateTime<Utc>,
+        &self, from: DateTime<Utc>, to: DateTime<Utc>,
         event_type: Option<String>,
-    ) -> Result<Vec<(String, i64)>, EventDaoError> {
+    ) -> Result<Vec<(String, i64)>, EventError> {
         let client = self.db.get_client().await?;
-        
-        let (query, params): (&str, PgParamVec) = if let Some(event_type) = event_type {
-            (
-                "SELECT et.name, COUNT(*) FROM events e 
+
+        let (query, params): (&str, PgParamVec) =
+            if let Some(event_type) = event_type {
+                (
+                    "SELECT et.name, COUNT(*) FROM events e 
                  JOIN event_types et ON e.event_type_id = et.id 
-                 WHERE e.timestamp >= $1 AND e.timestamp <= $2 AND et.name = $3
+                 WHERE e.timestamp >= $1 AND e.timestamp <= $2 AND et.name = \
+                     $3
                  GROUP BY et.name ORDER BY COUNT(*) DESC",
-                vec![Box::new(from), Box::new(to), Box::new(event_type)]
-            )
-        } else {
-            (
-                "SELECT et.name, COUNT(*) FROM events e 
+                    vec![Box::new(from), Box::new(to), Box::new(event_type)],
+                )
+            }
+            else {
+                (
+                    "SELECT et.name, COUNT(*) FROM events e 
                  JOIN event_types et ON e.event_type_id = et.id 
                  WHERE e.timestamp >= $1 AND e.timestamp <= $2
                  GROUP BY et.name ORDER BY COUNT(*) DESC",
-                vec![Box::new(from), Box::new(to)]
-            )
-        };
+                    vec![Box::new(from), Box::new(to)],
+                )
+            };
 
         let stmt = client.prepare(query).await?;
-        let param_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = 
-            params.iter().map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
-        
+        let param_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
+            params
+                .iter()
+                .map(|p| {
+                    p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)
+                })
+                .collect();
+
         let rows = client.query(&stmt, &param_refs).await?;
         let results = rows
             .into_iter()
             .map(|row| (row.get::<_, String>(0), row.get::<_, i64>(1)))
             .collect();
-        
+
         Ok(results)
     }
 }
@@ -139,7 +145,7 @@ impl EventDao {
 #[async_trait]
 impl GenericDao for EventDao {
     type CreateRequest = CreateEventCommand;
-    type Error = EventDaoError;
+    type Error = EventError;
     type ID = Uuid;
     type Model = Event;
     type Response = Event;
@@ -160,7 +166,7 @@ impl GenericDao for EventDao {
         let event = rows
             .first()
             .map(|row| self.map_row(row))
-            .ok_or(EventDaoError::NotFound)?;
+            .ok_or(EventError::NotFound { event_id: id })?;
 
         Ok(event)
     }
@@ -228,9 +234,7 @@ impl GenericDao for EventDao {
         if let Some(row) = rows.first() {
             let type_not_found: bool = row.get(5);
             if type_not_found {
-                return Err(EventDaoError::EventTypeDao(
-                    crate::EventTypeDaoError::NotFound,
-                ));
+                return Err(EventError::EventType(EventTypeError::NotFound));
             }
 
             let event = Event {
@@ -238,14 +242,14 @@ impl GenericDao for EventDao {
                 user_id: row.get(1),
                 event_type_id: row.get(2),
                 timestamp: row.get(3),
-                metadata: row.get::<_, Option<serde_json::Value>>(4).and_then(|json| {
-                    serde_json::from_value(json).ok()
-                }),
+                metadata: row
+                    .get::<_, Option<serde_json::Value>>(4)
+                    .and_then(|json| serde_json::from_value(json).ok()),
             };
             Ok(event)
         }
         else {
-            Err(EventDaoError::Database(
+            Err(EventError::Database(
                 tokio_postgres::Error::__private_api_timeout(),
             ))
         }
@@ -291,9 +295,12 @@ impl GenericDao for EventDao {
                 if let Some(row) = rows.first() {
                     let status: String = row.get(5);
                     match status.as_str() {
-                        "not_found" => Err(EventDaoError::NotFound),
+                        "not_found" => {
+                            Err(EventError::NotFound { event_id: id })
+                        }
                         "ok" => {
-                            let metadata_json: Option<serde_json::Value> = row.get(4);
+                            let metadata_json: Option<serde_json::Value> =
+                                row.get(4);
                             let metadata = metadata_json.and_then(|json| {
                                 serde_json::from_value(json).ok()
                             });
@@ -307,7 +314,7 @@ impl GenericDao for EventDao {
                             Ok(event)
                         }
                         _ => {
-                            Err(EventDaoError::Database(
+                            Err(EventError::Database(
                                 tokio_postgres::Error::__private_api_timeout(
                                 ),
                             ))
@@ -315,7 +322,7 @@ impl GenericDao for EventDao {
                     }
                 }
                 else {
-                    Err(EventDaoError::Database(
+                    Err(EventError::Database(
                         tokio_postgres::Error::__private_api_timeout(),
                     ))
                 }
@@ -335,7 +342,7 @@ impl GenericDao for EventDao {
                 let event = rows
                     .first()
                     .map(|row| self.map_row(row))
-                    .ok_or(EventDaoError::NotFound)?;
+                    .ok_or(EventError::NotFound { event_id: id })?;
 
                 Ok(event)
             }
@@ -354,7 +361,7 @@ impl GenericDao for EventDao {
                 let event = rows
                     .first()
                     .map(|row| self.map_row(row))
-                    .ok_or(EventDaoError::NotFound)?;
+                    .ok_or(EventError::NotFound { event_id: id })?;
 
                 Ok(event)
             }
@@ -375,7 +382,7 @@ impl GenericDao for EventDao {
         let affected = client.execute(&stmt, &[&id]).await?;
 
         if affected == 0 {
-            return Err(EventDaoError::NotFound);
+            return Err(EventError::NotFound { event_id: id });
         }
 
         Ok(())
@@ -383,10 +390,9 @@ impl GenericDao for EventDao {
 
     fn map_row(&self, row: &tokio_postgres::Row) -> Self::Model {
         let metadata_json: Option<serde_json::Value> = row.get(4);
-        let metadata = metadata_json.and_then(|json| {
-            serde_json::from_value(json).ok()
-        });
-        
+        let metadata =
+            metadata_json.and_then(|json| serde_json::from_value(json).ok());
+
         Event {
             id: row.get(0),
             user_id: row.get(1),
@@ -412,7 +418,7 @@ impl EventDao {
     pub async fn find_with_filters(
         &self, user_id: Option<Uuid>, event_type_id: Option<i32>,
         limit: Option<u64>, offset: Option<u64>,
-    ) -> Result<Vec<Event>, EventDaoError> {
+    ) -> Result<Vec<Event>, EventError> {
         let client = self.db.get_client().await?;
 
         // Build query dynamically based on provided filters
@@ -473,7 +479,7 @@ impl EventDao {
     #[instrument(skip_all)]
     pub async fn delete_before_timestamp(
         &self, before: DateTime<Utc>,
-    ) -> Result<u64, EventDaoError> {
+    ) -> Result<u64, EventError> {
         let client = self.db.get_client().await?;
         let stmt = client
             .prepare("DELETE FROM events WHERE timestamp < $1")
@@ -485,7 +491,7 @@ impl EventDao {
     #[instrument(skip_all)]
     pub async fn find_by_user_id(
         &self, user_id: Uuid, limit: Option<u64>,
-    ) -> Result<Vec<Event>, EventDaoError> {
+    ) -> Result<Vec<Event>, EventError> {
         let client = self.db.get_client().await?;
 
         let (sql, params): (String, Vec<i64>) = match limit {
@@ -524,7 +530,7 @@ impl EventDao {
     #[instrument(skip_all)]
     pub async fn find_with_pagination(
         &self, limit: Option<u64>, offset: Option<u64>,
-    ) -> Result<Vec<Event>, EventDaoError> {
+    ) -> Result<Vec<Event>, EventError> {
         let client = self.db.get_client().await?;
 
         let (sql, params): (String, Vec<i64>) = match (limit, offset) {
@@ -576,7 +582,7 @@ impl EventDao {
     #[instrument(skip_all)]
     pub async fn find_with_cursor(
         &self, cursor: Option<DateTime<Utc>>, limit: u64,
-    ) -> Result<(Vec<Event>, Option<DateTime<Utc>>), EventDaoError> {
+    ) -> Result<(Vec<Event>, Option<DateTime<Utc>>), EventError> {
         let client = self.db.get_client().await?;
         let limit = limit.min(1000);
         let limit_plus_one = limit as i64 + 1;
@@ -624,7 +630,7 @@ impl EventDao {
     #[instrument(skip_all)]
     pub async fn find_by_user_with_cursor(
         &self, user_id: Uuid, cursor: Option<DateTime<Utc>>, limit: u64,
-    ) -> Result<(Vec<Event>, Option<DateTime<Utc>>), EventDaoError> {
+    ) -> Result<(Vec<Event>, Option<DateTime<Utc>>), EventError> {
         let client = self.db.get_client().await?;
         let limit = limit.min(1000);
         let limit_plus_one = limit as i64 + 1;

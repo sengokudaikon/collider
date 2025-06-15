@@ -1,5 +1,5 @@
-pub mod event_types;
-pub mod events;
+mod event_types;
+mod events;
 
-pub use event_types::{EventTypeDao, EventTypeDaoError};
-pub use events::{EventDao, EventDaoError};
+pub use event_types::EventTypeDao;
+pub use events::EventDao;

@@ -6,11 +6,13 @@ edition = "2024"
 [dependencies]
 # Domain dependencies  
 user-commands = { path = "../commands" }
+user-handlers = { path = "../handlers" }
 user-events = { path = "../events" }
 user-queries = { path = "../queries" }
+user-responses = { path = "../responses" }
 events-queries = { path = "../../events/queries" }
-events-http = { path = "../../events/http" }
-user-models.workspace = true
+events-handlers = { path = "../../events/handlers" }
+events-responses = { path = "../../events/responses" }
 
 # Web framework
 axum.workspace = true

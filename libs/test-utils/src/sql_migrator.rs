@@ -36,7 +36,8 @@ impl SqlMigrator {
             (
                 "003_seed_test_data",
                 include_str!(
-                    "../../../domains/analytics/migrations/sql/005_seed_test_data.sql"
+                    "../../../domains/analytics/migrations/sql/\
+                     005_seed_test_data.sql"
                 ),
             ),
             (
@@ -254,7 +255,8 @@ impl SqlMigrator {
             (
                 "003_seed_test_data",
                 include_str!(
-                    "../../../domains/analytics/migrations/sql/005_seed_test_data.down.sql"
+                    "../../../domains/analytics/migrations/sql/\
+                     005_seed_test_data.down.sql"
                 ),
             ),
             (

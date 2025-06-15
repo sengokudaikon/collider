@@ -53,11 +53,11 @@ fn test_stream_id() -> String {
 #[tokio::test]
 async fn test_redis_set_operations() {
     let (_container, manager) = setup_test_redis().await.unwrap();
-    let mut conn = manager.get_connection().await.unwrap();
 
     // Test Redis Set using macro
     let unique_users = UniqueUsers;
-    let mut set = unique_users.bind_with(&mut conn, &test_date());
+    let mut set =
+        unique_users.bind_with(manager.get_pool().clone(), &test_date());
 
     // Add members to set
     let added: i32 = set.add("user123".to_string()).await.unwrap();
@@ -99,11 +99,11 @@ async fn test_redis_set_operations() {
 #[tokio::test]
 async fn test_redis_sorted_set_operations() {
     let (_container, manager) = setup_test_redis().await.unwrap();
-    let mut conn = manager.get_connection().await.unwrap();
 
     // Test Redis Sorted Set using macro
     let leaderboard = Leaderboard;
-    let mut zset = leaderboard.bind_with(&mut conn, &test_game_id());
+    let mut zset =
+        leaderboard.bind_with(manager.get_pool().clone(), &test_game_id());
 
     // Add members with scores
     let added: i32 = zset
@@ -176,7 +176,7 @@ async fn test_redis_list_operations() {
 
     // Test Redis List using macro
     let activity = RecentActivity;
-    let mut list = activity.bind_with(&mut conn, &user_id);
+    let mut list = activity.bind_with(manager.get_pool().clone(), &user_id);
 
     // Push to left (beginning)
     let len: i32 = list.push_left("login".to_string()).await.unwrap();
@@ -220,11 +220,11 @@ async fn test_redis_list_operations() {
 #[tokio::test]
 async fn test_redis_stream_operations() {
     let (_container, manager) = setup_test_redis().await.unwrap();
-    let mut conn = manager.get_connection().await.unwrap();
 
     // Test Redis Stream using macro
     let event_log = EventLog;
-    let mut stream = event_log.bind_with(&mut conn, &test_stream_id());
+    let mut stream =
+        event_log.bind_with(manager.get_pool().clone(), &test_stream_id());
 
     // Add entries to stream
     let id1: String = stream
@@ -267,10 +267,10 @@ async fn test_redis_stream_operations() {
 #[tokio::test]
 async fn test_redis_stream_consumer_groups() {
     let (_container, manager) = setup_test_redis().await.unwrap();
-    let mut conn = manager.get_connection().await.unwrap();
 
     let event_log = EventLog;
-    let mut stream = event_log.bind_with(&mut conn, &test_stream_id());
+    let mut stream =
+        event_log.bind_with(manager.get_pool().clone(), &test_stream_id());
 
     // Add some entries first
     stream
@@ -307,14 +307,14 @@ async fn test_redis_stream_consumer_groups() {
 #[tokio::test]
 async fn test_backward_compatibility() {
     let (_container, manager) = setup_test_redis().await.unwrap();
-    let mut conn = manager.get_connection().await.unwrap();
 
     // Test that existing hash and normal operations still work
     cache_key!(hash UserProfiles::<String> => "user:profile:{}"[user_id: String]);
     cache_key!(UserSession::<String> => "session:{}"[session_id: String]);
 
     let profiles = UserProfiles;
-    let mut hash = profiles.bind_with(&mut conn, &"user_123".to_string());
+    let mut hash = profiles
+        .bind_with(manager.get_pool().clone(), &"user_123".to_string());
 
     let set_result: i32 =
         hash.set("name", "John Doe".to_string()).await.unwrap();
@@ -324,8 +324,8 @@ async fn test_backward_compatibility() {
     assert_eq!(get_result, "John Doe");
 
     let session_key = UserSession;
-    let mut session =
-        session_key.bind_with(&mut conn, &"sess_456".to_string());
+    let mut session = session_key
+        .bind_with(manager.get_pool().clone(), &"sess_456".to_string());
 
     let _: String = session
         .set("active_session_data".to_string())
@@ -338,7 +338,6 @@ async fn test_backward_compatibility() {
 #[tokio::test]
 async fn test_multiple_data_types_together() {
     let (_container, manager) = setup_test_redis().await.unwrap();
-    let mut conn = manager.get_connection().await.unwrap();
 
     // Test using multiple data types for a complete scenario
     let date = test_date();
@@ -348,7 +347,8 @@ async fn test_multiple_data_types_together() {
     // Track active users in a set
     {
         let unique_users = UniqueUsers;
-        let mut user_set = unique_users.bind_with(&mut conn, &date);
+        let mut user_set =
+            unique_users.bind_with(manager.get_pool().clone(), &date);
         let _: i32 = user_set.add(user_id.clone()).await.unwrap();
         let user_count: i32 = user_set.len().await.unwrap();
         assert_eq!(user_count, 1);
@@ -357,7 +357,8 @@ async fn test_multiple_data_types_together() {
     // Track user activity in a list
     {
         let activity = RecentActivity;
-        let mut activity_list = activity.bind_with(&mut conn, &user_id);
+        let mut activity_list =
+            activity.bind_with(manager.get_pool().clone(), &user_id);
         let _: i32 = activity_list
             .push_right("started_game".to_string())
             .await
@@ -373,7 +374,8 @@ async fn test_multiple_data_types_together() {
     // Update leaderboard with sorted set
     {
         let leaderboard = Leaderboard;
-        let mut scores = leaderboard.bind_with(&mut conn, &game_id);
+        let mut scores =
+            leaderboard.bind_with(manager.get_pool().clone(), &game_id);
         let _: i32 =
             scores.add_with_score(150.0, user_id.clone()).await.unwrap();
         let user_score: Option<f64> =
@@ -384,8 +386,10 @@ async fn test_multiple_data_types_together() {
     // Log events in stream
     {
         let event_log = EventLog;
-        let mut events =
-            event_log.bind_with(&mut conn, &"game_events".to_string());
+        let mut events = event_log.bind_with(
+            manager.get_pool().clone(),
+            &"game_events".to_string(),
+        );
         events
             .add_auto(&[
                 ("user_id", user_id.clone()),

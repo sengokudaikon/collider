@@ -13,6 +13,7 @@ serde.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
 chrono.workspace = true
+events-errors = { path = "../errors" }
 events-models = { path = "../models" }
 events-commands = { path = "../commands" }
 database-traits.workspace = true

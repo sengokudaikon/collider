@@ -1,6 +1,5 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use utoipa::gen::serde_json;
 use utoipa::ToSchema;
 use uuid::Uuid;
 

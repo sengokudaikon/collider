@@ -4,19 +4,16 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, instrument, warn};
 
+#[cfg(feature = "file-cache")]
+use super::file_cache::FileCache;
 use super::{
     memory::Memory,
     redis_cache::RedisCache,
     r#trait::{CacheError, CacheResult, CacheTrait},
 };
-#[cfg(feature = "file-cache")]
-use super::file_cache::FileCache;
 use crate::{
     config::TieredConfig,
-    core::{
-        backend::CacheBackend,
-        type_bind::CacheTypeTrait,
-    },
+    core::{backend::CacheBackend, type_bind::CacheTypeTrait},
 };
 
 /// Tiered cache that manages multiple cache instances in order of speed
@@ -43,8 +40,10 @@ where
         };
 
         // Convert backends to cache instances
-        let mut caches: Vec<Box<dyn CacheTrait<Value = T> + Send + Sync + 'cache>> = Vec::new();
-        
+        let mut caches: Vec<
+            Box<dyn CacheTrait<Value = T> + Send + Sync + 'cache>,
+        > = Vec::new();
+
         for backend in backends.iter() {
             match backend {
                 CacheBackend::Memory { cache, config } => {
@@ -121,10 +120,16 @@ where
         // Try each cache in order until we find the value
         for (layer_idx, cache) in self.caches.iter_mut().enumerate() {
             if let Some(value) = cache.try_get(key).await? {
-                // Populate faster caches if enabled and we found the value in a slower layer
+                // Populate faster caches if enabled and we found the value in
+                // a slower layer
                 if self.config.populate_on_read && layer_idx > 0 {
-                    debug!("Populating faster cache layers with value from layer {}", layer_idx);
-                    self.populate_faster_layers(key, &value, layer_idx).await?;
+                    debug!(
+                        "Populating faster cache layers with value from \
+                         layer {}",
+                        layer_idx
+                    );
+                    self.populate_faster_layers(key, &value, layer_idx)
+                        .await?;
                 }
                 return Ok(value);
             }
@@ -157,7 +162,8 @@ where
                 // Write to fastest cache only
                 if let Some(cache) = self.caches.first_mut() {
                     cache.set(key, value).await
-                } else {
+                }
+                else {
                     Err(CacheError::Other("No caches available".to_string()))
                 }
             }
@@ -165,7 +171,8 @@ where
                 // Write to most persistent cache only
                 if let Some(cache) = self.caches.last_mut() {
                     cache.set(key, value).await
-                } else {
+                }
+                else {
                     Err(CacheError::Other("No caches available".to_string()))
                 }
             }
@@ -210,7 +217,9 @@ where
     T: Serialize + for<'de> Deserialize<'de> + Clone + Send + Sync + 'static,
 {
     /// Helper method to populate faster cache layers with a value
-    async fn populate_faster_layers(&mut self, key: &str, value: &T, found_at_layer: usize) -> CacheResult<()> {
+    async fn populate_faster_layers(
+        &mut self, key: &str, value: &T, found_at_layer: usize,
+    ) -> CacheResult<()> {
         // Populate all layers before the one where we found the value
         for (layer_idx, cache) in self.caches.iter_mut().enumerate() {
             if layer_idx >= found_at_layer {

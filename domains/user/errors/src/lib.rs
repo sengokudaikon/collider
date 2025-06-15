@@ -5,14 +5,10 @@ use uuid::Uuid;
 
 #[derive(Debug, Error)]
 pub enum UserError {
-    #[error("DAO error: {0}")]
-    Dao(#[from] UserDaoError),
     #[error("User not found: {user_id}")]
     NotFound { user_id: Uuid },
-}
-
-#[derive(Debug, Error)]
-pub enum UserDaoError {
+    #[error("User not found: {username}")]
+    NameNotFound { username: String },
     #[error("Database error: {0}")]
     Database(#[from] PgError),
     #[error("Database Pool error: {0}")]
@@ -21,8 +17,6 @@ pub enum UserDaoError {
     Redis(#[from] RedisError),
     #[error("Redis Pool error: {0}")]
     RedisPool(#[from] PoolError),
-    #[error("User not found")]
-    NotFound,
     #[error("Name already exists")]
     NameExists,
 }

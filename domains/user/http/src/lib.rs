@@ -1,26 +1,28 @@
 pub mod analytics_integration;
 use axum::{
+    Router,
     extract::{Path, Query, State},
     http::StatusCode,
     response::Json,
     routing::{delete, get, post, put},
-    Router,
 };
 use domain::AppError;
 use events_commands::CreateEventCommand;
-use events_http::EventResponse;
-use events_queries::{GetUserEventsQuery, GetUserEventsQueryHandler};
+use events_handlers::GetUserEventsQueryHandler;
+use events_queries::GetUserEventsQuery;
+use events_responses::EventResponse;
 use flume::Sender;
 use serde::Deserialize;
 use tracing::instrument;
 use user_commands::{
-    CreateUserCommand, UserResponse, DeleteUserCommand,
-    UpdateUserCommand, UserResponse,
+    CreateUserCommand, DeleteUserCommand, UpdateUserCommand,
 };
 use user_events::UserAnalyticsEvent;
-use user_queries::{
-    GetUserByNameQueryHandler, GetUserQueryHandler, ListUsersQueryHandler,
+use user_handlers::{
+    CreateUserHandler, DeleteUserHandler, GetUserByNameQueryHandler,
+    GetUserQueryHandler, ListUsersQueryHandler, UpdateUserHandler,
 };
+use user_responses::UserResponse;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
@@ -120,16 +122,16 @@ impl UserHandlers {
 pub async fn create_user(
     State(services): State<UserServices>,
     Json(command): Json<CreateUserCommand>,
-) -> Result<(StatusCode, Json<user_commands::UserResponse>), AppError> {
+) -> Result<(StatusCode, Json<UserResponse>), AppError> {
     let result = services
         .create_user
         .execute(command)
         .await
         .map_err(AppError::from_error)?;
 
-    tracing::info!("User created: {}", result.user.id);
+    tracing::info!("User created: {}", result.id);
 
-    Ok((StatusCode::CREATED, Json(result.user)))
+    Ok((StatusCode::CREATED, Json(result)))
 }
 
 #[utoipa::path(
@@ -151,7 +153,7 @@ pub async fn create_user(
 pub async fn update_user(
     State(services): State<UserServices>, Path(id): Path<Uuid>,
     Json(mut command): Json<UpdateUserCommand>,
-) -> Result<Json<user_commands::UserResponse>, AppError> {
+) -> Result<Json<UserResponse>, AppError> {
     command.user_id = id;
     let result = services
         .update_user
@@ -161,7 +163,7 @@ pub async fn update_user(
 
     tracing::info!("User updated: {}", id);
 
-    Ok(Json(result.user))
+    Ok(Json(result))
 }
 
 #[utoipa::path(
@@ -276,9 +278,7 @@ pub async fn list_users(
 pub async fn get_user_events(
     State(services): State<UserServices>, Path(user_id): Path<String>,
 ) -> Result<Json<Vec<EventResponse>>, AppError> {
-    let user_uuid = user_id
-        .parse::<Uuid>()
-        .map_err(|err| AppError::from_error(err))?;
+    let user_uuid = user_id.parse::<Uuid>().map_err(AppError::from_error)?;
 
     let query = GetUserEventsQuery {
         user_id: user_uuid,

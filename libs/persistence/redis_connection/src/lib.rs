@@ -5,6 +5,7 @@ use tracing::{info, instrument};
 use url::Url;
 
 // Core modules
+pub mod cache_provider;
 pub mod config;
 pub mod connection;
 pub mod macros;
