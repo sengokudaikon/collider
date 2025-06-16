@@ -50,3 +50,17 @@ dotenvy.workspace = true
 # API Documentation
 utoipa.workspace = true
 utoipa-rapidoc.workspace = true
+
+[dev-dependencies]
+analytics-dao.workspace = true
+events-dao.workspace = true
+events-handlers.workspace = true
+user-dao.workspace = true
+user-handlers.workspace = true
+user-events.workspace = true
+flume.workspace = true
+anyhow.workspace = true
+
+[[test]]
+name = "integration"
+path = "test/integration.rs"

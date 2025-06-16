@@ -182,4 +182,59 @@ mod tests {
         // Give background task a moment to process
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
+
+    #[tokio::test]
+    async fn test_analytics_batch_processing() {
+        let (sender, _handle) = UserAnalyticsFactory::create_integration();
+
+        // Send multiple events
+        for i in 0..5 {
+            let event = UserAnalyticsEvent::UserCreated {
+                user_id: Uuid::now_v7(),
+                name: format!("Test User {}", i),
+                created_at: Utc::now(),
+                registration_source: Some("test".to_string()),
+            };
+            sender.send(event).expect("Failed to send analytics event");
+        }
+
+        // Give background task time to process batch
+        tokio::time::sleep(Duration::from_millis(600)).await;
+    }
+
+    #[tokio::test]
+    async fn test_analytics_channel_flow() {
+        // This test focuses on channel communication without Redis dependency
+        let (sender, receiver) = flume::unbounded();
+
+        // Send some events to the channel
+        for i in 0..3 {
+            let event = UserAnalyticsEvent::UserCreated {
+                user_id: Uuid::now_v7(),
+                name: format!("Test User {}", i),
+                created_at: Utc::now(),
+                registration_source: Some("test".to_string()),
+            };
+            sender.send(event).expect("Failed to send analytics event");
+        }
+
+        // Manually receive events to verify channel works
+        let mut received_events = Vec::new();
+        while let Ok(event) = receiver.try_recv() {
+            received_events.push(event);
+        }
+
+        // Should have received all 3 events
+        assert_eq!(received_events.len(), 3);
+
+        // Verify event content
+        if let UserAnalyticsEvent::UserCreated { name, .. } =
+            &received_events[0]
+        {
+            assert_eq!(name, "Test User 0");
+        }
+        else {
+            panic!("Expected UserCreated event");
+        }
+    }
 }

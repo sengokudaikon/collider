@@ -26,5 +26,6 @@ pub struct UpdateEventCommand {
     #[serde(skip)]
     pub event_id: Uuid,
     pub event_type_id: Option<i32>,
+    pub timestamp: Option<DateTime<Utc>>,
     pub metadata: Option<serde_json::Value>,
 }

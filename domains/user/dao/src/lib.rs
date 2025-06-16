@@ -384,11 +384,11 @@ mod tests {
         dao.create(user3).await.unwrap();
 
         let all_users = dao.all().await.unwrap();
-        assert_eq!(all_users.len(), 3);
+        assert_eq!(all_users.len(), 4); // 3 created + 1 system user
 
-        // Check they are ordered by name
+        // Check they are ordered by name (System User should be first)
         let names: Vec<&String> = all_users.iter().map(|u| &u.name).collect();
-        assert_eq!(names, vec!["user_1", "user_2", "user_3"]);
+        assert_eq!(names, vec!["System User", "user_1", "user_2", "user_3"]);
     }
 
     #[tokio::test]
@@ -460,15 +460,15 @@ mod tests {
         assert_eq!(limited.len(), 3);
 
         let offset = dao.find_with_pagination(None, Some(2)).await.unwrap();
-        assert_eq!(offset.len(), 3);
+        assert_eq!(offset.len(), 4); // 6 total users - 2 offset = 4 remaining
 
         let paginated =
             dao.find_with_pagination(Some(2), Some(1)).await.unwrap();
         assert_eq!(paginated.len(), 2);
-        assert_eq!(paginated[0].name, "user_02");
+        assert_eq!(paginated[0].name, "user_01"); // System User is at position 0, user_01 is at position 1
 
         let all = dao.find_with_pagination(None, None).await.unwrap();
-        assert_eq!(all.len(), 5);
+        assert_eq!(all.len(), 6); // 5 created users + 1 system user
     }
 
     #[tokio::test]
@@ -484,8 +484,8 @@ mod tests {
 
         let first_page_result = dao.find_with_cursor(None, 2).await.unwrap();
         assert_eq!(first_page_result.items.len(), 2);
-        assert_eq!(first_page_result.items[0].name, "user_01");
-        assert_eq!(first_page_result.items[1].name, "user_02");
+        assert_eq!(first_page_result.items[0].name, "System User");
+        assert_eq!(first_page_result.items[1].name, "user_01");
         assert!(first_page_result.next_cursor.is_some());
 
         let second_page_result = dao
@@ -493,16 +493,17 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(second_page_result.items.len(), 2);
-        assert_eq!(second_page_result.items[0].name, "user_03");
-        assert_eq!(second_page_result.items[1].name, "user_04");
+        assert_eq!(second_page_result.items[0].name, "user_02");
+        assert_eq!(second_page_result.items[1].name, "user_03");
         assert!(second_page_result.next_cursor.is_some());
 
         let final_page_result = dao
             .find_with_cursor(second_page_result.next_cursor, 2)
             .await
             .unwrap();
-        assert_eq!(final_page_result.items.len(), 1);
-        assert_eq!(final_page_result.items[0].name, "user_05");
+        assert_eq!(final_page_result.items.len(), 2);
+        assert_eq!(final_page_result.items[0].name, "user_04");
+        assert_eq!(final_page_result.items[1].name, "user_05");
         assert!(final_page_result.next_cursor.is_none());
     }
 
@@ -512,9 +513,9 @@ mod tests {
         let sql_connect = create_sql_connect(&container);
         let dao = UserDao::new(sql_connect);
 
-        // Initially should have 0 users
+        // Initially should have 1 system user
         let initial_count = dao.count().await.unwrap();
-        assert_eq!(initial_count, 0);
+        assert_eq!(initial_count, 1);
 
         // Create some users
         for i in 1..=3 {
@@ -522,9 +523,9 @@ mod tests {
             dao.create(user_model).await.unwrap();
         }
 
-        // Should now have 3 users
+        // Should now have 4 users (1 system + 3 created)
         let final_count = dao.count().await.unwrap();
-        assert_eq!(final_count, 3);
+        assert_eq!(final_count, 4);
     }
 
     #[tokio::test]

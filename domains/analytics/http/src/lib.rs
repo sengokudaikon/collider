@@ -59,9 +59,9 @@ impl AnalyticsHandlers {
             .route("/views/refresh", post(refresh_views))
             // Metrics endpoints
             .route("/metrics/events", get(get_event_metrics))
-            .route("/metrics/users/:user_id", get(get_user_metrics))
+            .route("/metrics/users/{user_id}", get(get_user_metrics))
             .route(
-                "/metrics/realtime/:bucket_type",
+                "/metrics/realtime/{bucket_type}",
                 get(get_realtime_metrics),
             )
             .route("/metrics/dashboard", get(get_dashboard_metrics))
@@ -457,9 +457,8 @@ mod tests {
         http::{Method, Request, StatusCode},
         routing::Router,
     };
-    use chrono::{DateTime, Duration, Utc};
+    use chrono::{Duration, Utc};
     use redis_connection::cache_provider::CacheProvider;
-    use serde_json::json;
     use test_utils::{
         postgres::TestPostgresContainer, redis::TestRedisContainer, *,
     };
@@ -477,8 +476,7 @@ mod tests {
         CacheProvider::init_redis_static(redis_container.pool.clone());
 
         let sql_connect = create_sql_connect(&container);
-        let redis_updater =
-            RedisAnalyticsMetricsUpdater::new(redis_container.pool.clone());
+        let redis_updater = RedisAnalyticsMetricsUpdater::new();
         let services = AnalyticsServices::new(sql_connect, redis_updater);
 
         let app = AnalyticsHandlers::routes().with_state(services);
@@ -758,8 +756,8 @@ mod tests {
             .uri(format!(
                 "/metrics/users/{}?start={}&end={}",
                 user_id,
-                start_time.to_rfc3339(),
-                end_time.to_rfc3339()
+                urlencoding::encode(&start_time.to_rfc3339()),
+                urlencoding::encode(&end_time.to_rfc3339())
             ))
             .body(Body::empty())
             .unwrap();
@@ -774,7 +772,7 @@ mod tests {
             serde_json::from_slice(&body).unwrap();
 
         assert!(response_json.get("total_events").is_some());
-        assert!(response_json.get("unique_sessions").is_some());
+        assert!(response_json.get("total_sessions").is_some());
     }
 
     #[tokio::test]

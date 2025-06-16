@@ -100,13 +100,16 @@ dependencies = [
  "axum",
  "chrono",
  "domain",
+ "redis-connection",
  "serde",
  "serde_json",
  "sql-connection",
  "test-utils",
  "thiserror 2.0.12",
  "tokio",
+ "tower",
  "tracing",
+ "urlencoding",
  "utoipa",
  "uuid",
 ]
@@ -466,6 +469,7 @@ name = "collider"
 version = "0.1.0"
 dependencies = [
  "analytics",
+ "analytics-dao",
  "analytics-http",
  "anyhow",
  "axum",
@@ -474,9 +478,12 @@ dependencies = [
  "deadpool-postgres",
  "dotenvy",
  "events-commands",
+ "events-dao",
+ "events-handlers",
  "events-http",
  "events-queries",
  "events-responses",
+ "flume",
  "redis-connection",
  "serde",
  "serde_json",
@@ -489,6 +496,9 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "user-commands",
+ "user-dao",
+ "user-events",
+ "user-handlers",
  "user-http",
  "user-responses",
  "utoipa",
@@ -780,6 +790,7 @@ name = "events-handlers"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "database-traits",
  "events-commands",
  "events-dao",
@@ -788,6 +799,7 @@ dependencies = [
  "events-queries",
  "events-responses",
  "redis-connection",
+ "serde_json",
  "sql-connection",
  "test-utils",
  "tokio",
@@ -2539,6 +2551,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "urlencoding"
+version = "2.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "daf8dba3b7eb870caf1ddeed7bc9d2a049f3cfdfae7cb521b087cc33ae4c49da"
+
+[[package]]
 name = "user-commands"
 version = "0.1.0"
 dependencies = [
@@ -2620,8 +2638,10 @@ name = "user-http"
 version = "0.1.0"
 dependencies = [
  "analytics",
+ "anyhow",
  "axum",
  "chrono",
+ "database-traits",
  "domain",
  "events-commands",
  "events-handlers",
@@ -2629,11 +2649,16 @@ dependencies = [
  "events-responses",
  "flume",
  "http",
+ "redis-connection",
  "serde",
+ "serde_json",
  "sql-connection",
+ "test-utils",
  "tokio",
+ "tower",
  "tracing",
  "user-commands",
+ "user-dao",
  "user-events",
  "user-handlers",
  "user-queries",

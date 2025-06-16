@@ -252,13 +252,13 @@ impl AnalyticsViewsDao {
 
         // Get basic metrics from hourly summaries
         let base_query = if event_type_filter.is_some() {
-            "SELECT SUM(total_events) as total_events, 
+            "SELECT COALESCE(SUM(total_events), 0)::bigint as total_events, 
                     COUNT(DISTINCT unique_users) as unique_users
              FROM event_hourly_summaries 
              WHERE hour >= $1 AND hour <= $2 AND event_type = $3"
         }
         else {
-            "SELECT SUM(total_events) as total_events, 
+            "SELECT COALESCE(SUM(total_events), 0)::bigint as total_events, 
                     COUNT(DISTINCT unique_users) as unique_users
              FROM event_hourly_summaries 
              WHERE hour >= $1 AND hour <= $2"
@@ -278,10 +278,8 @@ impl AnalyticsViewsDao {
             )
         })?;
 
-        let total_events: Option<i64> = row.get(0);
-        let unique_users: Option<i64> = row.get(1);
-        let total_events = total_events.unwrap_or(0);
-        let unique_users = unique_users.unwrap_or(0);
+        let total_events: i64 = row.get(0);
+        let unique_users: i64 = row.get(1);
         let events_per_user = if unique_users > 0 {
             total_events as f64 / unique_users as f64
         }
@@ -350,7 +348,8 @@ impl AnalyticsViewsDao {
             })?;
 
         // Get basic user metrics from user_daily_activity view
-        let activity_query = "SELECT SUM(total_events) as total_events,
+        let activity_query = "SELECT COALESCE(SUM(total_events), 0)::bigint \
+                              as total_events,
                                      MIN(first_event) as first_seen,
                                      MAX(last_event) as last_seen
                               FROM user_daily_activity 
@@ -366,15 +365,23 @@ impl AnalyticsViewsDao {
             )
         })?;
 
-        let total_events: Option<i64> = row.get(0);
+        let total_events: i64 = row.get(0);
         let first_seen: Option<DateTime<Utc>> = row.get(1);
         let last_seen: Option<DateTime<Utc>> = row.get(2);
 
-        let total_events = total_events.unwrap_or(0);
+        // If no events found, return default metrics
         if total_events == 0 {
-            return Err(AnalyticsViewsDaoError::Database(
-                tokio_postgres::Error::__private_api_timeout(),
-            ));
+            return Ok(UserMetrics {
+                user_id,
+                total_events: 0,
+                total_sessions: 0,
+                total_time_spent: 0,
+                avg_session_duration: 0.0,
+                first_seen: start, // Use query bounds as defaults
+                last_seen: end,
+                most_active_day: "N/A".to_string(),
+                favorite_events: vec![],
+            });
         }
 
         // Get session metrics from user_session_summaries view

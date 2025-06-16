@@ -6,13 +6,22 @@ use dashmap::DashMap;
 use redis_connection::{
     PoolError, RedisError,
     connection::RedisConnectionManager,
-    core::command::{IntoRedisCommands, RedisCommands},
+    core::{
+        command::{IntoRedisCommands, RedisCommands},
+        key::CacheKey,
+    },
 };
 use serde_json::json;
 use thiserror::Error;
 use tracing::{error, info, instrument};
 use user_events::UserAnalyticsEvent;
 use uuid::Uuid;
+
+use crate::cache_keys::{
+    RealTimeDayBucketKey, RealTimeDayUsersKey, RealTimeHourBucketKey,
+    RealTimeHourUsersKey, RealTimeMinuteBucketKey, RealTimeMinuteUsersKey,
+    UserMetricsCacheKey,
+};
 
 #[derive(Debug, Error)]
 pub enum RedisMetricsUpdaterError {
@@ -366,10 +375,20 @@ impl RedisAnalyticsMetricsUpdater {
             let conn = self.redis.get_connection().await?;
             let mut commands = conn.cmd();
 
-            // Use fallback string keys since type-safe keys seem to have
-            // issues
-            let key =
-                format!("analytics:metrics:{}:{}", bucket_type, timestamp);
+            // Use type-safe cache keys
+            let key = match bucket_type {
+                "minute" => {
+                    RealTimeMinuteBucketKey.get_key_with_args((&timestamp,))
+                }
+                "hour" => {
+                    RealTimeHourBucketKey.get_key_with_args((&timestamp,))
+                }
+                "day" => {
+                    RealTimeDayBucketKey.get_key_with_args((&timestamp,))
+                }
+                _ => continue,
+            }
+            .to_string();
 
             // Increment event count
             let count_field = format!("{}:count", event_type);
@@ -377,7 +396,20 @@ impl RedisAnalyticsMetricsUpdater {
 
             // Add user to set for unique user counting (if user_id provided)
             if let Some(uid) = user_id {
-                let users_key = format!("{}:users", key);
+                let users_key = match bucket_type {
+                    "minute" => {
+                        RealTimeMinuteUsersKey
+                            .get_key_with_args((&timestamp,))
+                    }
+                    "hour" => {
+                        RealTimeHourUsersKey.get_key_with_args((&timestamp,))
+                    }
+                    "day" => {
+                        RealTimeDayUsersKey.get_key_with_args((&timestamp,))
+                    }
+                    _ => continue,
+                }
+                .to_string();
                 commands.sadd(&users_key, uid.to_string()).await?;
                 commands.expire(&users_key, expiry).await?;
             }
@@ -401,7 +433,9 @@ impl RedisAnalyticsMetricsUpdater {
     async fn store_user_metrics(
         &self, user_metrics: &UserMetrics,
     ) -> Result<(), RedisMetricsUpdaterError> {
-        let key = format!("analytics:user_metrics:{}", user_metrics.user_id);
+        let key = UserMetricsCacheKey
+            .get_key_with_args((&user_metrics.user_id,))
+            .to_string();
         let serialized = serde_json::to_string(user_metrics)?;
 
         let conn = self.redis.get_connection().await?;
@@ -415,7 +449,9 @@ impl RedisAnalyticsMetricsUpdater {
     async fn load_user_metrics(
         &self, user_id: Uuid,
     ) -> Result<Option<UserMetrics>, RedisMetricsUpdaterError> {
-        let key = format!("analytics:user_metrics:{}", user_id);
+        let key = UserMetricsCacheKey
+            .get_key_with_args((&user_id,))
+            .to_string();
 
         let mut conn = self.redis.get_connection().await?.cmd();
         let result: Option<String> = conn.get(&key).await?;
@@ -476,28 +512,33 @@ impl RedisAnalyticsMetricsUpdater {
     ) -> Result<HashMap<String, i64>, RedisMetricsUpdaterError> {
         let key = match bucket_type {
             "minute" => {
-                format!(
-                    "analytics:metrics:minute:{}",
-                    timestamp.format("%Y%m%d%H%M")
-                )
+                let ts = timestamp.format("%Y%m%d%H%M").to_string();
+                RealTimeMinuteBucketKey
+                    .get_key_with_args((&ts,))
+                    .to_string()
             }
             "hour" => {
-                format!(
-                    "analytics:metrics:hour:{}",
-                    timestamp.format("%Y%m%d%H")
-                )
+                let ts = timestamp.format("%Y%m%d%H").to_string();
+                RealTimeHourBucketKey.get_key_with_args((&ts,)).to_string()
             }
             "day" => {
-                format!(
-                    "analytics:metrics:day:{}",
-                    timestamp.format("%Y%m%d")
-                )
+                let ts = timestamp.format("%Y%m%d").to_string();
+                RealTimeDayBucketKey.get_key_with_args((&ts,)).to_string()
             }
             _ => return Ok(HashMap::new()),
         };
 
         let mut conn = self.redis.get_connection().await?.cmd();
-        let result: HashMap<String, i64> = conn.hgetall(&key).await?;
+        let raw_result: HashMap<String, String> = conn.hgetall(&key).await?;
+
+        // Filter and convert only count fields (not metadata fields)
+        let result: HashMap<String, i64> = raw_result
+            .into_iter()
+            .filter(|(key, _)| key.ends_with(":count"))
+            .filter_map(|(key, value)| {
+                value.parse::<i64>().ok().map(|v| (key, v))
+            })
+            .collect();
 
         Ok(result)
     }
@@ -540,7 +581,36 @@ impl RedisAnalyticsMetricsUpdater {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    use test_utils::redis::TestRedisContainer;
+
     use super::*;
+
+    async fn setup_test_redis()
+    -> anyhow::Result<(TestRedisContainer, RedisAnalyticsMetricsUpdater)>
+    {
+        let container = TestRedisContainer::new().await?;
+        container.flush_all_keys().await?;
+
+        let mut updater = RedisAnalyticsMetricsUpdater::new();
+        // Replace the default connection with test container connection
+        updater.redis = RedisConnectionManager::new(container.pool.clone());
+
+        Ok((container, updater))
+    }
+
+    fn test_user_id() -> Uuid {
+        static COUNTER: AtomicU32 = AtomicU32::new(1);
+        let counter = COUNTER.fetch_add(1, Ordering::SeqCst);
+        Uuid::from_u128(counter as u128)
+    }
+
+    fn test_session_id() -> Uuid {
+        static COUNTER: AtomicU32 = AtomicU32::new(1000);
+        let counter = COUNTER.fetch_add(1, Ordering::SeqCst);
+        Uuid::from_u128(counter as u128)
+    }
 
     #[tokio::test]
     async fn test_device_detection() {
@@ -556,5 +626,320 @@ mod tests {
             )),
             Some("Chrome".to_string())
         );
+    }
+
+    #[tokio::test]
+    async fn test_cache_key_generation() {
+        let user_id = test_user_id();
+        let timestamp = "202501151030".to_string();
+
+        // Test user metrics cache key
+        let user_key = UserMetricsCacheKey
+            .get_key_with_args((&user_id,))
+            .to_string();
+        assert_eq!(user_key, format!("analytics:user_metrics:{}", user_id));
+
+        // Test real-time bucket keys
+        let minute_key = RealTimeMinuteBucketKey
+            .get_key_with_args((&timestamp,))
+            .to_string();
+        assert_eq!(
+            minute_key,
+            format!("analytics:metrics:minute:{}", timestamp)
+        );
+
+        let hour_key = RealTimeHourBucketKey
+            .get_key_with_args((&timestamp,))
+            .to_string();
+        assert_eq!(hour_key, format!("analytics:metrics:hour:{}", timestamp));
+
+        let day_key = RealTimeDayBucketKey
+            .get_key_with_args((&timestamp,))
+            .to_string();
+        assert_eq!(day_key, format!("analytics:metrics:day:{}", timestamp));
+
+        // Test user set keys
+        let minute_users_key = RealTimeMinuteUsersKey
+            .get_key_with_args((&timestamp,))
+            .to_string();
+        assert_eq!(
+            minute_users_key,
+            format!("analytics:metrics:minute:{}:users", timestamp)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_user_created_event() -> anyhow::Result<()> {
+        let (_container, mut updater) = setup_test_redis().await?;
+        let user_id = test_user_id();
+        let created_at = Utc::now();
+
+        let event = UserAnalyticsEvent::UserCreated {
+            user_id,
+            name: "Test User".to_string(),
+            created_at,
+            registration_source: Some("web".to_string()),
+        };
+
+        // Process the event
+        updater.process_event(event).await?;
+
+        // Verify user metrics were created
+        let user_metrics = updater.get_user_metrics(&user_id).await?;
+        assert!(user_metrics.is_some());
+
+        let metrics = user_metrics.unwrap();
+        assert_eq!(metrics.user_id, user_id);
+        assert_eq!(metrics.total_events, 1);
+        assert_eq!(metrics.total_sessions, 0);
+        assert_eq!(metrics.first_seen, created_at);
+        assert_eq!(metrics.last_seen, created_at);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_session_events() -> anyhow::Result<()> {
+        let (_container, mut updater) = setup_test_redis().await?;
+        let user_id = test_user_id();
+        let session_id = test_session_id();
+        let started_at = Utc::now();
+        let ended_at = started_at + chrono::Duration::seconds(300); // 5 minute session
+
+        // First create user
+        let create_event = UserAnalyticsEvent::UserCreated {
+            user_id,
+            name: "Test User".to_string(),
+            created_at: started_at,
+            registration_source: Some("web".to_string()),
+        };
+        updater.process_event(create_event).await?;
+
+        // Start session
+        let session_start = UserAnalyticsEvent::UserSessionStart {
+            user_id,
+            session_id,
+            started_at,
+            user_agent: Some("Mozilla/5.0 Chrome/91.0".to_string()),
+            ip_address: Some("127.0.0.1".to_string()),
+            referrer: None,
+        };
+        updater.process_event(session_start).await?;
+
+        // End session
+        let session_end = UserAnalyticsEvent::UserSessionEnd {
+            user_id,
+            session_id,
+            ended_at,
+            duration_seconds: 300,
+        };
+        updater.process_event(session_end).await?;
+
+        // Verify user metrics were updated
+        let user_metrics = updater.get_user_metrics(&user_id).await?;
+        assert!(user_metrics.is_some());
+
+        let metrics = user_metrics.unwrap();
+        assert_eq!(metrics.total_sessions, 1);
+        assert_eq!(metrics.total_time_spent, 300);
+        assert_eq!(metrics.avg_session_duration, 300.0);
+        assert_eq!(metrics.last_seen, ended_at);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_real_time_metrics_storage() -> anyhow::Result<()> {
+        let (_container, mut updater) = setup_test_redis().await?;
+        let user_id = test_user_id();
+        let event_time = Utc::now();
+
+        let event = UserAnalyticsEvent::UserCreated {
+            user_id,
+            name: "Test User".to_string(),
+            created_at: event_time,
+            registration_source: Some("mobile".to_string()),
+        };
+
+        updater.process_event(event).await?;
+
+        // Check that real-time metrics were stored
+        let metrics =
+            updater.get_real_time_metrics("minute", event_time).await?;
+        assert!(!metrics.is_empty());
+
+        // Should have user_created:count field
+        let count = metrics.get("user_created:count");
+        assert!(count.is_some());
+        assert_eq!(*count.unwrap(), 1);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_user_metrics_persistence() -> anyhow::Result<()> {
+        let (_container, mut updater) = setup_test_redis().await?;
+        let user_id = test_user_id();
+        let created_at = Utc::now();
+
+        // Create user metrics
+        let user_metrics = UserMetrics {
+            user_id,
+            total_events: 5,
+            total_sessions: 2,
+            total_time_spent: 600,
+            avg_session_duration: 300.0,
+            first_seen: created_at,
+            last_seen: created_at,
+            most_active_day: "Monday".to_string(),
+            favorite_events: vec![
+                analytics_models::EventTypeCount {
+                    event_type: "login".to_string(),
+                    count: 3,
+                    percentage: 60.0,
+                },
+                analytics_models::EventTypeCount {
+                    event_type: "page_view".to_string(),
+                    count: 2,
+                    percentage: 40.0,
+                },
+            ],
+        };
+
+        // Store in cache
+        updater
+            .user_metrics_cache
+            .insert(user_id, user_metrics.clone());
+
+        // Flush to Redis
+        updater.flush_user_metrics().await?;
+
+        // Clear cache and reload from Redis
+        updater.user_metrics_cache.clear();
+        let loaded_metrics = updater.load_user_metrics(user_id).await?;
+
+        assert!(loaded_metrics.is_some());
+        let loaded = loaded_metrics.unwrap();
+        assert_eq!(loaded.user_id, user_id);
+        assert_eq!(loaded.total_events, 5);
+        assert_eq!(loaded.total_sessions, 2);
+        assert_eq!(loaded.avg_session_duration, 300.0);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_user_updated_event() -> anyhow::Result<()> {
+        let (_container, mut updater) = setup_test_redis().await?;
+        let user_id = test_user_id();
+        let created_at = Utc::now();
+        let updated_at = created_at + chrono::Duration::hours(1);
+
+        // First create user
+        let create_event = UserAnalyticsEvent::UserCreated {
+            user_id,
+            name: "Test User".to_string(),
+            created_at,
+            registration_source: Some("web".to_string()),
+        };
+        updater.process_event(create_event).await?;
+
+        // Update user
+        let update_event = UserAnalyticsEvent::UserNameUpdated {
+            user_id,
+            old_name: "Test User".to_string(),
+            new_name: "Updated User".to_string(),
+            updated_at,
+        };
+        updater.process_event(update_event).await?;
+
+        // Verify metrics were updated
+        let user_metrics = updater.get_user_metrics(&user_id).await?;
+        assert!(user_metrics.is_some());
+
+        let metrics = user_metrics.unwrap();
+        assert_eq!(metrics.total_events, 2); // Created + Updated
+        assert_eq!(metrics.last_seen, updated_at);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_user_deleted_event() -> anyhow::Result<()> {
+        let (_container, mut updater) = setup_test_redis().await?;
+        let user_id = test_user_id();
+        let created_at = Utc::now();
+        let deleted_at = created_at + chrono::Duration::hours(2);
+
+        // First create user
+        let create_event = UserAnalyticsEvent::UserCreated {
+            user_id,
+            name: "Test User".to_string(),
+            created_at,
+            registration_source: Some("web".to_string()),
+        };
+        updater.process_event(create_event).await?;
+
+        // Delete user
+        let delete_event = UserAnalyticsEvent::UserDeleted {
+            user_id,
+            deleted_at,
+        };
+        updater.process_event(delete_event).await?;
+
+        // Verify last_seen was updated to deletion time
+        let user_metrics = updater.get_user_metrics(&user_id).await?;
+        assert!(user_metrics.is_some());
+
+        let metrics = user_metrics.unwrap();
+        assert_eq!(metrics.last_seen, deleted_at);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_events() -> anyhow::Result<()> {
+        let (_container, mut updater) = setup_test_redis().await?;
+        let user_id = test_user_id();
+        let base_time = Utc::now();
+
+        // Process multiple events concurrently
+        let events = vec![
+            UserAnalyticsEvent::UserCreated {
+                user_id,
+                name: "Test User".to_string(),
+                created_at: base_time,
+                registration_source: Some("web".to_string()),
+            },
+            UserAnalyticsEvent::UserNameUpdated {
+                user_id,
+                old_name: "Test User".to_string(),
+                new_name: "Updated User".to_string(),
+                updated_at: base_time + chrono::Duration::minutes(1),
+            },
+            UserAnalyticsEvent::UserSessionStart {
+                user_id,
+                session_id: test_session_id(),
+                started_at: base_time + chrono::Duration::minutes(2),
+                user_agent: Some("Mozilla/5.0".to_string()),
+                ip_address: Some("127.0.0.1".to_string()),
+                referrer: None,
+            },
+        ];
+
+        // Process all events
+        for event in events {
+            updater.process_event(event).await?;
+        }
+
+        // Verify final state
+        let user_metrics = updater.get_user_metrics(&user_id).await?;
+        assert!(user_metrics.is_some());
+
+        let metrics = user_metrics.unwrap();
+        assert_eq!(metrics.total_events, 2); // Created + Updated (session increments in different way)
+        assert_eq!(metrics.total_sessions, 1);
+
+        Ok(())
     }
 }
