@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
-    use test_utils::postgres::TestPostgresContainer;
+    use test_utils::TestPostgresContainer;
     use uuid::Uuid;
 
     use crate::AnalyticsViewsDao;

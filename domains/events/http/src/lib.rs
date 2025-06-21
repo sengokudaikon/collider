@@ -278,9 +278,7 @@ mod tests {
     use events_dao::EventDao;
     use redis_connection::cache_provider::CacheProvider;
     use serde_json::json;
-    use test_utils::{
-        postgres::TestPostgresContainer, redis::TestRedisContainer, *,
-    };
+    use test_utils::{TestPostgresContainer, TestRedisContainer, *};
     use tower::ServiceExt;
     use uuid::Uuid;
 

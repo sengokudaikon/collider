@@ -231,17 +231,16 @@ impl GetUserEventsQueryHandler {
 #[cfg(test)]
 mod tests {
     use redis_connection::cache_provider::CacheProvider;
-    use test_utils::{redis::TestRedisContainer, *};
+    use test_utils::{TestRedisContainer, *};
     use uuid::Uuid;
 
     use super::*;
 
     async fn setup_test_db() -> anyhow::Result<(
-        test_utils::postgres::TestPostgresContainer,
+        test_utils::TestPostgresContainer,
         GetUserEventsQueryHandler,
     )> {
-        let container =
-            test_utils::postgres::TestPostgresContainer::new().await?;
+        let container = test_utils::TestPostgresContainer::new().await?;
         let redis_container = TestRedisContainer::new().await.unwrap();
         redis_container.flush_db().await.unwrap();
 

@@ -5,7 +5,7 @@ use redis_connection::{
     cache_key, connection::RedisConnectionManager,
     core::type_bind::CacheTypeBind,
 };
-use test_utils::redis::TestRedisContainer;
+use test_utils::TestRedisContainer;
 
 // Test the new Redis data type macros
 cache_key!(set UniqueUsers::<String> => "test_users:active:{}"[date: String]);

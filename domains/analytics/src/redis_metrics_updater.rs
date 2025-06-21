@@ -54,6 +54,15 @@ impl RedisAnalyticsMetricsUpdater {
         }
     }
 
+    /// Create a new instance with a specific Redis connection manager (useful
+    /// for testing)
+    pub fn with_redis_manager(redis: RedisConnectionManager) -> Self {
+        Self {
+            redis,
+            user_metrics_cache: DashMap::new(),
+        }
+    }
+
     /// Process a user analytics event and update relevant metrics
     #[instrument(skip_all, fields(event_type = ?std::mem::discriminant(&event)))]
     pub async fn process_event(
@@ -583,7 +592,7 @@ impl RedisAnalyticsMetricsUpdater {
 mod tests {
     use std::sync::atomic::{AtomicU32, Ordering};
 
-    use test_utils::redis::TestRedisContainer;
+    use test_utils::TestRedisContainer;
 
     use super::*;
 

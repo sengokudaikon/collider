@@ -62,7 +62,7 @@ impl GetUserQueryHandler {
 #[cfg(test)]
 mod tests {
     use redis_connection::cache_provider::CacheProvider;
-    use test_utils::{redis::TestRedisContainer, *};
+    use test_utils::{TestRedisContainer, *};
     use user_queries::{GetUserByNameQuery, GetUserQuery, ListUsersQuery};
     use uuid::Uuid;
 

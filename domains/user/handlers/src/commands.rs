@@ -212,13 +212,12 @@ mod tests {
     use super::*;
 
     async fn setup_test_handlers() -> anyhow::Result<(
-        test_utils::postgres::TestPostgresContainer,
+        test_utils::TestPostgresContainer,
         CreateUserHandler,
         UpdateUserHandler,
         DeleteUserHandler,
     )> {
-        let container =
-            test_utils::postgres::TestPostgresContainer::new().await?;
+        let container = test_utils::TestPostgresContainer::new().await?;
         let sql_connect = create_sql_connect(&container);
 
         let create_handler = CreateUserHandler::new(sql_connect.clone());

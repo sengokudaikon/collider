@@ -304,9 +304,7 @@ mod tests {
     use database_traits::dao::GenericDao;
     use redis_connection::cache_provider::CacheProvider;
     use serde_json::json;
-    use test_utils::{
-        postgres::TestPostgresContainer, redis::TestRedisContainer, *,
-    };
+    use test_utils::{TestPostgresContainer, TestRedisContainer, *};
     use tower::ServiceExt;
     use user_commands::{CreateUserCommand, UpdateUserCommand};
     use user_dao::UserDao;
@@ -333,7 +331,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_user_endpoint() {
-        let (container, app, _) = setup_test_app().await.unwrap();
+        let (_container, app, _) = setup_test_app().await.unwrap();
 
         let command = CreateUserCommand {
             name: "Test User".to_string(),
@@ -363,7 +361,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_user_invalid_data() {
-        let (container, app, _) = setup_test_app().await.unwrap();
+        let (_container, app, _) = setup_test_app().await.unwrap();
 
         let invalid_data = json!({
             "name": ""  // Empty name should be invalid
@@ -387,7 +385,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_user_endpoint() {
-        let (container, app, dao) = setup_test_app().await.unwrap();
+        let (_container, app, dao) = setup_test_app().await.unwrap();
 
         let create_command = CreateUserCommand {
             name: "Get Test User".to_string(),
@@ -416,7 +414,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_user_not_found() {
-        let (container, app, _) = setup_test_app().await.unwrap();
+        let (_container, app, _) = setup_test_app().await.unwrap();
         let non_existent_id = Uuid::now_v7();
 
         let request = Request::builder()
@@ -432,7 +430,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_user_endpoint() {
-        let (container, app, dao) = setup_test_app().await.unwrap();
+        let (_container, app, dao) = setup_test_app().await.unwrap();
 
         let create_command = CreateUserCommand {
             name: "Original Name".to_string(),
@@ -467,7 +465,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_user_not_found() {
-        let (container, app, _) = setup_test_app().await.unwrap();
+        let (_container, app, _) = setup_test_app().await.unwrap();
         let non_existent_id = Uuid::now_v7();
 
         let update_command = UpdateUserCommand {
@@ -489,7 +487,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_user_endpoint() {
-        let (container, app, dao) = setup_test_app().await.unwrap();
+        let (_container, app, dao) = setup_test_app().await.unwrap();
 
         let create_command = CreateUserCommand {
             name: "User To Delete".to_string(),
@@ -513,7 +511,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_user_not_found() {
-        let (container, app, _) = setup_test_app().await.unwrap();
+        let (_container, app, _) = setup_test_app().await.unwrap();
         let non_existent_id = Uuid::now_v7();
 
         let request = Request::builder()
@@ -529,7 +527,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_users_endpoint() {
-        let (container, app, dao) = setup_test_app().await.unwrap();
+        let (_container, app, dao) = setup_test_app().await.unwrap();
 
         // Create multiple users
         for i in 0..3 {
@@ -562,7 +560,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_users_with_pagination() {
-        let (container, app, dao) = setup_test_app().await.unwrap();
+        let (_container, app, dao) = setup_test_app().await.unwrap();
 
         // Create multiple users
         for i in 0..5 {
@@ -638,7 +636,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_user_events_invalid_user_id() {
-        let (container, app, _) = setup_test_app().await.unwrap();
+        let (_container, app, _) = setup_test_app().await.unwrap();
 
         let request = Request::builder()
             .method(Method::GET)
@@ -653,7 +651,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_user_events_non_existent_user() {
-        let (container, app, _) = setup_test_app().await.unwrap();
+        let (_container, app, _) = setup_test_app().await.unwrap();
         let non_existent_id = Uuid::now_v7();
 
         let request = Request::builder()
@@ -680,7 +678,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_user_with_duplicate_name() {
-        let (container, app, dao) = setup_test_app().await.unwrap();
+        let (_container, app, dao) = setup_test_app().await.unwrap();
 
         // Create first user
         let create_command1 = CreateUserCommand {
@@ -710,7 +708,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_partial_update_user() {
-        let (container, app, dao) = setup_test_app().await.unwrap();
+        let (_container, app, dao) = setup_test_app().await.unwrap();
 
         let create_command = CreateUserCommand {
             name: "Original Name".to_string(),

@@ -138,7 +138,7 @@ mod tests {
     use chrono::{Duration, Utc};
     use database_traits::dao::GenericDao;
     use serde_json::json;
-    use test_utils::{postgres::TestPostgresContainer, *};
+    use test_utils::{TestPostgresContainer, *};
     use uuid::Uuid;
 
     use super::*;
@@ -258,7 +258,8 @@ mod tests {
         let (container, create_handler, update_handler, ..) =
             setup_test_handlers().await.unwrap();
 
-        let event_type_id = create_test_event_type(&container).await.unwrap();
+        let _event_type_id =
+            create_test_event_type(&container).await.unwrap();
         let user_id = create_test_user(&container).await.unwrap();
 
         // Create a new event type for update
@@ -299,7 +300,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_event_handler_not_found() {
-        let (container, _, update_handler, ..) =
+        let (_container, _, update_handler, ..) =
             setup_test_handlers().await.unwrap();
 
         let non_existent_id = Uuid::now_v7();
@@ -385,7 +386,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_event_handler_not_found() {
-        let (container, _, _, delete_handler, _) =
+        let (_container, _, _, delete_handler, _) =
             setup_test_handlers().await.unwrap();
 
         let non_existent_id = Uuid::now_v7();
@@ -438,7 +439,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_bulk_delete_events_handler_no_events() {
-        let (container, _, _, _, bulk_delete_handler) =
+        let (_container, _, _, _, bulk_delete_handler) =
             setup_test_handlers().await.unwrap();
 
         let future_time = Utc::now() + Duration::hours(1);

@@ -1,5 +1,5 @@
 use sql_connection::SqlConnect;
-use test_utils::postgres::TestPostgresContainer;
+use test_utils::TestPostgresContainer;
 
 #[tokio::test]
 async fn test_sql_connect_creation() {

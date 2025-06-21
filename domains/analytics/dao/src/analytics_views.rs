@@ -64,7 +64,7 @@ impl AnalyticsViewsDao {
         for view_name in views_to_refresh {
             let sql = format!(
                 "REFRESH MATERIALIZED VIEW {} {}",
-                concurrent_clause, view_name
+                view_name, concurrent_clause
             );
             client.execute(&sql, &[]).await?;
             refreshed_views.push(view_name);
@@ -253,13 +253,13 @@ impl AnalyticsViewsDao {
         // Get basic metrics from hourly summaries
         let base_query = if event_type_filter.is_some() {
             "SELECT COALESCE(SUM(total_events), 0)::bigint as total_events, 
-                    COUNT(DISTINCT unique_users) as unique_users
+                    COALESCE(SUM(unique_users), 0)::bigint as unique_users
              FROM event_hourly_summaries 
              WHERE hour >= $1 AND hour <= $2 AND event_type = $3"
         }
         else {
             "SELECT COALESCE(SUM(total_events), 0)::bigint as total_events, 
-                    COUNT(DISTINCT unique_users) as unique_users
+                    COALESCE(SUM(unique_users), 0)::bigint as unique_users
              FROM event_hourly_summaries 
              WHERE hour >= $1 AND hour <= $2"
         };

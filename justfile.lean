@@ -29,7 +29,7 @@ format:
 
 # Lint code
 lint:
-    cargo clippy -- -D warnings
+    cargo clippy --all-targets --all-features -- -D warnings
 
 # Security audit
 audit:

@@ -38,3 +38,4 @@ test-utils.workspace = true
 redis-connection.workspace = true
 tower.workspace = true
 urlencoding = "2.1"
+user-events = { path = "../../user/events" }

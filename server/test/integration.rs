@@ -1,15 +1,12 @@
 use analytics::RedisAnalyticsMetricsUpdater;
 use analytics_dao::AnalyticsViewsDao;
-use database_traits::dao::GenericDao;
 use events_dao::{EventDao, EventTypeDao};
 use events_handlers::{
     CreateEventHandler, DeleteEventHandler, UpdateEventHandler,
 };
 use flume::Receiver;
 use redis_connection::cache_provider::CacheProvider;
-use test_utils::{
-    postgres::TestPostgresContainer, redis::TestRedisContainer, *,
-};
+use test_utils::{TestPostgresContainer, TestRedisContainer, *};
 use user_dao::UserDao;
 use user_events::UserAnalyticsEvent;
 use user_handlers::{
@@ -309,7 +306,7 @@ mod tests {
         ];
 
         let mut event_ids = Vec::new();
-        for (action, metadata) in events_data {
+        for (_action, metadata) in events_data {
             let event_command = CreateEventCommand {
                 user_id,
                 event_type: "login_event".to_string(),
@@ -355,7 +352,7 @@ mod tests {
             .unwrap();
 
         // Create events for the user
-        let event_type_id =
+        let _event_type_id =
             setup.create_test_event_type("cascade_event").await.unwrap();
         let mut event_ids = Vec::new();
 
@@ -443,7 +440,7 @@ mod tests {
         }
 
         // Create events for all users
-        let event_type_id =
+        let _event_type_id =
             setup.create_test_event_type("bulk_event").await.unwrap();
         let mut total_events = 0;
 
@@ -512,5 +509,45 @@ mod tests {
 
         // This test ensures that analytics failures don't break core
         // functionality
+    }
+
+    #[tokio::test]
+    async fn test_containers_isolation() {
+        // This test demonstrates that each test gets its own isolated
+        // containers
+        let setup1 = IntegrationTestSetup::new().await.unwrap();
+        let setup2 = IntegrationTestSetup::new().await.unwrap();
+
+        // Containers should have different connection strings (different
+        // ports)
+        assert_ne!(
+            setup1.container.connection_string,
+            setup2.container.connection_string
+        );
+        assert_ne!(
+            setup1.redis_container.connection_string,
+            setup2.redis_container.connection_string
+        );
+
+        // Both setups should work independently
+        let user1_id = setup1
+            .create_test_user("User in Container 1")
+            .await
+            .unwrap();
+        let user2_id = setup2
+            .create_test_user("User in Container 2")
+            .await
+            .unwrap();
+
+        // Verify users exist in their respective containers
+        let user1 = setup1.user_dao.find_by_id(user1_id).await.unwrap();
+        let user2 = setup2.user_dao.find_by_id(user2_id).await.unwrap();
+
+        assert_eq!(user1.name, "User in Container 1");
+        assert_eq!(user2.name, "User in Container 2");
+
+        // Verify users don't exist in the other container
+        assert!(setup1.user_dao.find_by_id(user2_id).await.is_err());
+        assert!(setup2.user_dao.find_by_id(user1_id).await.is_err());
     }
 }
