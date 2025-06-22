@@ -18,7 +18,7 @@ use crate::Metadata;
 )]
 pub struct Event {
     #[builder(default)]
-    pub id: Uuid,
+    pub id: i64,
     pub user_id: Uuid,
     pub event_type_id: i32,
     #[builder(default)]

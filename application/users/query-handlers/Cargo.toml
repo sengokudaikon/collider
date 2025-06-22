@@ -1,0 +1,30 @@
+[package]
+name = "user-query-handlers"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+uuid.workspace = true
+tracing.workspace = true
+
+# Database
+database-traits.workspace = true
+sql-connection.workspace = true
+redis-connection.workspace = true
+
+user-models.workspace = true
+user-errors.workspace = true
+user-dao.workspace = true
+user-commands.workspace = true
+user-queries.workspace = true
+user-responses.workspace = true
+events-commands.workspace = true
+user-cache-keys.workspace = true
+
+# Channel communication
+flume.workspace = true
+
+[dev-dependencies]
+test-utils.workspace = true
+tokio.workspace = true
+anyhow.workspace = true

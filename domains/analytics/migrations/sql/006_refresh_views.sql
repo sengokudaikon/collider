@@ -1,7 +1,0 @@
-REFRESH MATERIALIZED VIEW event_hourly_summaries;
-REFRESH MATERIALIZED VIEW popular_events;
-REFRESH MATERIALIZED VIEW user_daily_activity;
-REFRESH MATERIALIZED VIEW user_session_summaries;
-REFRESH MATERIALIZED VIEW page_analytics;
-REFRESH MATERIALIZED VIEW product_analytics;
-REFRESH MATERIALIZED VIEW referrer_analytics;

@@ -1,0 +1,9 @@
+[package]
+name = "user-cache-keys"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+user-models.workspace = true
+redis-connection.workspace = true
+uuid.workspace = true

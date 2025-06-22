@@ -1,0 +1,47 @@
+[package]
+name = "user-http"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# Domain dependencies  
+user-commands.workspace = true
+user-command-handlers.workspace = true
+user-query-handlers.workspace = true
+user-queries.workspace = true
+user-responses.workspace = true
+events-queries.workspace = true
+events-command-handlers.workspace = true
+events-query-handlers.workspace = true
+events-responses.workspace = true
+
+# Web framework
+axum.workspace = true
+
+# Core dependencies
+uuid.workspace = true
+serde.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+tokio.workspace = true
+
+# Events integration
+events-commands.workspace = true
+flume.workspace = true
+
+http.workspace = true
+
+sql-connection.workspace = true
+common-errors.workspace = true
+utoipa.workspace = true
+
+[dev-dependencies]
+anyhow.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
+test-utils.workspace = true
+sql-connection.workspace = true
+redis-connection.workspace = true
+tower.workspace = true
+user-dao.workspace = true
+database-traits.workspace = true
+serde_json.workspace = true

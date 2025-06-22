@@ -7,4 +7,6 @@ pub mod config;
 mod impl_get_connect;
 mod static_vars;
 
-pub use static_vars::{connect_postgres_db, get_sql_pool};
+pub use static_vars::{
+    connect_postgres_db, connect_postgres_read_replica, get_sql_pool,
+};

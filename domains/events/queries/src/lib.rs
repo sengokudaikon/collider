@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 #[derive(Debug, Deserialize)]
 pub struct GetEventQuery {
-    pub event_id: Uuid,
+    pub event_id: i64,
 }
 
 #[derive(Debug, Deserialize)]

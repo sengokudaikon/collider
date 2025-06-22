@@ -6,11 +6,11 @@ use std::{
 use anyhow::Result;
 use clap::Parser;
 use deadpool_postgres::Pool;
-use flume::{bounded, Receiver, Sender};
+use flume::{Receiver, Sender, bounded};
 use futures::future::try_join_all;
 use seeder::{
-    create_event_types, create_events_for_batch, create_pool, create_users, prepare_database,
-    restore_database, Event, EventType, User,
+    Event, EventType, User, create_event_types, create_events_for_batch,
+    create_pool, create_users, prepare_database, restore_database,
 };
 use tokio_postgres::types::ToSql;
 use uuid::Uuid;
@@ -22,13 +22,25 @@ struct Cli {
     #[arg(long, default_value = "1000", help = "Number of users to create")]
     users_count: usize,
 
-    #[arg(long, default_value = "10000000", help = "Number of events to create")]
+    #[arg(
+        long,
+        default_value = "10000000",
+        help = "Number of events to create"
+    )]
     events_count: usize,
 
-    #[arg(long, default_value = "100", help = "Number of event types to create")]
+    #[arg(
+        long,
+        default_value = "100",
+        help = "Number of event types to create"
+    )]
     event_types_count: usize,
 
-    #[arg(long, default_value = "6000", help = "Batch size for bulk inserts")]
+    #[arg(
+        long,
+        default_value = "6000",
+        help = "Batch size for bulk inserts"
+    )]
     batch_size: usize,
 }
 
@@ -75,6 +87,7 @@ async fn main() -> Result<()> {
 
     let buffer_size = worker_count * 3;
     let (tx, rx) = bounded(buffer_size);
+
     let producer_handle = tokio::spawn(produce_batches(
         tx,
         users.clone(),
@@ -83,11 +96,12 @@ async fn main() -> Result<()> {
         cli.batch_size,
     ));
     for _ in 0..worker_count {
-        worker_tasks.push(tokio::spawn(worker_task(
-            pool.clone(),
-            rx.clone(),
-            event_type_map.clone(),
-        )));
+        let pool_clone = pool.clone();
+        let rx_clone = rx.clone();
+        let event_type_map_clone = event_type_map.clone();
+        worker_tasks.push(tokio::spawn(async move {
+            worker_task(pool_clone, rx_clone, event_type_map_clone).await
+        }));
     }
 
     producer_handle.await??;
@@ -112,13 +126,10 @@ async fn main() -> Result<()> {
 }
 
 async fn produce_batches(
-    tx: Sender<Vec<Event>>,
-    users: Vec<User>,
-    event_types: Vec<EventType>,
-    events_count: usize,
-    batch_size: usize,
+    tx: Sender<Vec<Event>>, users: Vec<User>, event_types: Vec<EventType>,
+    events_count: usize, batch_size: usize,
 ) -> Result<()> {
-    let total_batches = (events_count + batch_size - 1) / batch_size;
+    let total_batches = events_count.div_ceil(batch_size);
 
     for i in 0..total_batches {
         let current_batch_size = if i == total_batches - 1 {
@@ -191,27 +202,25 @@ async fn worker_task(
 fn build_insert_query(
     batch: &[Event], event_type_map: &HashMap<String, i32>,
 ) -> (String, Vec<Box<dyn ToSql + Sync + Send>>) {
-    let mut sql = "INSERT INTO events (id, user_id, event_type_id, \
-                   timestamp, metadata) VALUES "
+    let mut sql = "INSERT INTO events (user_id, event_type_id, timestamp, \
+                   metadata) VALUES "
         .to_string();
     let mut params: Vec<Box<dyn ToSql + Sync + Send>> =
-        Vec::with_capacity(batch.len() * 5);
+        Vec::with_capacity(batch.len() * 4);
 
     for (i, event) in batch.iter().enumerate() {
-        let p_base = i * 5;
+        let p_base = i * 4;
         sql.push_str(&format!(
-            "(${}, ${}, ${}, ${}, ${})",
+            "(${}, ${}, ${}, ${})",
             p_base + 1,
             p_base + 2,
             p_base + 3,
-            p_base + 4,
-            p_base + 5
+            p_base + 4
         ));
         if i < batch.len() - 1 {
             sql.push(',');
         }
 
-        params.push(Box::new(event.id));
         params.push(Box::new(event.user_id));
         params
             .push(Box::new(*event_type_map.get(&event.event_type).unwrap()));
@@ -222,7 +231,9 @@ fn build_insert_query(
     (sql, params)
 }
 
-fn print_summary_report(all_stats: Vec<WorkerStats>, timings: RunTimings, events_count: usize) {
+fn print_summary_report(
+    all_stats: Vec<WorkerStats>, timings: RunTimings, events_count: usize,
+) {
     println!("\n--- 🏁 Overall Timing Breakdown ---");
     println!("{:<25} | {:>15}", "Stage", "Duration");
     println!("{:-<43}", "");
@@ -240,7 +251,8 @@ fn print_summary_report(all_stats: Vec<WorkerStats>, timings: RunTimings, events
         "TOTAL RUNTIME", timings.total_duration
     );
 
-    let events_per_second = events_count as f64 / timings.total_duration.as_secs_f64();
+    let events_per_second =
+        events_count as f64 / timings.total_duration.as_secs_f64();
     println!("\nOverall Throughput: {:.0} events/sec", events_per_second);
 
     let mut total_batches = 0;

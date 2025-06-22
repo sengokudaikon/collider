@@ -1,0 +1,10 @@
+[package]
+name = "common-errors"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum.workspace = true
+anyhow.workspace = true
+serde .workspace = true
+utoipa.workspace = true

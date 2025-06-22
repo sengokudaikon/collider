@@ -50,7 +50,7 @@ pub async fn create_test_users(
 pub async fn create_test_event(
     container: &TestPostgresContainer, user_id: Uuid, event_type_id: i32,
     metadata: Option<&str>,
-) -> Result<Uuid> {
+) -> Result<i64> {
     create_test_event_modern(container, user_id, event_type_id, metadata)
         .await
 }
@@ -170,20 +170,19 @@ pub async fn create_test_users_modern(
 pub async fn create_test_event_modern(
     container: &TestPostgresContainer, user_id: Uuid, event_type_id: i32,
     metadata: Option<&str>,
-) -> Result<Uuid> {
-    let event_id = Uuid::now_v7();
+) -> Result<i64> {
     let client = container.pool.get().await?;
 
     let metadata_json = metadata.map(Value::from);
 
-    client
-        .execute(
-            "INSERT INTO events (id, user_id, event_type_id, metadata, \
-             timestamp) VALUES ($1, $2, $3, $4, NOW())",
-            &[&event_id, &user_id, &event_type_id, &metadata_json],
+    let row = client
+        .query_one(
+            "INSERT INTO events (user_id, event_type_id, metadata, \
+             timestamp) VALUES ($1, $2, $3, NOW()) RETURNING id",
+            &[&user_id, &event_type_id, &metadata_json],
         )
         .await?;
-    Ok(event_id)
+    Ok(row.get(0))
 }
 
 pub async fn clean_test_data_modern(

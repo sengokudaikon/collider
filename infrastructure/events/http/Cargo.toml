@@ -1,0 +1,30 @@
+[package]
+name = "events-http"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+events-command-handlers.workspace = true
+events-query-handlers.workspace = true
+events-responses.workspace = true
+events-commands.workspace = true
+events-queries.workspace = true
+events-dao.workspace = true
+
+sql-connection.workspace = true
+common-errors.workspace = true
+redis-connection.workspace = true
+
+axum = { workspace = true, features = ["macros"] }
+serde.workspace = true
+uuid.workspace = true
+tracing.workspace = true
+chrono.workspace = true
+utoipa.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+
+[dev-dependencies]
+events-dao = { path = "../dao" }
+redis-connection.workspace = true
+axum = { workspace = true, features = ["macros"] }
