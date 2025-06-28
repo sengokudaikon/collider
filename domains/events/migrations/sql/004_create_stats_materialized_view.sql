@@ -47,4 +47,4 @@ CREATE UNIQUE INDEX idx_stats_summary_unique_composite ON stats_summary (stat_ty
 
 GRANT SELECT ON stats_summary TO PUBLIC;
 
-REFRESH MATERIALIZED VIEW CONCURRENTLY stats_summary;
+REFRESH MATERIALIZED VIEW  stats_summary;

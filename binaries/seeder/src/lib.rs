@@ -362,11 +362,11 @@ pub async fn restore_database(pool: &Pool) -> anyhow::Result<()> {
     
     // Recreate performance indexes one by one with progress reporting
     let indexes = [
-        ("idx_events_user_id", "CREATE INDEX CONCURRENTLY idx_events_user_id ON events (user_id)"),
-        ("idx_events_timestamp", "CREATE INDEX CONCURRENTLY idx_events_timestamp ON events (timestamp DESC)"),
-        ("idx_events_user_id_timestamp", "CREATE INDEX CONCURRENTLY idx_events_user_id_timestamp ON events (user_id, timestamp DESC)"),
-        ("idx_events_event_type_id", "CREATE INDEX CONCURRENTLY idx_events_event_type_id ON events (event_type_id)"),
-        ("idx_events_metadata_gin", "CREATE INDEX CONCURRENTLY idx_events_metadata_gin ON events USING GIN (metadata)"),
+        ("idx_events_user_id", "CREATE INDEX idx_events_user_id ON events (user_id)"),
+        ("idx_events_timestamp", "CREATE INDEX idx_events_timestamp ON events (timestamp DESC)"),
+        ("idx_events_user_id_timestamp", "CREATE INDEX idx_events_user_id_timestamp ON events (user_id, timestamp DESC)"),
+        ("idx_events_event_type_id", "CREATE INDEX idx_events_event_type_id ON events (event_type_id)"),
+        ("idx_events_metadata_gin", "CREATE INDEX idx_events_metadata_gin ON events USING GIN (metadata)"),
     ];
     
     for (name, sql) in indexes {
@@ -382,7 +382,7 @@ pub async fn restore_database(pool: &Pool) -> anyhow::Result<()> {
     
     println!("🚀 Database restored with all performance indexes");
     println!("Refreshing materialized views...");
-    client.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY stats_summary;", &[]).await?;
+    client.execute("REFRESH MATERIALIZED VIEW stats_summary;", &[]).await?;
     println!("✅ Materialized views refreshed");
     Ok(())
 }

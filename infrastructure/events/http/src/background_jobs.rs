@@ -48,12 +48,12 @@ impl BackgroundJobScheduler {
             anyhow::anyhow!("Database connection error: {}", e)
         })?;
 
-        // Refresh materialized view concurrently (non-blocking)
+        // Refresh materialized view
         let start = std::time::Instant::now();
 
         client
             .execute(
-                "REFRESH MATERIALIZED VIEW CONCURRENTLY stats_summary",
+                "REFRESH MATERIALIZED VIEW stats_summary",
                 &[],
             )
             .await
