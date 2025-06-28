@@ -41,10 +41,10 @@ impl SqlMigrator {
                 ),
             ),
             (
-                "005_create_indexes",
+                "005_add_indexes",
                 include_str!(
                     "../../../domains/events/migrations/sql/\
-                     005_create_indexes.sql"
+                     005_add_indexes.sql"
                 ),
             ),
         ];
@@ -246,10 +246,10 @@ impl SqlMigrator {
     ) -> anyhow::Result<()> {
         let down_migrations = vec![
             (
-                "005_create_indexes",
+                "005_add_indexes",
                 include_str!(
                     "../../../domains/events/migrations/sql/\
-                     005_create_indexes.down.sql"
+                     005_add_indexes.down.sql"
                 ),
             ),
             (
