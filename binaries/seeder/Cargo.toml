@@ -3,22 +3,20 @@ name = "seeder"
 version = "0.1.0"
 edition = "2024"
 
-[workspace]
-
 [[bin]]
 name = "seeder"
 path = "src/main.rs"
 
 [dependencies]
-phf = { version = "0.11.3",features = ["macros"] }
-phf_macros = "0.11.3"
-tokio = { version = "1.45", features = ["full"] }
-anyhow = "1.0"
-deadpool-postgres = "0.14.1"
-tokio-postgres = { version = "0.7", features = ["with-uuid-1", "with-chrono-0_4", "with-serde_json-1"] }
-serde_json = "1.0"
-uuid = { version = "1.0", features = ["v7"] }
-chrono = { version = "0.4", features = ["serde"] }
+phf = { version = "0.12.1", features = ["macros"] }
+phf_macros = "0.12.1"
+tokio.workspace = true
+anyhow.workspace = true
+deadpool-postgres.workspace = true
+tokio-postgres = { workspace = true, features = ["with-uuid-1", "with-chrono-0_4", "with-serde_json-1"] }
+serde_json.workspace = true
+uuid.workspace = true
+chrono.workspace = true
 rand = { version = "0.8", features = ["small_rng"] }
 libc = "0.2"
 clap = { version = "4.5", features = ["derive"] }
@@ -26,24 +24,7 @@ clap = { version = "4.5", features = ["derive"] }
 # Local dependencies
 events-models = { path = "../../domains/events/models" }
 
-[target.'cfg(target_os = "macos")'.dependencies]
-mach2 = "0.4"
-
 futures = "0.3"
 flume = "0.11.1"
 rayon = "1.10.0"
-itertools = "0.14.0"
 num_cpus = "1.17.0"
-
-[profile.dev]
-opt-level = 2
-debug = 1
-incremental = true
-lto = "thin"
-
-[profile.release]
-opt-level = 3
-lto = true
-codegen-units = 1
-panic = "abort"
-strip = true

@@ -1,1 +1,0 @@
--- Nothing to rollback for view refreshes

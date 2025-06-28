@@ -10,18 +10,10 @@ path = "src/main.rs"
 [dependencies]
 tokio.workspace = true
 anyhow.workspace = true
-tokio-postgres.workspace = true
-deadpool-postgres.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 
-# Migration dependencies
-async-trait.workspace = true
-
-# CLI dependencies
 clap = { version = "4.5", features = ["derive"] }
 
-# Local dependencies
 sql-connection = { path = "../../libs/persistence/sql_connection" }
-database-traits = { path = "../../libs/persistence/database_traits" }
 test-utils = { path = "../../libs/test-utils" }

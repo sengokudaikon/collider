@@ -15,7 +15,7 @@ impl SqlMigrator {
             (
                 "001_create_users",
                 include_str!(
-                    "../../../domains/user/migrations/sql/001_create_users.\
+                    "../../../domains/users/migrations/sql/001_create_users.\
                      sql"
                 ),
             ),
@@ -34,24 +34,17 @@ impl SqlMigrator {
                 ),
             ),
             (
-                "004_analytics_views",
+                "004_create_stats_materialized_view",
                 include_str!(
-                    "../../../domains/analytics/migrations/sql/\
-                     004_analytics_views.sql"
+                    "../../../domains/events/migrations/sql/\
+                     004_create_stats_materialized_view.sql"
                 ),
             ),
             (
-                "005_seed_test_data",
+                "005_create_indexes",
                 include_str!(
-                    "../../../domains/analytics/migrations/sql/\
-                     005_seed_test_data.sql"
-                ),
-            ),
-            (
-                "006_refresh_views",
-                include_str!(
-                    "../../../domains/analytics/migrations/sql/\
-                     006_refresh_views.sql"
+                    "../../../domains/events/migrations/sql/\
+                     005_create_indexes.sql"
                 ),
             ),
         ];
@@ -253,24 +246,17 @@ impl SqlMigrator {
     ) -> anyhow::Result<()> {
         let down_migrations = vec![
             (
-                "006_refresh_views",
+                "005_create_indexes",
                 include_str!(
-                    "../../../domains/analytics/migrations/sql/\
-                     006_refresh_views.down.sql"
+                    "../../../domains/events/migrations/sql/\
+                     005_create_indexes.down.sql"
                 ),
             ),
             (
-                "005_seed_test_data",
+                "004_create_stats_materialized_view",
                 include_str!(
-                    "../../../domains/analytics/migrations/sql/\
-                     005_seed_test_data.down.sql"
-                ),
-            ),
-            (
-                "004_analytics_views",
-                include_str!(
-                    "../../../domains/analytics/migrations/sql/\
-                     004_analytics_views.down.sql"
+                    "../../../domains/events/migrations/sql/\
+                     004_create_stats_materialized_view.down.sql"
                 ),
             ),
             (
@@ -290,7 +276,7 @@ impl SqlMigrator {
             (
                 "001_create_users",
                 include_str!(
-                    "../../../domains/user/migrations/sql/001_create_users.\
+                    "../../../domains/users/migrations/sql/001_create_users.\
                      down.sql"
                 ),
             ),

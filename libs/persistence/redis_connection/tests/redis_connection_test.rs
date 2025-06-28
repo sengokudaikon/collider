@@ -6,7 +6,7 @@ use redis_connection::{
     connection::RedisConnectionManager,
     core::command::{IntoRedisCommands, RedisCommands, RedisCommandsExt},
 };
-use test_utils::redis::TestRedisContainer;
+use test_utils::TestRedisContainer;
 
 async fn setup_test_redis()
 -> anyhow::Result<(TestRedisContainer, RedisConnectionManager)> {
@@ -283,20 +283,6 @@ async fn test_concurrent_redis_operations() {
     let mut conn = manager.get_connection().await.unwrap();
     let keys: Vec<String> = conn.keys("concurrent:key:*").await.unwrap();
     assert_eq!(keys.len(), 10);
-}
-
-#[tokio::test]
-async fn test_redis_connection_manager_static() {
-    let (_container, _manager) = setup_test_redis().await.unwrap();
-
-    let another_container = TestRedisContainer::new().await.unwrap();
-    RedisConnectionManager::init_static(another_container.pool);
-
-    let static_manager = RedisConnectionManager::from_static();
-    let mut conn = static_manager.get_connection().await.unwrap();
-
-    let pong: String = conn.ping().await.unwrap();
-    assert_eq!(pong, "PONG");
 }
 
 #[tokio::test]

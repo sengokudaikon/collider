@@ -11,7 +11,7 @@ pub struct BulkDeleteEventsResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct EventResponse {
-    pub id: Uuid,
+    pub id: i64,
     #[serde(rename = "userId")]
     pub user_id: Uuid,
     #[serde(rename = "eventType")]

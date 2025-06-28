@@ -1,14 +1,12 @@
 use std::env;
+
 use chrono::{DateTime, Duration, Utc};
 use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod};
-use events_models::Metadata;
 use phf_macros::phf_map;
-use rand::{rngs::SmallRng, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, rngs::SmallRng, thread_rng};
 use serde_json::Value;
 use tokio_postgres::NoTls;
 use uuid::Uuid;
-
-// --- Data Structures ---
 
 #[derive(Debug, Clone)]
 pub struct User {
@@ -24,21 +22,10 @@ pub struct EventType {
 
 #[derive(Debug, Clone)]
 pub struct Event {
-    pub id: Uuid,
     pub user_id: Uuid,
     pub event_type: String,
     pub timestamp: DateTime<Utc>,
     pub metadata: Value,
-}
-
-/// Enhanced event with typed metadata
-#[derive(Debug, Clone)]
-pub struct TypedEvent {
-    pub id: Uuid,
-    pub user_id: Uuid,
-    pub event_type: String,
-    pub timestamp: DateTime<Utc>,
-    pub metadata: Metadata,
 }
 
 pub static REFERRERS: &[&str] = &[
@@ -64,9 +51,6 @@ pub static REFERRERS: &[&str] = &[
     "https://news.ycombinator.com",
 ];
 
-// OPTIMIZATION: Use a Perfect Hash Function (PHF) Map for compile-time, O(1)
-// lookups. This is significantly faster than a standard HashMap for static
-// data.
 pub static EVENT_TYPES: phf::Map<
     &'static str,
     phf::Map<&'static str, &'static str>,
@@ -172,7 +156,6 @@ pub static EVENT_TYPES: phf::Map<
     "webhook.verified" => phf_map!{"page" => "/webhooks/verified"},
     "webhook.failed" => phf_map!{"page" => "/webhooks/failure"},
 };
-/// Generate a specified number of users with UUIDs and names
 pub fn create_users(count: usize) -> Vec<User> {
     let created_at = Utc::now();
 
@@ -187,212 +170,84 @@ pub fn create_users(count: usize) -> Vec<User> {
         .collect()
 }
 
-/// Generate event types using the existing EVENT_TYPES keys with randomization
 pub fn create_event_types(count: usize) -> Vec<EventType> {
     use rand::{seq::SliceRandom, thread_rng};
-    
+
     let mut rng = thread_rng();
     let base_types: Vec<&str> = EVENT_TYPES.keys().cloned().collect();
-    
+
     // If we need more event types than available, repeat and randomize
     let mut event_types = Vec::with_capacity(count);
-    
+
     for i in 0..count {
         let base_name = base_types[i % base_types.len()];
-        
+
         // Add some randomization to make event types unique
         let randomized_name = if i < base_types.len() {
             // For the first round, use original names
             base_name.to_string()
-        } else {
+        }
+        else {
             // For subsequent rounds, add a suffix
-            let suffixes = ["_v2", "_alt", "_new", "_extended", "_pro", "_lite", "_plus", "_max"];
+            let suffixes = [
+                "_v2",
+                "_alt",
+                "_new",
+                "_extended",
+                "_pro",
+                "_lite",
+                "_plus",
+                "_max",
+            ];
             let suffix = suffixes.choose(&mut rng).unwrap();
             format!("{}{}", base_name, suffix)
         };
-        
+
         event_types.push(EventType {
             name: randomized_name,
         });
     }
-    
+
     event_types
 }
 
-/// Generate typed metadata based on event type category that matches materialized view expectations
-pub fn generate_typed_metadata(event_type: &str, rng: &mut SmallRng) -> Metadata {
-    let referrer = REFERRERS[rng.gen_range(0..REFERRERS.len())];
-    let session_id = rng.gen_range(100_000_000..999_999_999).to_string();
-    
-    // Extract base event category from event type
-    let category = event_type.split('.').next().unwrap_or("unknown");
-    
-    let mut metadata = Metadata::default();
-    
-    // Set common fields for all events (used by all materialized views)
-    metadata.page = EVENT_TYPES.get(event_type)
-        .and_then(|m| m.get("page"))
-        .map(|p| p.to_string());
-    metadata.referrer = Some(referrer.to_string());
-    metadata.session_id = Some(session_id);
-    
-    // Set category-specific fields to match materialized view columns
-    match category {
-        "user" => {
-            // Fields used by user-related views
-            metadata.user_agent = Some(generate_user_agent(rng));
-            metadata.ip_address = Some(generate_ip_address(rng));
-            metadata.device_type = Some(generate_device_type(rng));
-            metadata.location = Some(generate_location(rng));
-        },
-        "order" | "product" | "payment" | "cart" | "checkout" => {
-            // Fields used by product_analytics materialized view
-            metadata.product_id = Some(rng.gen_range(1..=5000));
-            metadata.price = Some(rng.gen_range(999..=99999)); // Price in cents
-            metadata.currency = Some("USD".to_string());
-            metadata.cart_total = Some(rng.gen_range(999..=199999));
-            metadata.order_id = Some(format!("ORD-{}", rng.gen_range(100000..999999)));
-            metadata.category = Some(generate_product_category(rng));
-            metadata.quantity = Some(rng.gen_range(1..=5));
-        },
-        "api" => {
-            // Fields used by API monitoring views
-            metadata.endpoint = Some(format!("/api/v1/{}", generate_api_endpoint(rng)));
-            metadata.method = Some(generate_http_method(rng));
-            metadata.response_code = Some(generate_response_code(rng) as i32);
-            metadata.response_time_ms = Some(rng.gen_range(10..2000));
-            metadata.request_size = Some(rng.gen_range(100..10000));
-            metadata.response_size = Some(rng.gen_range(200..50000));
-            metadata.api_version = Some("v1".to_string());
-        },
-        "search" | "admin" | "settings" => {
-            // Fields used by analytics views
-            metadata.variant = Some(generate_ab_variant(rng));
-            metadata.campaign_id = Some(format!("CAM-{}", rng.gen_range(1000..9999)));
-            metadata.utm_source = Some(generate_utm_source(rng));
-            metadata.utm_medium = Some("web".to_string());
-            metadata.utm_campaign = Some(generate_campaign_name(rng));
-            metadata.conversion_value = if rng.gen_bool(0.1) { 
-                Some(rng.gen_range(1000..50000)) 
-            } else { 
-                None 
-            };
-        },
-        _ => {
-            // Default metadata already has common fields set above
-        }
-    }
-    
-    metadata
-}
-
-// Helper functions for generating realistic metadata values
-fn generate_user_agent(rng: &mut SmallRng) -> String {
-    let browsers = ["Chrome/91.0", "Firefox/89.0", "Safari/14.1", "Edge/91.0"];
-    let oses = ["Windows NT 10.0", "macOS 11.4", "X11; Linux x86_64", "iPhone; CPU iPhone OS 14_6"];
-    format!("Mozilla/5.0 ({}) {}", 
-        oses[rng.gen_range(0..oses.len())],
-        browsers[rng.gen_range(0..browsers.len())]
-    )
-}
-
-fn generate_ip_address(rng: &mut SmallRng) -> String {
-    format!("{}.{}.{}.{}", 
-        rng.gen_range(1..255), rng.gen_range(0..255), 
-        rng.gen_range(0..255), rng.gen_range(1..255)
-    )
-}
-
-fn generate_device_type(rng: &mut SmallRng) -> String {
-    let devices = ["desktop", "mobile", "tablet"];
-    devices[rng.gen_range(0..devices.len())].to_string()
-}
-
-fn generate_location(rng: &mut SmallRng) -> String {
-    let locations = ["New York, US", "London, UK", "Tokyo, JP", "Paris, FR", "Berlin, DE", "Sydney, AU"];
-    locations[rng.gen_range(0..locations.len())].to_string()
-}
-
-fn generate_product_category(rng: &mut SmallRng) -> String {
-    let categories = ["electronics", "clothing", "books", "home", "sports", "toys"];
-    categories[rng.gen_range(0..categories.len())].to_string()
-}
-
-fn generate_api_endpoint(rng: &mut SmallRng) -> String {
-    let endpoints = ["users", "orders", "products", "auth", "analytics", "search"];
-    endpoints[rng.gen_range(0..endpoints.len())].to_string()
-}
-
-fn generate_http_method(rng: &mut SmallRng) -> String {
-    let methods = ["GET", "POST", "PUT", "DELETE", "PATCH"];
-    let weights = [50, 30, 10, 5, 5]; // GET is most common
-    let random = rng.gen_range(0..100);
-    let mut cumulative = 0;
-    for (i, &weight) in weights.iter().enumerate() {
-        cumulative += weight;
-        if random < cumulative {
-            return methods[i].to_string();
-        }
-    }
-    "GET".to_string()
-}
-
-fn generate_response_code(rng: &mut SmallRng) -> u16 {
-    let codes = [200, 201, 400, 401, 404, 500];
-    let weights = [70, 10, 10, 5, 3, 2]; // 200 is most common
-    let random = rng.gen_range(0..100);
-    let mut cumulative = 0;
-    for (i, &weight) in weights.iter().enumerate() {
-        cumulative += weight;
-        if random < cumulative {
-            return codes[i];
-        }
-    }
-    200
-}
-
-fn generate_ab_variant(rng: &mut SmallRng) -> String {
-    let variants = ["A", "B", "control", "variant1", "variant2"];
-    variants[rng.gen_range(0..variants.len())].to_string()
-}
-
-fn generate_utm_source(rng: &mut SmallRng) -> String {
-    let sources = ["google", "facebook", "twitter", "linkedin", "email", "direct"];
-    sources[rng.gen_range(0..sources.len())].to_string()
-}
-
-fn generate_campaign_name(rng: &mut SmallRng) -> String {
-    let campaigns = ["summer_sale", "black_friday", "new_user", "retargeting", "brand_awareness"];
-    campaigns[rng.gen_range(0..campaigns.len())].to_string()
-}
-
 /// Generate a specified number of events with realistic metadata
-pub fn create_events(count: usize, users: &[User], event_types: &[EventType]) -> Vec<Event> {
+pub fn create_events(
+    count: usize, users: &[User], event_types: &[EventType],
+) -> Vec<Event> {
     let now = Utc::now();
     let thirty_days_ago = now - Duration::days(30);
     let time_range_seconds = (now - thirty_days_ago).num_seconds();
-    
+
     (0..count)
         .map(|i| {
             let mut rng = SmallRng::from_entropy();
-            
-            // Generate proper UUID v7 for event
-            let event_id = Uuid::now_v7();
-            
+
             // Select random user and event type
             let user = &users[i % users.len()];
             let event_type = &event_types[i % event_types.len()];
-            
+
             // Generate random timestamp within the last 30 days
             let random_seconds = rng.gen_range(0..time_range_seconds);
             let timestamp = thirty_days_ago + Duration::seconds(random_seconds);
-            
-            // Generate typed metadata based on event type
-            let typed_metadata = generate_typed_metadata(&event_type.name, &mut rng);
-            let metadata = serde_json::to_value(&typed_metadata).unwrap_or(Value::Null);
-            
+
+            // Pre-generated metadata compatible with materialized views
+            let category = event_type.name.split('.').next().unwrap_or("unknown");
+            let metadata = match category {
+                "product" | "order" | "cart" | "checkout" => serde_json::json!({
+                    "page": EVENT_TYPES.get(&event_type.name).and_then(|m| m.get("page")).map_or("/unknown", |v| *v),
+                    "product_id": rng.gen_range(1..=5000),
+                    "referrer": REFERRERS[rng.gen_range(0..REFERRERS.len())],
+                    "session_id": rng.gen_range(100_000_000..999_999_999).to_string()
+                }),
+                _ => serde_json::json!({
+                    "page": EVENT_TYPES.get(&event_type.name).and_then(|m| m.get("page")).map_or("/unknown", |v| *v),
+                    "referrer": REFERRERS[rng.gen_range(0..REFERRERS.len())], 
+                    "session_id": rng.gen_range(100_000_000..999_999_999).to_string()
+                })
+            };
+
             Event {
-                id: event_id,
                 user_id: user.id,
                 event_type: event_type.name.clone(),
                 timestamp,
@@ -403,7 +258,8 @@ pub fn create_events(count: usize, users: &[User], event_types: &[EventType]) ->
 }
 
 /// Generate a specific batch of events for just-in-time processing
-/// This is optimized for memory efficiency by generating only one batch at a time
+/// This is optimized for memory efficiency by generating only one batch at a
+/// time
 pub fn create_events_for_batch(
     count: usize,
     users: &[User],
@@ -411,35 +267,43 @@ pub fn create_events_for_batch(
     offset: usize, // The starting index for this batch
 ) -> Vec<Event> {
     use rayon::prelude::*;
-    
+
     let now = Utc::now();
     let thirty_days_ago = now - Duration::days(30);
     let time_range_seconds = (now - thirty_days_ago).num_seconds();
-    
+
     // Use parallel processing for a single batch to maintain performance
     (0..count)
         .into_par_iter()
         .map(|i| {
-            let mut rng = SmallRng::from_entropy();
+            let mut rng = SmallRng::from_rng(thread_rng()).unwrap();
             let event_index = offset + i; // Global event index
-            
-            // Generate proper UUID v7 for event
-            let event_id = Uuid::now_v7();
-            
+
             // Select user and event type using global index for consistency
             let user = &users[event_index % users.len()];
             let event_type = &event_types[event_index % event_types.len()];
-            
+
             // Generate random timestamp within the last 30 days
             let random_seconds = rng.gen_range(0..time_range_seconds);
             let timestamp = thirty_days_ago + Duration::seconds(random_seconds);
-            
-            // Generate typed metadata based on event type
-            let typed_metadata = generate_typed_metadata(&event_type.name, &mut rng);
-            let metadata = serde_json::to_value(&typed_metadata).unwrap_or(Value::Null);
-            
+
+            // Pre-generated metadata compatible with materialized views
+            let category = event_type.name.split('.').next().unwrap_or("unknown");
+            let metadata = match category {
+                "product" | "order" | "cart" | "checkout" => serde_json::json!({
+                    "page": EVENT_TYPES.get(&event_type.name).and_then(|m| m.get("page")).map_or("/unknown", |v| *v),
+                    "product_id": rng.gen_range(1..=5000),
+                    "referrer": REFERRERS[rng.gen_range(0..REFERRERS.len())],
+                    "session_id": rng.gen_range(100_000_000..999_999_999).to_string()
+                }),
+                _ => serde_json::json!({
+                    "page": EVENT_TYPES.get(&event_type.name).and_then(|m| m.get("page")).map_or("/unknown", |v| *v),
+                    "referrer": REFERRERS[rng.gen_range(0..REFERRERS.len())], 
+                    "session_id": rng.gen_range(100_000_000..999_999_999).to_string()
+                })
+            };
+
             Event {
-                id: event_id,
                 user_id: user.id,
                 event_type: event_type.name.clone(),
                 timestamp,
@@ -449,9 +313,11 @@ pub fn create_events_for_batch(
         .collect()
 }
 
-
 pub async fn prepare_database(pool: &Pool) -> anyhow::Result<()> {
     let client = pool.get().await?;
+    
+    println!("🗑️  Dropping performance indexes for fast bulk inserts...");
+    
     client
         .batch_execute(
             "
@@ -462,15 +328,26 @@ pub async fn prepare_database(pool: &Pool) -> anyhow::Result<()> {
              ALTER TABLE events DISABLE TRIGGER ALL;
              ALTER TABLE users DISABLE TRIGGER ALL;
              ALTER TABLE event_types DISABLE TRIGGER ALL;
+
+             DROP INDEX IF EXISTS idx_events_user_id;
+             DROP INDEX IF EXISTS idx_events_timestamp; 
+             DROP INDEX IF EXISTS idx_events_user_id_timestamp;
+             DROP INDEX IF EXISTS idx_events_event_type_id;
+             DROP INDEX IF EXISTS idx_events_metadata_gin;
              
              TRUNCATE events, users, event_types RESTART IDENTITY CASCADE;",
         )
         .await?;
+        
+    println!("✅ Database prepared for bulk inserts (indexes dropped)");
     Ok(())
 }
 
 pub async fn restore_database(pool: &Pool) -> anyhow::Result<()> {
     let client = pool.get().await?;
+    
+    println!("🔧 Recreating performance indexes...");
+    
     client
         .batch_execute(
             "
@@ -482,9 +359,33 @@ pub async fn restore_database(pool: &Pool) -> anyhow::Result<()> {
              SET synchronous_commit = ON;",
         )
         .await?;
+    
+    // Recreate performance indexes one by one with progress reporting
+    let indexes = [
+        ("idx_events_user_id", "CREATE INDEX CONCURRENTLY idx_events_user_id ON events (user_id)"),
+        ("idx_events_timestamp", "CREATE INDEX CONCURRENTLY idx_events_timestamp ON events (timestamp DESC)"),
+        ("idx_events_user_id_timestamp", "CREATE INDEX CONCURRENTLY idx_events_user_id_timestamp ON events (user_id, timestamp DESC)"),
+        ("idx_events_event_type_id", "CREATE INDEX CONCURRENTLY idx_events_event_type_id ON events (event_type_id)"),
+        ("idx_events_metadata_gin", "CREATE INDEX CONCURRENTLY idx_events_metadata_gin ON events USING GIN (metadata)"),
+    ];
+    
+    for (name, sql) in indexes {
+        println!("  Creating index: {}", name);
+        let start = std::time::Instant::now();
+        
+        if let Err(e) = client.execute(sql, &[]).await {
+            println!("  ⚠️  Warning: Failed to create {}: {}", name, e);
+        } else {
+            println!("  ✅ Created {} in {:?}", name, start.elapsed());
+        }
+    }
+    
+    println!("🚀 Database restored with all performance indexes");
+    println!("Refreshing materialized views...");
+    client.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY stats_summary;", &[]).await?;
+    println!("✅ Materialized views refreshed");
     Ok(())
 }
-
 
 pub async fn create_pool() -> anyhow::Result<Pool> {
     let pg_cfg =

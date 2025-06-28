@@ -11,7 +11,7 @@ default:
 
 # Start development environment
 dev:
-    cd server && DATABASE_URL="postgres://postgres:postgres@localhost:5432/postgres" REDIS_HOST="localhost" RUST_LOG=info cargo watch -x "run --bin collider"
+    cd server && DATABASE_URL="postgres://postgres:postgres@localhost:5434/postgres" REDIS_HOST="localhost:6379" RUST_LOG=info cargo watch -x "run --bin collider"
 
 # Watch and rebuild on changes
 watch:
@@ -29,7 +29,7 @@ format:
 
 # Lint code
 lint:
-    cargo clippy -- -D warnings
+    cargo clippy --all-targets --all-features -- -D warnings
 
 # Security audit
 audit:
@@ -157,9 +157,9 @@ dev-setup: dev-up
     @echo "⏳ Waiting for services to be ready..."
     @sleep 5
     @echo "🔄 Running database migrations..."
-    DATABASE_URL="postgres://postgres:postgres@localhost:5432/postgres" target/release/migrator up
+    DATABASE_URL="postgres://postgres:postgres@localhost:5434/postgres" target/release/migrator up
     @echo "🌱 Seeding database with sample data..."
-    DATABASE_URL="postgres://postgres:postgres@localhost:5432/postgres" target/release/seeder all --min-users 100 --max-users 1000 --target-events 10000000
+    DATABASE_URL="postgres://postgres:postgres@localhost:5434/postgres" target/release/seeder
     @echo "✅ Development environment ready!"
     @just dev
 
@@ -172,7 +172,7 @@ dev-setup-full: dev-up-full
     @echo "🔄 Running database migrations..."
     docker-compose -f docker-compose.yml -f docker-compose.production.yml exec app cargo run --bin migrator -- up
     @echo "🌱 Seeding database with sample data..."
-    docker-compose -f docker-compose.yml -f docker-compose.production.yml exec app cargo run --bin seeder -- all --min-users 100 --max-users 1000 --target-events 10000000
+    docker-compose -f docker-compose.yml -f docker-compose.production.yml exec app cargo run --bin seeder
     @echo "✅ Full development environment ready!"
     @echo "🌐 App running at http://localhost:8880"
 

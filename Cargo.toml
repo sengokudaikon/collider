@@ -2,34 +2,39 @@
 resolver = "2"
 members = [
     "server",
-    "domains/user/models",
-    "domains/user/dao",
-    "domains/user/commands",
-    "domains/user/handlers",
-    "domains/user/queries",
-    "domains/user/http",
-    "domains/user/events",
+    "domains/users/models",
+    "domains/users/commands",
+    "domains/users/queries",
+    "domains/users/errors",
+    "domains/users/responses",
     "domains/events/models",
-    "domains/events/dao",
     "domains/events/commands",
     "domains/events/queries",
-    "domains/events/http",
-    "domains/analytics",
-    "domains/analytics/models",
-    "domains/analytics/dao",
-    "domains/analytics/commands",
-    "domains/analytics/queries",
-    "domains/analytics/http",
+    "domains/events/errors",
+    "domains/events/responses",
+    "application/users/cache-keys",
+    "application/users/command-handlers",
+    "application/users/query-handlers",
+    "application/events/cache-keys",
+    "application/events/command-handlers",
+    "application/events/query-handlers",
+    # Infrastructure layer
+    "infrastructure/users/dao",
+    "infrastructure/events/dao",
+    "infrastructure/users/http",
+    "infrastructure/events/http",
     # Shared infrastructure
     "libs/persistence/database_traits",
     "libs/persistence/sql_connection",
     "libs/persistence/redis_connection",
     "libs/persistence/dao_utils",
     # Shared libs
-    "libs/domain",
+    "libs/common-errors",
     "libs/test-utils",
     # Binaries
-    "binaries/migrator", "domains/user/errors", "domains/events/handlers", "domains/events/errors", "domains/events/responses", "domains/user/responses",
+    "binaries/migrator",
+    "binaries/seeder",
+    "binaries/csv-exporter"
 ]
 
 
@@ -48,7 +53,6 @@ http = "1.1.0"
 moka = { version = "0.12.10", features = ["sync", "quanta", "future", "logging"] }
 bytes = "1.10.1"
 flume = "0.11"
-dashmap = "7.0.0-rc2"
 
 # API Documentation
 utoipa = { version = "5.3.1", features = ["axum_extras", "chrono", "uuid"] }
@@ -79,36 +83,39 @@ clap = { version = "4.4", features = ["derive"] }
 dotenvy = "0.15"
 
 
+# Shared infrastructure
 test-utils = { path = "libs/test-utils" }
-analytics = { path = "domains/analytics" }
-analytics-models = { path = "domains/analytics/models" }
-analytics-dao = { path = "domains/analytics/dao" }
-analytics-commands = { path = "domains/analytics/commands" }
-analytics-queries = { path = "domains/analytics/queries" }
-analytics-http = { path = "domains/analytics/http" }
-user-models = { path = "domains/user/models" }
-user-dao = { path = "domains/user/dao" }
-user-commands = { path = "domains/user/commands" }
-user-handlers = { path = "domains/user/handlers" }
-user-queries = { path = "domains/user/queries" }
-user-http = { path = "domains/user/http" }
-user-events = { path = "domains/user/events" }
-user-errors = { path = "domains/user/errors" }
-user-responses = { path = "domains/user/responses" }
-events-models = { path = "domains/events/models" }
-events-dao = { path = "domains/events/dao" }
-events-commands = { path = "domains/events/commands" }
-events-queries = { path = "domains/events/queries" }
-events-handlers = { path = "domains/events/handlers" }
-events-http = { path = "domains/events/http" }
-events-errors = { path = "domains/events/errors" }
-events-responses = { path = "domains/events/responses" }
-# Shared persistence
 database-traits = { path = "libs/persistence/database_traits" }
 sql-connection = { path = "libs/persistence/sql_connection" }
 redis-connection = { path = "libs/persistence/redis_connection" }
 dao-utils = { path = "libs/persistence/dao_utils" }
-domain = { path = "libs/domain" }
+common-errors = { path = "libs/common-errors" }
+
+# Domain layer
+user-models = { path = "domains/users/models" }
+user-commands = { path = "domains/users/commands" }
+user-queries = { path = "domains/users/queries" }
+user-errors = { path = "domains/users/errors" }
+user-responses = { path = "domains/users/responses" }
+events-models = { path = "domains/events/models" }
+events-commands = { path = "domains/events/commands" }
+events-queries = { path = "domains/events/queries" }
+events-errors = { path = "domains/events/errors" }
+events-responses = { path = "domains/events/responses" }
+
+# Application layer  
+user-command-handlers = { path = "application/users/command-handlers" }
+user-query-handlers = { path = "application/users/query-handlers" }
+user-cache-keys = { path = "application/users/cache-keys" }
+events-command-handlers = { path = "application/events/command-handlers" }
+events-query-handlers = { path = "application/events/query-handlers" }
+events-cache-keys = { path = "application/events/cache-keys" }
+
+# Infrastructure layer
+user-dao = { path = "infrastructure/users/dao" }
+user-http = { path = "infrastructure/users/http" }
+events-dao = { path = "infrastructure/events/dao" }
+events-http = { path = "infrastructure/events/http" }
 
 [profile.release]
 lto = "thin"          # Better parallelism vs "fat" LTO, 4-20% faster builds

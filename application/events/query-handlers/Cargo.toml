@@ -1,0 +1,20 @@
+[package]
+name = "events-query-handlers"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+events-models.workspace = true
+events-queries.workspace = true
+events-errors.workspace = true
+events-dao.workspace = true
+events-cache-keys.workspace = true
+redis-connection.workspace = true
+sql-connection.workspace = true
+database-traits.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+[dev-dependencies]
+anyhow.workspace = true
+test-utils.workspace = true
+tokio.workspace = true

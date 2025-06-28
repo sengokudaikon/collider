@@ -1,20 +1,24 @@
 use std::net::SocketAddr;
 
-use analytics::RedisAnalyticsMetricsUpdater;
-use analytics_http::AnalyticsHandlers;
-use axum::{Router, http::StatusCode, response::IntoResponse, routing::get};
-use events_http::EventHandlers;
+use axum::{
+    Router,
+    http::StatusCode,
+    response::IntoResponse,
+    routing::{delete, get, post, put},
+};
 use redis_connection::{
     cache_provider::CacheProvider, config::RedisDbConfig, connect_redis_db,
     connection::RedisConnectionManager,
 };
 use sql_connection::{
-    SqlConnect, config::PostgresDbConfig, connect_postgres_db,
+    SqlConnect,
+    config::{PostgresDbConfig, ReadReplicaConfig},
+    connect_postgres_db, connect_postgres_read_replica,
 };
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
-use tracing::info;
+use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use user_http::{UserHandlers, UserServices};
+use user_http::UserServices;
 use utoipa::OpenApi;
 use utoipa_rapidoc::RapiDoc;
 
@@ -35,12 +39,30 @@ async fn main() -> anyhow::Result<()> {
         uri: std::env::var("DATABASE_URL").unwrap_or_else(|_| {
             "postgresql://postgres:postgres@localhost/postgres".to_string()
         }),
-        max_conn: Some(100),
-        min_conn: Some(20),
+        max_conn: Some(600), // Match PostgreSQL config max_connections
+        min_conn: Some(50),
         logger: false,
+        // Read replica configuration
+        read_replica_uri: std::env::var("DATABASE_READ_REPLICA_URL").ok(),
+        read_max_conn: Some(1200), // Higher for read-heavy workloads
+        read_min_conn: Some(100),
+        enable_read_write_split: false,
     };
+
+    // Initialize primary database connection
     connect_postgres_db(&db_config).await?;
-    info!("PostgreSQL connection pool initialized");
+    info!("PostgreSQL primary connection pool initialized");
+
+    // Initialize read replica if configured
+    if db_config.enable_read_write_split() {
+        if let Err(e) = connect_postgres_read_replica(&db_config).await {
+            warn!(
+                "Failed to initialize read replica: {}. Continuing with \
+                 primary only.",
+                e
+            );
+        }
+    }
 
     let redis_config = RedisDbConfig {
         host: std::env::var("REDIS_HOST")
@@ -59,29 +81,40 @@ async fn main() -> anyhow::Result<()> {
     info!("Connection pools initialized successfully");
 
     let db = SqlConnect::from_global();
-    let (user_services, _analytics_task) =
-        UserServices::new_with_analytics(db.clone());
-
+    let user_services = UserServices::new(db.clone());
     let event_services = events_http::EventServices::new(db.clone());
-    let analytics_services = analytics_http::AnalyticsServices::new(
-        db.clone(),
-        RedisAnalyticsMetricsUpdater::new(),
-    );
+
+    // Start background job for refreshing materialized views
+    info!("Starting background job scheduler...");
+    event_services.background_jobs.start().await;
+    info!("Background job scheduler started successfully");
+
+    let api_routes = Router::new()
+        .route("/stats", axum::routing::get(events_http::stats::get_stats))
+        .route(
+            "/stats/refresh",
+            axum::routing::post(events_http::stats::refresh_stats),
+        )
+        .route("/event", post(events_http::create_event))
+        .route("/event/{id}", get(events_http::get_event))
+        .route("/event/{id}", put(events_http::update_event))
+        .route("/event/{id}", delete(events_http::delete_event))
+        .route("/events", get(events_http::list_events))
+        .route("/events", delete(events_http::bulk_delete_events))
+        .with_state(event_services)
+        .route("/user", post(user_http::create_user))
+        .route("/user/{id}", get(user_http::get_user))
+        .route("/user/{id}", put(user_http::update_user))
+        .route("/user/{id}", delete(user_http::delete_user))
+        .route("/user/{id}/events", get(user_http::get_user_events))
+        .route("/users", get(user_http::list_users))
+        .with_state(user_services.clone());
 
     let app = Router::new()
-        .route("/health", get(health_check))
-        .nest(
-            "/api/events",
-            EventHandlers::routes().with_state(event_services),
-        )
-        .nest(
-            "/api/analytics",
-            AnalyticsHandlers::routes().with_state(analytics_services),
-        )
-        .nest(
-            "/api/users",
-            UserHandlers::routes().with_state(user_services),
-        )
+        .route("/", get(health_check))
+        .merge(api_routes);
+
+    let app = app
         .merge(RapiDoc::new("/api-docs/openapi.json").path("/docs"))
         .route(
             "/api-docs/openapi.json",
@@ -110,10 +143,7 @@ async fn main() -> anyhow::Result<()> {
         events_http::list_events,
         events_http::bulk_delete_events,
         events_http::stats::get_stats,
-        analytics_http::get_realtime_metrics,
-        analytics_http::get_hourly_summaries,
-        analytics_http::get_user_activity,
-        analytics_http::get_popular_events,
+        events_http::stats::refresh_stats,
         user_http::create_user,
         user_http::update_user,
         user_http::delete_user,
@@ -139,12 +169,12 @@ async fn main() -> anyhow::Result<()> {
     tags(
         (name = "health", description = "Health check endpoints"),
         (name = "events", description = "Event management endpoints"),
-        (name = "analytics", description = "Analytics and metrics endpoints"),
-        (name = "users", description = "User management endpoints")
+        (name = "users", description = "User management endpoints"),
+        (name = "stats", description = "Event statistics endpoints")
     ),
     info(
         title = "Collider API",
-        description = "High-performance event tracking and analytics API",
+        description = "High-performance event tracking API",
         version = "1.0.0"
     )
 )]
@@ -154,8 +184,26 @@ struct ApiDoc;
     get,
     path = "/health",
     responses(
-        (status = 200, description = "Health check successful", body = String)
+        (status = 200, description = "Health check successful with connection pool status", body = String)
     ),
     tag = "health"
 )]
-async fn health_check() -> impl IntoResponse { (StatusCode::OK, "OK") }
+async fn health_check() -> impl IntoResponse {
+    let db = SqlConnect::from_global();
+    let (write_available, write_size, read_stats) = db.get_pool_status();
+
+    let health_info = if let Some((read_available, read_size)) = read_stats {
+        format!(
+            "OK - Write Pool: {}/{} available, Read Pool: {}/{} available",
+            write_available, write_size, read_available, read_size
+        )
+    }
+    else {
+        format!(
+            "OK - Single Pool: {}/{} available (Read replica not configured)",
+            write_available, write_size
+        )
+    };
+
+    (StatusCode::OK, health_info)
+}

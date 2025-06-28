@@ -1,0 +1,18 @@
+[package]
+name = "user-command-handlers"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+user-commands.workspace = true
+user-errors.workspace = true
+user-responses.workspace = true
+user-dao.workspace = true
+database-traits.workspace = true
+sql-connection.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+test-utils.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
