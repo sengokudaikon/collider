@@ -207,8 +207,7 @@ pub async fn list_users(
 )]
 #[instrument(skip_all)]
 pub async fn get_user_events(
-    State(services): State<UserServices>, 
-    Path(user_id): Path<String>,
+    State(services): State<UserServices>, Path(user_id): Path<String>,
     Query(params): Query<UserEventsQueryParams>,
 ) -> Result<Json<Vec<EventResponse>>, AppError> {
     let user_uuid = user_id.parse::<Uuid>().map_err(|_| {

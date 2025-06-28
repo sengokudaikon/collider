@@ -102,7 +102,7 @@ impl StatsService {
         let from_str = from_rounded.to_rfc3339();
         let to_str = to_rounded.to_rfc3339();
         let composite_key =
-            format!("{}:{}:{}", from_str, to_str, event_type_str);
+            format!("{from_str}:{to_str}:{event_type_str}");
 
         let mut cache = cache_key.bind_with(backend.clone(), &composite_key);
 
@@ -129,8 +129,7 @@ impl StatsService {
             self.event_dao.db().get_analytics_client().await.map_err(
                 |e| {
                     AppError::internal_server_error(&format!(
-                        "Database connection error: {}",
-                        e
+                        "Database connection error: {e}"
                     ))
                 },
             )?;
@@ -209,8 +208,7 @@ impl StatsService {
             .await
             .map_err(|e| {
                 AppError::internal_server_error(&format!(
-                    "Database query error: {}",
-                    e
+                    "Database query error: {e}"
                 ))
             })?;
 
@@ -303,7 +301,7 @@ pub async fn get_stats(
                 AppError::bad_request_with_details(
                     "INVALID_QUERY_PARAMS",
                     "Invalid query parameters provided",
-                    &format!("Query parameter error: {}. Expected date format: RFC3339 (e.g., 2025-01-01T00:00:00Z)", err)
+                    &format!("Query parameter error: {err}. Expected date format: RFC3339 (e.g., 2025-01-01T00:00:00Z)")
                 )
             }
             _ => AppError::bad_request("INVALID_QUERY_PARAMS", "Invalid query parameters provided")

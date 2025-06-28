@@ -452,7 +452,7 @@ mod tests {
         let dao = UserDao::new(sql_connect);
 
         for i in 1..=5 {
-            let user_model = create_test_user(&format!("user_{:02}", i));
+            let user_model = create_test_user(&format!("user_{i:02}"));
             dao.create(user_model).await.unwrap();
         }
 
@@ -478,7 +478,7 @@ mod tests {
         let dao = UserDao::new(sql_connect);
 
         for i in 1..=5 {
-            let user_model = create_test_user(&format!("user_{:02}", i));
+            let user_model = create_test_user(&format!("user_{i:02}"));
             dao.create(user_model).await.unwrap();
         }
 
@@ -518,7 +518,7 @@ mod tests {
 
         // Create some users
         for i in 1..=3 {
-            let user_model = create_test_user(&format!("count_user_{}", i));
+            let user_model = create_test_user(&format!("count_user_{i}"));
             dao.create(user_model).await.unwrap();
         }
 

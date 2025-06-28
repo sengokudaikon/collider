@@ -35,7 +35,7 @@ impl From<EventError> for AppError {
             EventError::NotFound { event_id } => {
                 AppError::not_found(
                     "EVENT_NOT_FOUND",
-                    &format!("Event with ID {} not found", event_id),
+                    &format!("Event with ID {event_id} not found"),
                 )
             }
             EventError::EventType(event_type_err) => {
@@ -54,40 +54,34 @@ impl From<EventError> for AppError {
                     }
                     EventTypeError::Database(db_err) => {
                         AppError::internal_server_error(&format!(
-                            "Database error: {}",
-                            db_err
+                            "Database error: {db_err}"
                         ))
                     }
                     EventTypeError::Connection(conn_err) => {
                         AppError::internal_server_error(&format!(
-                            "Database connection error: {}",
-                            conn_err
+                            "Database connection error: {conn_err}"
                         ))
                     }
                 }
             }
             EventError::Database(db_err) => {
                 AppError::internal_server_error(&format!(
-                    "Database error: {}",
-                    db_err
+                    "Database error: {db_err}"
                 ))
             }
             EventError::Connection(conn_err) => {
                 AppError::internal_server_error(&format!(
-                    "Database connection error: {}",
-                    conn_err
+                    "Database connection error: {conn_err}"
                 ))
             }
             EventError::Redis(redis_err) => {
                 AppError::internal_server_error(&format!(
-                    "Cache error: {}",
-                    redis_err
+                    "Cache error: {redis_err}"
                 ))
             }
             EventError::Pool(pool_err) => {
                 AppError::internal_server_error(&format!(
-                    "Cache connection error: {}",
-                    pool_err
+                    "Cache connection error: {pool_err}"
                 ))
             }
         }

@@ -194,14 +194,12 @@ async fn health_check() -> impl IntoResponse {
 
     let health_info = if let Some((read_available, read_size)) = read_stats {
         format!(
-            "OK - Write Pool: {}/{} available, Read Pool: {}/{} available",
-            write_available, write_size, read_available, read_size
+            "OK - Write Pool: {write_available}/{write_size} available, Read Pool: {read_available}/{read_size} available"
         )
     }
     else {
         format!(
-            "OK - Single Pool: {}/{} available (Read replica not configured)",
-            write_available, write_size
+            "OK - Single Pool: {write_available}/{write_size} available (Read replica not configured)"
         )
     };
 

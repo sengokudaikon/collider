@@ -96,8 +96,7 @@ impl AppError {
         // Check for common database connection errors
         if error_str.contains("connection") || error_str.contains("pool") {
             return Self::internal_server_error(&format!(
-                "Database connection error: {}",
-                err
+                "Database connection error: {err}"
             ));
         }
 
@@ -124,8 +123,7 @@ impl AppError {
 
         // Default to internal server error for unknown errors
         Self::internal_server_error(&format!(
-            "An unexpected error occurred: {}",
-            err
+            "An unexpected error occurred: {err}"
         ))
     }
 
@@ -179,13 +177,13 @@ impl AppError {
 impl fmt::Display for AppError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::BadRequest { message, .. } => write!(f, "{}", message),
-            Self::NotFound { message, .. } => write!(f, "{}", message),
+            Self::BadRequest { message, .. } => write!(f, "{message}"),
+            Self::NotFound { message, .. } => write!(f, "{message}"),
             Self::UnprocessableEntity { message, .. } => {
-                write!(f, "{}", message)
+                write!(f, "{message}")
             }
             Self::InternalServerError { message, .. } => {
-                write!(f, "{}", message)
+                write!(f, "{message}")
             }
         }
     }
@@ -204,8 +202,7 @@ impl IntoResponse for AppError {
 impl From<Box<dyn std::error::Error + Send + Sync>> for AppError {
     fn from(err: Box<dyn std::error::Error + Send + Sync>) -> Self {
         Self::internal_server_error(&format!(
-            "An unexpected error occurred: {}",
-            err
+            "An unexpected error occurred: {err}"
         ))
     }
 }
@@ -213,8 +210,7 @@ impl From<Box<dyn std::error::Error + Send + Sync>> for AppError {
 impl From<anyhow::Error> for AppError {
     fn from(err: anyhow::Error) -> Self {
         Self::internal_server_error(&format!(
-            "An unexpected error occurred: {}",
-            err
+            "An unexpected error occurred: {err}"
         ))
     }
 }

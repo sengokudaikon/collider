@@ -267,8 +267,8 @@ async fn test_concurrent_redis_operations() {
         let manager = manager.clone();
         tokio::spawn(async move {
             let mut conn = manager.get_connection().await.unwrap();
-            let key = format!("concurrent:key:{}", i);
-            let value = format!("value_{}", i);
+            let key = format!("concurrent:key:{i}");
+            let value = format!("value_{i}");
 
             let _: () = conn.set(&key, &value).await.unwrap();
             let retrieved: String = conn.get(&key).await.unwrap();

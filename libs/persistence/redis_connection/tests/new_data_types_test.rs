@@ -27,28 +27,28 @@ fn test_date() -> String {
     use std::sync::atomic::{AtomicU32, Ordering};
     static TEST_DATE_COUNTER: AtomicU32 = AtomicU32::new(1);
     let counter = TEST_DATE_COUNTER.fetch_add(1, Ordering::SeqCst);
-    format!("2024-12-14-{}", counter)
+    format!("2024-12-14-{counter}")
 }
 
 fn test_game_id() -> String {
     use std::sync::atomic::{AtomicU32, Ordering};
     static TEST_GAME_COUNTER: AtomicU32 = AtomicU32::new(1);
     let counter = TEST_GAME_COUNTER.fetch_add(1, Ordering::SeqCst);
-    format!("game_{}", counter)
+    format!("game_{counter}")
 }
 
 fn test_user_id() -> String {
     use std::sync::atomic::{AtomicU32, Ordering};
     static TEST_USER_COUNTER: AtomicU32 = AtomicU32::new(1);
     let counter = TEST_USER_COUNTER.fetch_add(1, Ordering::SeqCst);
-    format!("user_{}", counter)
+    format!("user_{counter}")
 }
 
 fn test_stream_id() -> String {
     use std::sync::atomic::{AtomicU32, Ordering};
     static TEST_STREAM_COUNTER: AtomicU32 = AtomicU32::new(1);
     let counter = TEST_STREAM_COUNTER.fetch_add(1, Ordering::SeqCst);
-    format!("stream_{}", counter)
+    format!("stream_{counter}")
 }
 
 #[tokio::test]
@@ -170,10 +170,10 @@ async fn test_redis_list_operations() {
         .query_async(&mut conn)
         .await
         .unwrap();
-    println!("All keys before test: {:?}", all_keys);
+    println!("All keys before test: {all_keys:?}");
 
     let user_id = test_user_id();
-    println!("Using user_id: {}", user_id);
+    println!("Using user_id: {user_id}");
 
     // Test Redis List using macro
     let activity = RecentActivity;

@@ -52,10 +52,7 @@ impl BackgroundJobScheduler {
         let start = std::time::Instant::now();
 
         client
-            .execute(
-                "REFRESH MATERIALIZED VIEW stats_summary",
-                &[],
-            )
+            .execute("REFRESH MATERIALIZED VIEW stats_summary", &[])
             .await
             .map_err(|e| {
                 // If concurrent refresh fails (e.g., no unique index), try

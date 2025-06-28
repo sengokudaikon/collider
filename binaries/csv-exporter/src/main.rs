@@ -1,13 +1,15 @@
+use std::{env, path::PathBuf};
+
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod};
-use std::{env, path::PathBuf};
 use tokio_postgres::NoTls;
 use tracing::info;
 
 #[derive(Parser)]
 #[command(name = "csv-exporter")]
-#[command(about = "Export data from Collider database to CSV files for load testing")]
+#[command(about = "Export data from Collider database to CSV files for \
+                   load testing")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -53,62 +55,75 @@ async fn create_pool() -> Result<Pool> {
     Ok(pool)
 }
 
-async fn export_users(pool: &Pool, output_dir: &PathBuf, limit: Option<u64>) -> Result<()> {
+async fn export_users(
+    pool: &Pool, output_dir: &PathBuf, limit: Option<u64>,
+) -> Result<()> {
     info!("Exporting users...");
-    
+
     let client = pool.get().await?;
-    let limit_clause = limit.map(|l| format!(" LIMIT {}", l)).unwrap_or_default();
-    let sql = format!("SELECT id, name, created_at FROM users ORDER BY created_at{}", limit_clause);
-    
+    let limit_clause =
+        limit.map(|l| format!(" LIMIT {l}")).unwrap_or_default();
+    let sql = format!(
+        "SELECT id, name, created_at FROM users ORDER BY created_at{limit_clause}"
+    );
+
     let rows = client.query(&sql, &[]).await?;
     let count = rows.len();
-    
+
     std::fs::create_dir_all(output_dir)?;
     let csv_path = output_dir.join("users.csv");
     let mut csv_content = String::from("id,name,email,created_at\n");
-    
+
     for row in rows {
         let id: uuid::Uuid = row.get(0);
         let name: String = row.get(1);
         let created_at: chrono::DateTime<chrono::Utc> = row.get(2);
-        let email = format!("{}@example.com", name.replace(' ', "").to_lowercase());
-        
+        let email =
+            format!("{}@example.com", name.replace(' ', "").to_lowercase());
+
         csv_content.push_str(&format!(
             "\"{}\",\"{}\",\"{}\",\"{}\"\n",
-            id, name, email, created_at.to_rfc3339()
+            id,
+            name,
+            email,
+            created_at.to_rfc3339()
         ));
     }
-    
+
     std::fs::write(&csv_path, csv_content)?;
     info!("Exported {} users to: {}", count, csv_path.display());
     Ok(())
 }
 
-async fn export_event_types(pool: &Pool, output_dir: &PathBuf, limit: Option<u64>) -> Result<()> {
+async fn export_event_types(
+    pool: &Pool, output_dir: &PathBuf, limit: Option<u64>,
+) -> Result<()> {
     info!("Exporting event types...");
-    
+
     let client = pool.get().await?;
-    let limit_clause = limit.map(|l| format!(" LIMIT {}", l)).unwrap_or_default();
-    let sql = format!("SELECT id, name FROM event_types ORDER BY id{}", limit_clause);
-    
+    let limit_clause =
+        limit.map(|l| format!(" LIMIT {l}")).unwrap_or_default();
+    let sql = format!(
+        "SELECT id, name FROM event_types ORDER BY id{limit_clause}"
+    );
+
     let rows = client.query(&sql, &[]).await?;
     let count = rows.len();
-    
+
     std::fs::create_dir_all(output_dir)?;
     let csv_path = output_dir.join("event_types.csv");
     let mut csv_content = String::from("id,name,description,count\n");
-    
+
     for row in rows {
         let id: i32 = row.get(0);
         let name: String = row.get(1);
         let count = 99990 + (id % 10) as u64;
-        
+
         csv_content.push_str(&format!(
-            "{},\"{}\",\"Auto-generated from live data\",{}\n",
-            id, name, count
+            "{id},\"{name}\",\"Auto-generated from live data\",{count}\n"
         ));
     }
-    
+
     std::fs::write(&csv_path, csv_content)?;
     info!("Exported {} event types to: {}", count, csv_path.display());
     Ok(())
@@ -116,22 +131,26 @@ async fn export_event_types(pool: &Pool, output_dir: &PathBuf, limit: Option<u64
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter("info")
-        .init();
+    tracing_subscriber::fmt().with_env_filter("info").init();
 
     let cli = Cli::parse();
     let pool = create_pool().await?;
-    
+
     match cli.command {
-        Commands::Users => export_users(&pool, &cli.output_dir, cli.user_limit).await?,
-        Commands::EventTypes => export_event_types(&pool, &cli.output_dir, cli.event_type_limit).await?,
+        Commands::Users => {
+            export_users(&pool, &cli.output_dir, cli.user_limit).await?
+        }
+        Commands::EventTypes => {
+            export_event_types(&pool, &cli.output_dir, cli.event_type_limit)
+                .await?
+        }
         Commands::All => {
             export_users(&pool, &cli.output_dir, cli.user_limit).await?;
-            export_event_types(&pool, &cli.output_dir, cli.event_type_limit).await?;
+            export_event_types(&pool, &cli.output_dir, cli.event_type_limit)
+                .await?;
         }
     }
-    
+
     info!("Done!");
     Ok(())
 }

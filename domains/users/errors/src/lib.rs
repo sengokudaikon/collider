@@ -28,13 +28,13 @@ impl From<UserError> for AppError {
             UserError::NotFound { user_id } => {
                 AppError::not_found(
                     "USER_NOT_FOUND",
-                    &format!("User with ID {} not found", user_id),
+                    &format!("User with ID {user_id} not found"),
                 )
             }
             UserError::NameNotFound { username } => {
                 AppError::not_found(
                     "USER_NOT_FOUND",
-                    &format!("User with name '{}' not found", username),
+                    &format!("User with name '{username}' not found"),
                 )
             }
             UserError::NameExists => {
@@ -45,26 +45,22 @@ impl From<UserError> for AppError {
             }
             UserError::Database(db_err) => {
                 AppError::internal_server_error(&format!(
-                    "Database error: {}",
-                    db_err
+                    "Database error: {db_err}"
                 ))
             }
             UserError::DatabasePool(pool_err) => {
                 AppError::internal_server_error(&format!(
-                    "Database connection error: {}",
-                    pool_err
+                    "Database connection error: {pool_err}"
                 ))
             }
             UserError::Redis(redis_err) => {
                 AppError::internal_server_error(&format!(
-                    "Cache error: {}",
-                    redis_err
+                    "Cache error: {redis_err}"
                 ))
             }
             UserError::RedisPool(pool_err) => {
                 AppError::internal_server_error(&format!(
-                    "Cache connection error: {}",
-                    pool_err
+                    "Cache connection error: {pool_err}"
                 ))
             }
         }

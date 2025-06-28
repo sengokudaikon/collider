@@ -200,7 +200,7 @@ pub fn create_event_types(count: usize) -> Vec<EventType> {
                 "_max",
             ];
             let suffix = suffixes.choose(&mut rng).unwrap();
-            format!("{}{}", base_name, suffix)
+            format!("{base_name}{suffix}")
         };
 
         event_types.push(EventType {
@@ -315,9 +315,9 @@ pub fn create_events_for_batch(
 
 pub async fn prepare_database(pool: &Pool) -> anyhow::Result<()> {
     let client = pool.get().await?;
-    
+
     println!("🗑️  Dropping performance indexes for fast bulk inserts...");
-    
+
     client
         .batch_execute(
             "
@@ -338,16 +338,16 @@ pub async fn prepare_database(pool: &Pool) -> anyhow::Result<()> {
              TRUNCATE events, users, event_types RESTART IDENTITY CASCADE;",
         )
         .await?;
-        
+
     println!("✅ Database prepared for bulk inserts (indexes dropped)");
     Ok(())
 }
 
 pub async fn restore_database(pool: &Pool) -> anyhow::Result<()> {
     let client = pool.get().await?;
-    
+
     println!("🔧 Recreating performance indexes...");
-    
+
     client
         .batch_execute(
             "
@@ -359,30 +359,50 @@ pub async fn restore_database(pool: &Pool) -> anyhow::Result<()> {
              SET synchronous_commit = ON;",
         )
         .await?;
-    
+
     // Recreate performance indexes one by one with progress reporting
     let indexes = [
-        ("idx_events_user_id", "CREATE INDEX idx_events_user_id ON events (user_id)"),
-        ("idx_events_timestamp", "CREATE INDEX idx_events_timestamp ON events (timestamp DESC)"),
-        ("idx_events_user_id_timestamp", "CREATE INDEX idx_events_user_id_timestamp ON events (user_id, timestamp DESC)"),
-        ("idx_events_event_type_id", "CREATE INDEX idx_events_event_type_id ON events (event_type_id)"),
-        ("idx_events_metadata_gin", "CREATE INDEX idx_events_metadata_gin ON events USING GIN (metadata)"),
+        (
+            "idx_events_user_id",
+            "CREATE INDEX idx_events_user_id ON events (user_id)",
+        ),
+        (
+            "idx_events_timestamp",
+            "CREATE INDEX idx_events_timestamp ON events (timestamp DESC)",
+        ),
+        (
+            "idx_events_user_id_timestamp",
+            "CREATE INDEX idx_events_user_id_timestamp ON events (user_id, \
+             timestamp DESC)",
+        ),
+        (
+            "idx_events_event_type_id",
+            "CREATE INDEX idx_events_event_type_id ON events (event_type_id)",
+        ),
+        (
+            "idx_events_metadata_gin",
+            "CREATE INDEX idx_events_metadata_gin ON events USING GIN \
+             (metadata)",
+        ),
     ];
-    
+
     for (name, sql) in indexes {
-        println!("  Creating index: {}", name);
+        println!("  Creating index: {name}");
         let start = std::time::Instant::now();
-        
+
         if let Err(e) = client.execute(sql, &[]).await {
-            println!("  ⚠️  Warning: Failed to create {}: {}", name, e);
-        } else {
+            println!("  ⚠️  Warning: Failed to create {name}: {e}");
+        }
+        else {
             println!("  ✅ Created {} in {:?}", name, start.elapsed());
         }
     }
-    
+
     println!("🚀 Database restored with all performance indexes");
     println!("Refreshing materialized views...");
-    client.execute("REFRESH MATERIALIZED VIEW stats_summary;", &[]).await?;
+    client
+        .execute("REFRESH MATERIALIZED VIEW stats_summary;", &[])
+        .await?;
     println!("✅ Materialized views refreshed");
     Ok(())
 }

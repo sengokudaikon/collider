@@ -490,13 +490,13 @@ impl EventDao {
         // Add WHERE filters
         if let Some(uid) = user_id {
             param_count += 1;
-            where_clauses.push(format!("user_id = ${}", param_count));
+            where_clauses.push(format!("user_id = ${param_count}"));
             params.push(Box::new(uid));
         }
 
         if let Some(etid) = event_type_id {
             param_count += 1;
-            where_clauses.push(format!("event_type_id = ${}", param_count));
+            where_clauses.push(format!("event_type_id = ${param_count}"));
             params.push(Box::new(etid));
         }
 
@@ -511,13 +511,13 @@ impl EventDao {
         // Add LIMIT and OFFSET
         if let Some(l) = limit {
             param_count += 1;
-            query.push_str(&format!(" LIMIT ${}", param_count));
+            query.push_str(&format!(" LIMIT ${param_count}"));
             params.push(Box::new(l as i64));
         }
 
         if let Some(o) = offset {
             param_count += 1;
-            query.push_str(&format!(" OFFSET ${}", param_count));
+            query.push_str(&format!(" OFFSET ${param_count}"));
             params.push(Box::new(o as i64));
         }
 

@@ -14,7 +14,7 @@ impl PaginationParams {
     pub fn build_query_parts(
         &self, base_query: &str, order_by: &str,
     ) -> (String, Vec<i64>) {
-        let mut query = format!("{} {}", base_query, order_by);
+        let mut query = format!("{base_query} {order_by}");
         let mut params = Vec::new();
         let mut param_count = 0;
 
@@ -30,12 +30,12 @@ impl PaginationParams {
             }
             (Some(l), None) => {
                 param_count += 1;
-                query.push_str(&format!(" LIMIT ${}", param_count));
+                query.push_str(&format!(" LIMIT ${param_count}"));
                 params.push(l as i64);
             }
             (None, Some(o)) => {
                 param_count += 1;
-                query.push_str(&format!(" OFFSET ${}", param_count));
+                query.push_str(&format!(" OFFSET ${param_count}"));
                 params.push(o as i64);
             }
             (None, None) => {}
@@ -47,26 +47,26 @@ impl PaginationParams {
     pub fn build_query_with_existing_params(
         &self, base_query: &str, order_by: &str, existing_param_count: usize,
     ) -> (String, Vec<i64>) {
-        let mut query = format!("{} {}", base_query, order_by);
+        let mut query = format!("{base_query} {order_by}");
         let mut params = Vec::new();
         let mut param_count = existing_param_count;
 
         match (self.limit, self.offset) {
             (Some(l), Some(o)) => {
                 param_count += 1;
-                query.push_str(&format!(" LIMIT ${}", param_count));
+                query.push_str(&format!(" LIMIT ${param_count}"));
                 param_count += 1;
-                query.push_str(&format!(" OFFSET ${}", param_count));
+                query.push_str(&format!(" OFFSET ${param_count}"));
                 params.extend([l as i64, o as i64]);
             }
             (Some(l), None) => {
                 param_count += 1;
-                query.push_str(&format!(" LIMIT ${}", param_count));
+                query.push_str(&format!(" LIMIT ${param_count}"));
                 params.push(l as i64);
             }
             (None, Some(o)) => {
                 param_count += 1;
-                query.push_str(&format!(" OFFSET ${}", param_count));
+                query.push_str(&format!(" OFFSET ${param_count}"));
                 params.push(o as i64);
             }
             (None, None) => {}

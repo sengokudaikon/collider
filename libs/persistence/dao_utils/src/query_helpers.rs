@@ -25,7 +25,7 @@ where
 pub async fn count_query(
     client: &Client, table_name: &str,
 ) -> Result<i64, tokio_postgres::Error> {
-    let query = format!("SELECT COUNT(*) FROM {}", table_name);
+    let query = format!("SELECT COUNT(*) FROM {table_name}");
     let stmt = client.prepare(&query).await?;
     let rows = client.query(&stmt, &[]).await?;
     let count: i64 = rows.first().map(|row| row.get(0)).unwrap_or(0);

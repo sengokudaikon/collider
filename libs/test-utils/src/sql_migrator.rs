@@ -43,15 +43,15 @@ impl SqlMigrator {
             (
                 "005_add_indexes",
                 include_str!(
-                    "../../../domains/events/migrations/sql/\
-                     005_add_indexes.sql"
+                    "../../../domains/events/migrations/sql/005_add_indexes.\
+                     sql"
                 ),
             ),
         ];
 
         for (migration_name, migration_sql) in migrations {
             if !self.is_migration_applied(migration_name).await? {
-                println!("Running migration: {}", migration_name);
+                println!("Running migration: {migration_name}");
 
                 let mut client = self.pool.get().await?;
                 let tx = client.transaction().await?;
@@ -75,14 +75,12 @@ impl SqlMigrator {
 
                 tx.commit().await?;
                 println!(
-                    "Migration {} completed successfully",
-                    migration_name
+                    "Migration {migration_name} completed successfully"
                 );
             }
             else {
                 println!(
-                    "Migration {} already applied, skipping",
-                    migration_name
+                    "Migration {migration_name} already applied, skipping"
                 );
             }
         }
@@ -183,7 +181,7 @@ impl SqlMigrator {
                 && !trimmed.starts_with("--")
                 && !trimmed.starts_with("/*")
             {
-                println!("Executing SQL: {}", trimmed);
+                println!("Executing SQL: {trimmed}");
                 tx.execute(trimmed, &[]).await.map_err(|e| {
                     anyhow::anyhow!(
                         "Failed to execute SQL statement '{}': {}",
@@ -248,8 +246,8 @@ impl SqlMigrator {
             (
                 "005_add_indexes",
                 include_str!(
-                    "../../../domains/events/migrations/sql/\
-                     005_add_indexes.down.sql"
+                    "../../../domains/events/migrations/sql/005_add_indexes.\
+                     down.sql"
                 ),
             ),
             (
@@ -284,7 +282,7 @@ impl SqlMigrator {
 
         for (migration_name, down_sql) in down_migrations {
             if migrations_to_rollback.contains(&migration_name) {
-                println!("Rolling back migration: {}", migration_name);
+                println!("Rolling back migration: {migration_name}");
 
                 let mut client = self.pool.get().await?;
                 let tx = client.transaction().await?;
@@ -307,8 +305,7 @@ impl SqlMigrator {
 
                 tx.commit().await?;
                 println!(
-                    "Migration {} rolled back successfully",
-                    migration_name
+                    "Migration {migration_name} rolled back successfully"
                 );
             }
         }

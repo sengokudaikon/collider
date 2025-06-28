@@ -50,8 +50,7 @@ impl TestPostgresContainer {
         let host = container.get_host().await?;
         let port = container.get_host_port_ipv4(5432).await?;
         let connection_string = format!(
-            "postgresql://testuser:testpass@{}:{}/testdb",
-            host, port
+            "postgresql://testuser:testpass@{host}:{port}/testdb"
         );
 
         // Wait for PostgreSQL to be ready and create connection pool
@@ -165,7 +164,7 @@ impl TestRedisContainer {
         // Get connection details
         let host = container.get_host().await?;
         let port = container.get_host_port_ipv4(6379).await?;
-        let connection_string = format!("redis://{}:{}", host, port);
+        let connection_string = format!("redis://{host}:{port}");
 
         // Create unique test prefix
         let test_prefix = format!("test_{}:", uuid::Uuid::now_v7().simple());

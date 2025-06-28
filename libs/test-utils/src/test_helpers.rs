@@ -110,8 +110,8 @@ pub async fn create_unique_event_types_modern(
     container: &TestPostgresContainer, suffix: &str,
 ) -> Result<(i32, i32)> {
     let client = container.pool.get().await?;
-    let login_name = format!("login_event_{}", suffix);
-    let logout_name = format!("logout_event_{}", suffix);
+    let login_name = format!("login_event_{suffix}");
+    let logout_name = format!("logout_event_{suffix}");
 
     let login_row = client
         .query_one(
@@ -229,8 +229,7 @@ mod tests {
         let user_id = create_test_user(&container).await.unwrap();
         let result = container
             .execute_sql(&format!(
-                "SELECT 1 FROM users WHERE id = '{}'",
-                user_id
+                "SELECT 1 FROM users WHERE id = '{user_id}'"
             ))
             .await;
         assert!(result.is_ok());
@@ -259,8 +258,7 @@ mod tests {
 
         let result = container
             .execute_sql(&format!(
-                "SELECT 1 FROM events WHERE id = '{}'",
-                event_id
+                "SELECT 1 FROM events WHERE id = '{event_id}'"
             ))
             .await;
         assert!(result.is_ok());

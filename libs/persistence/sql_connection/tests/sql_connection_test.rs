@@ -89,7 +89,7 @@ async fn test_concurrent_operations() {
         let handle = tokio::spawn(async move {
             let client = sql_connect_clone.get_client().await.unwrap();
             let result = client
-                .query(&format!("SELECT {} as value", i), &[])
+                .query(&format!("SELECT {i} as value"), &[])
                 .await
                 .unwrap();
             let value: i32 = result[0].get("value");

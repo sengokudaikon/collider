@@ -253,7 +253,7 @@ fn print_summary_report(
 
     let events_per_second =
         events_count as f64 / timings.total_duration.as_secs_f64();
-    println!("\nOverall Throughput: {:.0} events/sec", events_per_second);
+    println!("\nOverall Throughput: {events_per_second:.0} events/sec");
 
     let mut total_batches = 0;
     let mut total_wait = Duration::ZERO;
@@ -433,6 +433,6 @@ fn format_memory(bytes: u64) -> String {
         format!("{:.2} KB", bytes as f64 / KB as f64)
     }
     else {
-        format!("{} bytes", bytes)
+        format!("{bytes} bytes")
     }
 }
