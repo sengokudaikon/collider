@@ -7,6 +7,10 @@ use rand::{Rng, SeedableRng, rngs::SmallRng, thread_rng};
 use serde_json::Value;
 use tokio_postgres::NoTls;
 
+pub(crate) fn timestamp() -> String {
+    Utc::now().format("[%H:%M:%S]").to_string()
+}
+
 #[derive(Debug, Clone)]
 pub struct User {
     pub id: i64,
@@ -261,7 +265,7 @@ pub fn create_events(
 /// time
 pub fn create_events_for_batch(
     count: usize,
-    users: &[User],
+    user_ids: &[i64],
     event_types: &[EventType],
     offset: usize, // The starting index for this batch
 ) -> Vec<Event> {
@@ -279,7 +283,7 @@ pub fn create_events_for_batch(
             let event_index = offset + i; // Global event index
 
             // Select user and event type using global index for consistency
-            let user = &users[event_index % users.len()];
+            let user_id = user_ids[event_index % user_ids.len()];
             let event_type = &event_types[event_index % event_types.len()];
 
             // Generate random timestamp within the last 30 days
@@ -303,7 +307,7 @@ pub fn create_events_for_batch(
             };
 
             Event {
-                user_id: user.id,
+                user_id,
                 event_type: event_type.name.clone(),
                 timestamp,
                 metadata,
@@ -315,7 +319,10 @@ pub fn create_events_for_batch(
 pub async fn prepare_database(pool: &Pool) -> anyhow::Result<()> {
     let client = pool.get().await?;
 
-    println!("🗑️  Dropping performance indexes for fast bulk inserts...");
+    println!(
+        "{} 🗑️  Dropping performance indexes for fast bulk inserts...",
+        timestamp()
+    );
 
     client
         .batch_execute(
@@ -338,14 +345,17 @@ pub async fn prepare_database(pool: &Pool) -> anyhow::Result<()> {
         )
         .await?;
 
-    println!("✅ Database prepared for bulk inserts (indexes dropped)");
+    println!(
+        "{} ✅ Database prepared for bulk inserts (indexes dropped)",
+        timestamp()
+    );
     Ok(())
 }
 
 pub async fn restore_database(pool: &Pool) -> anyhow::Result<()> {
     let client = pool.get().await?;
 
-    println!("🔧 Recreating performance indexes...");
+    println!("{} 🔧 Recreating performance indexes...", timestamp());
 
     client
         .batch_execute(
@@ -386,23 +396,34 @@ pub async fn restore_database(pool: &Pool) -> anyhow::Result<()> {
     ];
 
     for (name, sql) in indexes {
-        println!("  Creating index: {name}");
+        println!("{}   Creating index: {name}", timestamp());
         let start = std::time::Instant::now();
 
         if let Err(e) = client.execute(sql, &[]).await {
-            println!("  ⚠️  Warning: Failed to create {name}: {e}");
+            println!(
+                "{}   ⚠️  Warning: Failed to create {name}: {e}",
+                timestamp()
+            );
         }
         else {
-            println!("  ✅ Created {} in {:?}", name, start.elapsed());
+            println!(
+                "{}   ✅ Created {} in {:?}",
+                timestamp(),
+                name,
+                start.elapsed()
+            );
         }
     }
 
-    println!("🚀 Database restored with all performance indexes");
-    println!("Refreshing materialized views...");
+    println!(
+        "{} 🚀 Database restored with all performance indexes",
+        timestamp()
+    );
+    println!("{} Refreshing materialized views...", timestamp());
     client
         .execute("REFRESH MATERIALIZED VIEW stats_summary;", &[])
         .await?;
-    println!("✅ Materialized views refreshed");
+    println!("{} ✅ Materialized views refreshed", timestamp());
     Ok(())
 }
 

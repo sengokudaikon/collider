@@ -166,7 +166,13 @@ impl TestRedisContainer {
         let connection_string = format!("redis://{host}:{port}");
 
         // Create unique test prefix
-        let test_prefix = format!("test_{}:", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis());
+        let test_prefix = format!(
+            "test_{}:",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis()
+        );
 
         // Create connection pool
         let pool = Self::create_pool(&connection_string).await?;

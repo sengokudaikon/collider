@@ -132,7 +132,13 @@ mod tests {
             setup_test_db_for_name_queries().await.unwrap();
 
         // Use a unique name to avoid cache conflicts
-        let unique_name = format!("Alice_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis());
+        let unique_name = format!(
+            "Alice_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis()
+        );
         let user_id = create_test_user_with_name(&container, &unique_name)
             .await
             .unwrap();

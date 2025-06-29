@@ -4,6 +4,7 @@ use std::{
 };
 
 use anyhow::Result;
+use chrono::Utc;
 use clap::Parser;
 use deadpool_postgres::Pool;
 use flume::{Receiver, Sender, bounded};
@@ -13,6 +14,8 @@ use seeder::{
     create_pool, create_users, prepare_database, restore_database,
 };
 use tokio_postgres::types::ToSql;
+
+fn timestamp() -> String { Utc::now().format("[%H:%M:%S]").to_string() }
 
 #[derive(Parser)]
 #[command(name = "seeder")]
@@ -72,14 +75,48 @@ async fn main() -> Result<()> {
     let pool = create_pool().await?;
     prepare_database(&pool).await?;
 
-    insert_users(&pool, &users).await?;
+    // Insert users
+    println!("{} 👥 Inserting {} users...", timestamp(), cli.users_count);
+    let user_insert_start = Instant::now();
+    let user_ids = insert_users(&pool, &users).await?;
+    let user_insert_duration = user_insert_start.elapsed();
+    println!(
+        "{} ✅ Inserted {} users in {:?}",
+        timestamp(),
+        user_ids.len(),
+        user_insert_duration
+    );
+
+    // Insert event types
+    println!(
+        "{} 📋 Inserting {} event types...",
+        timestamp(),
+        cli.event_types_count
+    );
+    let event_type_insert_start = Instant::now();
     insert_event_types(&pool, &event_types).await?;
+    let event_type_insert_duration = event_type_insert_start.elapsed();
+    println!(
+        "{} ✅ Inserted {} event types in {:?}",
+        timestamp(),
+        cli.event_types_count,
+        event_type_insert_duration
+    );
 
     let event_type_map: HashMap<String, i32> = event_types
         .iter()
         .enumerate()
         .map(|(i, et)| (et.name.clone(), (i + 1) as i32))
         .collect();
+
+    // Start bulk event insertion
+    println!(
+        "{} 🚀 Starting bulk insertion of {} events using {} workers...",
+        timestamp(),
+        cli.events_count,
+        num_cpus::get()
+    );
+    let bulk_insert_start = Instant::now();
 
     let mut worker_tasks = Vec::new();
     let worker_count = num_cpus::get();
@@ -89,7 +126,7 @@ async fn main() -> Result<()> {
 
     let producer_handle = tokio::spawn(produce_batches(
         tx,
-        users.clone(),
+        user_ids.clone(),
         event_types.clone(),
         cli.events_count,
         cli.batch_size,
@@ -105,7 +142,22 @@ async fn main() -> Result<()> {
 
     producer_handle.await??;
     let worker_results = try_join_all(worker_tasks).await?;
+    let bulk_insert_duration = bulk_insert_start.elapsed();
+    println!(
+        "{} ✅ Completed bulk insertion of {} events in {:?}",
+        timestamp(),
+        cli.events_count,
+        bulk_insert_duration
+    );
+
     let load_duration = load_start.elapsed();
+
+    println!(
+        "{} 📊 Total insertion time: {:?} ({:.0} events/sec)",
+        timestamp(),
+        load_duration,
+        cli.events_count as f64 / load_duration.as_secs_f64()
+    );
 
     restore_database(&pool).await?;
 
@@ -125,7 +177,7 @@ async fn main() -> Result<()> {
 }
 
 async fn produce_batches(
-    tx: Sender<Vec<Event>>, users: Vec<User>, event_types: Vec<EventType>,
+    tx: Sender<Vec<Event>>, user_ids: Vec<i64>, event_types: Vec<EventType>,
     events_count: usize, batch_size: usize,
 ) -> Result<()> {
     let total_batches = events_count.div_ceil(batch_size);
@@ -140,7 +192,7 @@ async fn produce_batches(
 
         let batch = create_events_for_batch(
             current_batch_size,
-            &users,
+            &user_ids,
             &event_types,
             i * batch_size,
         );

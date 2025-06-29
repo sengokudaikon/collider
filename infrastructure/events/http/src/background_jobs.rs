@@ -15,11 +15,11 @@ impl BackgroundJobScheduler {
     /// Start background job to refresh materialized views
     pub fn start_stats_refresh_job(self) {
         tokio::spawn(async move {
-            let mut refresh_interval = interval(Duration::from_secs(900)); // 15 minutes
+            let mut refresh_interval = interval(Duration::from_secs(3600)); // 60 minutes
             refresh_interval.tick().await; // Skip first immediate tick
 
             info!(
-                "Starting stats materialized view refresh job (every 15 \
+                "Starting stats materialized view refresh job (every 60 \
                  minutes)"
             );
 

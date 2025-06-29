@@ -133,8 +133,8 @@ pub async fn create_test_user_modern(
     let client = container.pool.get().await?;
     let row = client
         .query_one(
-            "INSERT INTO users (name, created_at) VALUES ('Test User', NOW()) \
-             RETURNING id",
+            "INSERT INTO users (name, created_at) VALUES ('Test User', \
+             NOW()) RETURNING id",
             &[],
         )
         .await?;
