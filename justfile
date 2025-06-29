@@ -1,208 +1,171 @@
 #!/usr/bin/env just --justfile
 
-# Main justfile - delegates to specialized justfiles for different workflows
-# This is a thin wrapper that routes commands to the appropriate specialized justfile
+# Consolidated justfile with essential commands only
 
 # Default recipe to display available commands
 default:
     @just --list
 
-# ==== Daily Development (delegate to justfile.lean) ====
+# ==== Development ====
 
-# Start development environment
+# Start development environment with auto-restart
 dev:
-    just -f justfile.lean dev
+    DATABASE_URL="postgres://postgres:postgres@localhost:5434/postgres" REDIS_HOST="localhost:6379" RUST_LOG=debug cargo watch -x "run --bin collider"
 
+# Start development environment without auto-restart  
+dev-static:
+    cd server && DATABASE_URL="postgres://postgres:postgres@localhost:5434/postgres" REDIS_HOST="localhost:6379" RUST_LOG=debug LOG_TO_FILE=true cargo run --bin collider
+
+prod:
+    DATABASE_URL="postgres://postgres:postgres@localhost:5434/postgres" REDIS_HOST="localhost:6379" RUST_LOG=info target/release/collider
 # Watch and rebuild on changes
 watch:
-    just -f justfile.lean watch
+    cargo watch -x run
 
 # Watch and check syntax
 watch-check:
-    just -f justfile.lean watch-check
+    cargo watch -x check
 
-# ==== Code Quality (delegate to justfile.lean) ====
+# ==== Code Quality ====
 
 # Format code
 format:
-    just -f justfile.lean format
+    cargo +nightly fmt
 
 # Lint code
 lint:
-    just -f justfile.lean lint
+    cargo clippy --all-targets --all-features -- -D warnings
 
 # Security audit
 audit:
-    just -f justfile.lean audit
-
-# Check unused dependencies
-udeps:
-    just -f justfile.lean udeps
-
-# Check unsafe code
-geiger:
-    just -f justfile.lean geiger
+    cargo audit
 
 # Run all quality checks
-quality:
-    just -f justfile.lean quality
+quality: format lint audit
+    @echo "✅ All quality checks completed!"
 
-# ==== Testing (delegate to justfile.lean) ====
+# ==== Testing ====
 
 # Run unit tests only
 test-unit:
-    just -f justfile.lean test-unit
+    cargo test --lib
 
-# Run all tests
-test:
-    just -f justfile.lean test
+# Run all tests (requires test environment)
+test: test-env
+    DATABASE_URL="postgres://test_db:postgres@localhost:5433/test_db" \
+    REDIS_URL="redis://localhost:6380" \
+    cargo test --all
+    just test-env-down
 
 # Run tests with coverage
-coverage:
-    just -f justfile.lean coverage
+coverage: test-env
+    DATABASE_URL="postgres://test_db:postgres@localhost:5433/test_db" \
+    REDIS_URL="redis://localhost:6380" \
+    cargo tarpaulin --all --out Html --output-dir coverage --timeout 180
+    just test-env-down
+    @echo "✅ Coverage analysis completed!"
 
-# ==== Database (delegate to justfile.lean) ====
+# ==== Database ====
 
 # Run migrations
 migrate:
-    just -f justfile.lean migrate
+    DATABASE_URL="postgres://postgres:postgres@localhost:5434/postgres" \
+    cargo run --bin migrator up
 
 # Seed database
 seed:
-    just -f justfile.lean seed
+    DATABASE_URL="postgres://postgres:postgres@localhost:5434/postgres" \
+    cargo run --bin seeder
 
-# ==== Environment Management (delegate to justfile.lean) ====
+# ==== Environment Management ====
 
 # Start test environment
 test-env:
-    just -f justfile.lean test-env
+    docker-compose -f docker-compose.test.yml up -d
+    docker-compose -f docker-compose.test.yml run --rm wait-for-services
 
 # Stop test environment
 test-env-down:
-    just -f justfile.lean test-env-down
+    docker-compose -f docker-compose.test.yml down -v
 
 # Start development infrastructure only (for local cargo development)
 dev-up:
-    just -f justfile.lean dev-up
-
-# Start full development environment including app in Docker
-dev-up-full:
-    just -f justfile.lean dev-up-full
+    docker-compose up -d
 
 # Stop development environment
 dev-down:
-    just -f justfile.lean dev-down
+    docker-compose down
 
-# Stop full development environment
-dev-down-full:
-    just -f justfile.lean dev-down-full
-
-# Setup development environment (migrations + seeding)
-dev-setup:
-    just -f justfile.lean dev-setup
-
-# Setup full development environment with app in Docker
-dev-setup-full:
-    just -f justfile.lean dev-setup-full
-
-# Start production docker environment
+dev-reset:
+    docker compose down --remove-orphans --volumes --rmi all && docker compose up -d --build
+# Start production environment
 prod-up:
-    just -f justfile.lean prod-up
+    docker-compose -f docker-compose.production.yml up -d
 
-# Stop production docker environment
+# Stop production environment  
 prod-down:
-    just -f justfile.lean prod-down
+    docker-compose -f docker-compose.production.yml down
 
-# ==== Build (delegate to justfile.lean) ====
+# Setup development environment
+dev-setup: dev-up
+    @echo "Setting up development environment..."
+    @if [ ! -f .env ]; then cp .env.example .env && echo "📄 Created .env from template"; fi
+    @echo "⏳ Waiting for services to be ready..."
+    @sleep 5
+    just migrate
+    just seed
+    @echo "✅ Development environment ready!"
+
+# ==== Build ====
 
 # Build release
 build:
-    just -f justfile.lean build
+    cargo build --release
 
 # Build binaries
 build-binaries:
-    just -f justfile.lean build-binaries
-
-# ==== Mega Pipelines (delegate to justfile.pipeline) ====
-
-# Run complete docker pipeline (test → coverage → dev → benchmarks)
-mega-pipeline:
-    @echo "🚀 Starting mega pipeline - this will take 2-3 hours"
-    @echo "For more control, use: just -f justfile.pipeline <command>"
-    just -f justfile.pipeline mega-pipeline
-
-# Quick docker pipeline
-quick-pipeline:
-    just -f justfile.pipeline quick-pipeline
-
-# Coverage-only pipeline
-coverage-pipeline:
-    just -f justfile.pipeline coverage-pipeline
-
-# Benchmark-only pipeline
-benchmark-pipeline:
-    just -f justfile.pipeline benchmark-pipeline
-
-# ==== GCP Deployment ====
-
-# Setup GCP infrastructure (one-time)
-gcp-setup:
-    cd scripts && ./setup.sh
-
-# Deploy to GCP Cloud Run
-gcp-deploy:
-    cd scripts && ./deploy.sh
-
-# Run database migrations on GCP
-gcp-migrate:
-    cd scripts && ./migrate.sh
-
-# Full GCP deployment (setup + migrate + deploy)
-gcp-full-deploy:
-    @echo "🚀 Full GCP deployment - this may take 10-15 minutes"
-    just gcp-setup
-    just gcp-migrate 
-    just gcp-deploy
+    cargo build --release --bin migrator
+    cargo build --release --bin seeder
+    cargo build --release --bin collider
+    cargo build --release --bin csv-exporter
 
 # ==== Utilities ====
 
 # Install development tools
 install-tools:
-    just -f justfile.lean install-tools
+    cargo install cargo-watch cargo-audit cargo-tarpaulin
 
 # Clean artifacts
 clean:
-    just -f justfile.lean clean
-    just -f justfile.pipeline clean
+    cargo clean
+    rm -rf coverage/
 
-# ==== Help ====
-
+# Show help
 help:
-    @echo "🚀 Collider - Streamlined Development Commands"
-    @echo "============================================="
+    @echo "🚀 Collider - Essential Commands"
+    @echo "==============================="
     @echo ""
-    @echo "📋 Daily Development (→ justfile.lean):"
+    @echo "Development:"
     @echo "  just dev              # Run server locally"
     @echo "  just watch            # Watch and rebuild"
-    @echo "  just dev-up           # Start docker dev infrastructure only"
-    @echo "  just dev-up-full      # Start docker dev environment + app"
-    @echo "  just dev-setup        # Setup dev env + migrate + seed (local)"
-    @echo "  just dev-setup-full   # Setup dev env + migrate + seed (docker)"
-    @echo "  just prod-up          # Start production docker environment"
+    @echo "  just dev-up           # Start docker infrastructure"
+    @echo "  just dev-setup        # Setup dev env + migrate + seed"
+    @echo "  just prod-up          # Start production environment"
+    @echo ""
+    @echo "Testing:"
     @echo "  just test             # Run all tests"
-    @echo "  just quality          # All quality checks"
+    @echo "  just test-unit        # Unit tests only"
+    @echo "  just coverage         # Tests with coverage"
     @echo ""
-    @echo "☁️ GCP Deployment:"
-    @echo "  just gcp-setup           # One-time GCP infrastructure setup"
-    @echo "  just gcp-deploy          # Deploy app to Cloud Run"
-    @echo "  just gcp-migrate         # Run database migrations on GCP"
-    @echo "  just gcp-full-deploy     # Complete setup + migrate + deploy"
+    @echo "Quality:"
+    @echo "  just quality          # All checks (format + lint + audit)"
+    @echo "  just format           # Format code"
+    @echo "  just lint             # Lint code"
     @echo ""
-    @echo "📚 Direct Access to Specialized Justfiles:"
-    @echo "  just -f justfile.lean help           # Core utilities help"
+    @echo "Database:"
+    @echo "  just migrate          # Run migrations"
+    @echo "  just seed             # Seed data"
     @echo ""
-    @echo "💡 Examples:"
-    @echo "  just dev && just test                # Develop and test"
-    @echo "  just mega-pipeline                   # Full docker workflow"
-    @echo "  just gcp-full-deploy                 # Deploy to GCP"
-    @echo "  just -f justfile.pipeline regression-pipeline baseline_dir"
+    @echo "Build:"
+    @echo "  just build            # Build release"
+    @echo "  just build-binaries   # Build CLI tools"

@@ -17,7 +17,7 @@ use sql_connection::{
 };
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing::{info, warn};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
 use user_http::UserServices;
 use utoipa::OpenApi;
 use utoipa_rapidoc::RapiDoc;
@@ -26,12 +26,53 @@ use utoipa_rapidoc::RapiDoc;
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
 
-    tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::new(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()),
-        ))
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    // Configure logging with both console and file output
+    let log_level = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into());
+    let enable_file_logging = std::env::var("LOG_TO_FILE").unwrap_or_else(|_| "true".into()) == "true";
+
+    let env_filter = tracing_subscriber::EnvFilter::new(&log_level);
+    
+    let registry = tracing_subscriber::registry().with(env_filter);
+
+    if enable_file_logging {
+        // File appender for clean, structured logs
+        let file_appender = tracing_appender::rolling::daily("./logs", "collider.log");
+        let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+        
+        // Clean file format (no colors, structured)
+        let file_layer = fmt::layer()
+            .with_writer(non_blocking)
+            .with_ansi(false)
+            .with_target(true)
+            .with_thread_ids(false)
+            .with_line_number(false)
+            .with_file(false)
+            .compact();
+
+        // Console format (with colors for development)
+        let console_layer = fmt::layer()
+            .with_writer(std::io::stdout)
+            .with_ansi(true)
+            .with_target(false)
+            .compact();
+
+        registry
+            .with(file_layer)
+            .with(console_layer)
+            .init();
+            
+        // Keep the guard alive for the duration of the program
+        std::mem::forget(_guard);
+    } else {
+        // Console only
+        let console_layer = fmt::layer()
+            .with_writer(std::io::stdout)
+            .with_ansi(true)
+            .with_target(false)
+            .compact();
+
+        registry.with(console_layer).init();
+    }
 
     info!("Initializing connection pools...");
 
@@ -190,20 +231,16 @@ struct ApiDoc;
 )]
 async fn health_check() -> impl IntoResponse {
     let db = SqlConnect::from_global();
-    let (write_available, write_size, read_stats) = db.get_pool_status();
-
-    let health_info = if let Some((read_available, read_size)) = read_stats {
-        format!(
-            "OK - Write Pool: {write_available}/{write_size} available, \
-             Read Pool: {read_available}/{read_size} available"
-        )
+    
+    // Test actual connectivity instead of relying on deadpool status
+    match db.get_client().await {
+        Ok(_) => {
+            let health_info = "OK - Database connection pool operational (deadpool status reporting disabled due to known issues)";
+            (StatusCode::OK, health_info.to_string())
+        }
+        Err(e) => {
+            let error_info = format!("ERROR - Database connection failed: {}", e);
+            (StatusCode::SERVICE_UNAVAILABLE, error_info)
+        }
     }
-    else {
-        format!(
-            "OK - Single Pool: {write_available}/{write_size} available \
-             (Read replica not configured)"
-        )
-    };
-
-    (StatusCode::OK, health_info)
 }
