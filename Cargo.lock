@@ -422,6 +422,7 @@ dependencies = [
  "events-http",
  "events-responses",
  "redis-connection",
+ "serde",
  "serde_json",
  "sql-connection",
  "tokio",

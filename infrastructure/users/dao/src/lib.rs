@@ -5,7 +5,7 @@ use dao_utils::{
     query_helpers::{CursorResult, count_query},
 };
 use database_traits::dao::GenericDao;
-use sql_connection::{PgError, SqlConnect};
+use sql_connection::SqlConnect;
 use tracing::instrument;
 use user_commands::{CreateUserCommand, UpdateUserCommand};
 use user_errors::UserError;
@@ -115,7 +115,9 @@ impl GenericDao for UserDao {
             Ok(user)
         }
         else {
-            Err(UserError::Database(PgError::__private_api_timeout()))
+            Err(UserError::InternalError(
+                "Failed to create user".to_string(),
+            ))
         }
     }
 
@@ -164,14 +166,14 @@ impl GenericDao for UserDao {
                             Ok(user)
                         }
                         _ => {
-                            Err(UserError::Database(
-                                PgError::__private_api_timeout(),
+                            Err(UserError::InternalError(
+                                "Unexpected response structure".to_string(),
                             ))
                         }
                     }
                 }
                 else {
-                    Err(UserError::Database(PgError::__private_api_timeout()))
+                    Err(UserError::NotFound { user_id: id })
                 }
             }
             None => self.find_by_id(id).await,

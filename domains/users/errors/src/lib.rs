@@ -19,6 +19,8 @@ pub enum UserError {
     RedisPool(#[from] PoolError),
     #[error("Name already exists")]
     NameExists,
+    #[error("Internal error: {0}")]
+    InternalError(String),
 }
 
 impl From<UserError> for AppError {
@@ -60,6 +62,11 @@ impl From<UserError> for AppError {
             UserError::RedisPool(pool_err) => {
                 AppError::internal_server_error(&format!(
                     "Cache connection error: {pool_err}"
+                ))
+            }
+            UserError::InternalError(msg) => {
+                AppError::internal_server_error(&format!(
+                    "Internal error: {msg}"
                 ))
             }
         }

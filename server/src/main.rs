@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 
 use axum::{
-    Router,
+    Json, Router,
     http::StatusCode,
     response::IntoResponse,
     routing::{delete, get, post, put},
@@ -10,6 +10,7 @@ use redis_connection::{
     cache_provider::CacheProvider, config::RedisDbConfig, connect_redis_db,
     connection::RedisConnectionManager,
 };
+use serde::Serialize;
 use sql_connection::{
     SqlConnect,
     config::{PostgresDbConfig, ReadReplicaConfig},
@@ -17,7 +18,9 @@ use sql_connection::{
 };
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing::{info, warn};
-use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{
+    fmt, layer::SubscriberExt, util::SubscriberInitExt,
+};
 use user_http::UserServices;
 use utoipa::OpenApi;
 use utoipa_rapidoc::RapiDoc;
@@ -27,18 +30,23 @@ async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
 
     // Configure logging with both console and file output
-    let log_level = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into());
-    let enable_file_logging = std::env::var("LOG_TO_FILE").unwrap_or_else(|_| "true".into()) == "true";
+    let log_level =
+        std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into());
+    let enable_file_logging = std::env::var("LOG_TO_FILE")
+        .unwrap_or_else(|_| "true".into())
+        == "true";
 
     let env_filter = tracing_subscriber::EnvFilter::new(&log_level);
-    
+
     let registry = tracing_subscriber::registry().with(env_filter);
 
     if enable_file_logging {
         // File appender for clean, structured logs
-        let file_appender = tracing_appender::rolling::daily("./logs", "collider.log");
-        let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
-        
+        let file_appender =
+            tracing_appender::rolling::daily("./logs", "collider.log");
+        let (non_blocking, _guard) =
+            tracing_appender::non_blocking(file_appender);
+
         // Clean file format (no colors, structured)
         let file_layer = fmt::layer()
             .with_writer(non_blocking)
@@ -56,14 +64,12 @@ async fn main() -> anyhow::Result<()> {
             .with_target(false)
             .compact();
 
-        registry
-            .with(file_layer)
-            .with(console_layer)
-            .init();
-            
+        registry.with(file_layer).with(console_layer).init();
+
         // Keep the guard alive for the duration of the program
         std::mem::forget(_guard);
-    } else {
+    }
+    else {
         // Console only
         let console_layer = fmt::layer()
             .with_writer(std::io::stdout)
@@ -75,19 +81,20 @@ async fn main() -> anyhow::Result<()> {
     }
 
     info!("Initializing connection pools...");
-
+    let replica_url = std::env::var("DATABASE_READ_REPLICA_URL").ok();
     let db_config = PostgresDbConfig {
         uri: std::env::var("DATABASE_URL").unwrap_or_else(|_| {
             "postgresql://postgres:postgres@localhost/postgres".to_string()
         }),
-        max_conn: Some(600), // Match PostgreSQL config max_connections
-        min_conn: Some(50),
+        max_conn: Some(100), /* Reduced to leverage PgBouncer's connection
+                              * pooling */
+        min_conn: Some(10),
         logger: false,
-        // Read replica configuration
-        read_replica_uri: std::env::var("DATABASE_READ_REPLICA_URL").ok(),
-        read_max_conn: Some(1200), // Higher for read-heavy workloads
-        read_min_conn: Some(100),
-        enable_read_write_split: false,
+        read_replica_uri: replica_url.clone(),
+        read_max_conn: Some(200), /* Reduced to leverage PgBouncer's
+                                   * connection pooling */
+        read_min_conn: Some(50),
+        enable_read_write_split: replica_url.is_some(),
     };
 
     // Initialize primary database connection
@@ -153,6 +160,7 @@ async fn main() -> anyhow::Result<()> {
 
     let app = Router::new()
         .route("/", get(health_check))
+        .route("/pool_status", get(pool_status))
         .merge(api_routes);
 
     let app = app
@@ -177,6 +185,7 @@ async fn main() -> anyhow::Result<()> {
 #[openapi(
     paths(
         health_check,
+        pool_status,
         events_http::create_event,
         events_http::update_event,
         events_http::delete_event,
@@ -194,6 +203,8 @@ async fn main() -> anyhow::Result<()> {
     ),
     components(
         schemas(
+            PoolStatus,
+            PoolInfo,
             events_responses::EventResponse,
             events_http::EventsListParams,
             events_http::EventsDeleteParams,
@@ -231,16 +242,83 @@ struct ApiDoc;
 )]
 async fn health_check() -> impl IntoResponse {
     let db = SqlConnect::from_global();
-    
+
     // Test actual connectivity instead of relying on deadpool status
     match db.get_client().await {
         Ok(_) => {
-            let health_info = "OK - Database connection pool operational (deadpool status reporting disabled due to known issues)";
+            let health_info = "OK - Database connection pool operational \
+                               (deadpool status reporting disabled due to \
+                               known issues)";
             (StatusCode::OK, health_info.to_string())
         }
         Err(e) => {
-            let error_info = format!("ERROR - Database connection failed: {}", e);
+            let error_info =
+                format!("ERROR - Database connection failed: {e}");
             (StatusCode::SERVICE_UNAVAILABLE, error_info)
         }
     }
+}
+
+#[derive(Serialize, utoipa::ToSchema)]
+struct PoolStatus {
+    primary: PoolInfo,
+    read_replica: Option<PoolInfo>,
+}
+
+#[derive(Serialize, utoipa::ToSchema)]
+struct PoolInfo {
+    available: usize,
+    size: usize,
+    max_size: usize,
+    utilization_percent: f64,
+}
+
+#[utoipa::path(
+    get,
+    path = "/pool_status",
+    responses(
+        (status = 200, description = "Database connection pool status", body = PoolStatus)
+    ),
+    tag = "monitoring"
+)]
+async fn pool_status() -> impl IntoResponse {
+    let db = SqlConnect::from_global();
+    let (primary_available, primary_size, read_replica_stats) =
+        db.get_pool_status();
+
+    // Get max sizes from pool objects
+    let primary_pool = sql_connection::get_sql_pool();
+    let primary_status = primary_pool.status();
+    let primary_max = primary_status.max_size;
+
+    let mut status = PoolStatus {
+        primary: PoolInfo {
+            available: primary_available,
+            size: primary_size,
+            max_size: primary_max,
+            utilization_percent: ((primary_size as f64
+                - primary_available as f64)
+                / primary_max as f64)
+                * 100.0,
+        },
+        read_replica: None,
+    };
+
+    if let Some((read_available, read_size)) = read_replica_stats {
+        if let Some(read_pool) = sql_connection::get_read_sql_pool() {
+            let read_status = read_pool.status();
+            let read_max = read_status.max_size;
+            status.read_replica = Some(PoolInfo {
+                available: read_available,
+                size: read_size,
+                max_size: read_max,
+                utilization_percent: ((read_size as f64
+                    - read_available as f64)
+                    / read_max as f64)
+                    * 100.0,
+            });
+        }
+    }
+
+    Json(status)
 }

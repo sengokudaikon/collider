@@ -10,14 +10,14 @@ default:
 
 # Start development environment with auto-restart
 dev:
-    DATABASE_URL="postgres://postgres:postgres@localhost:5434/postgres" REDIS_HOST="localhost:6379" RUST_LOG=debug cargo watch -x "run --bin collider"
+    RUST_LOG=debug cargo watch -x "run --bin collider"
 
 # Start development environment without auto-restart  
 dev-static:
-    cd server && DATABASE_URL="postgres://postgres:postgres@localhost:5434/postgres" REDIS_HOST="localhost:6379" RUST_LOG=debug LOG_TO_FILE=true cargo run --bin collider
+    cd server && RUST_LOG=debug LOG_TO_FILE=true cargo run --bin collider
 
 prod:
-    DATABASE_URL="postgres://postgres:postgres@localhost:5434/postgres" REDIS_HOST="localhost:6379" RUST_LOG=info target/release/collider
+    RUST_LOG=info target/release/collider
 # Watch and rebuild on changes
 watch:
     cargo watch -x run
@@ -107,7 +107,7 @@ prod-down:
     docker-compose -f docker-compose.production.yml down
 
 # Setup development environment
-dev-setup: dev-up
+dev-setup:
     @echo "Setting up development environment..."
     @if [ ! -f .env ]; then cp .env.example .env && echo "📄 Created .env from template"; fi
     @echo "⏳ Waiting for services to be ready..."

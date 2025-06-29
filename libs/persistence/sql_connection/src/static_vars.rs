@@ -30,6 +30,9 @@ where
     let mgr = Manager::from_config(pg_config, NoTls, mgr_config);
 
     let mut pool_builder = Pool::builder(mgr);
+    // Note: Timeouts are not set here as they require runtime to be available
+    // at pool creation time, which can cause issues in some contexts like
+    // tests The pool will use sensible defaults
 
     if let Some(max_conn) = config.max_conn() {
         pool_builder = pool_builder.max_size(max_conn as usize);
@@ -69,6 +72,10 @@ where
         let mgr = Manager::from_config(pg_config, NoTls, mgr_config);
 
         let mut pool_builder = Pool::builder(mgr);
+        // Note: Timeouts are not set here as they require runtime to be
+        // available at pool creation time, which can cause issues in
+        // some contexts like tests The pool will use sensible
+        // defaults
 
         // Optimize read replica pool for higher concurrency
         if let Some(max_conn) = config.read_max_conn() {
@@ -78,9 +85,6 @@ where
             // Default to higher connection count for read replicas
             pool_builder = pool_builder.max_size(800);
         }
-
-        // Note: deadpool doesn't have wait_for_connections, but max_size
-        // controls pool behavior
 
         let pool = pool_builder.build()?;
 

@@ -1,0 +1,143 @@
+services:
+  postgres_primary:
+    image: postgres:16-alpine
+    container_name: collider_postgres_primary
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_primary_data:/var/lib/postgresql/data
+      - ./scripts/primary-init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./config/pg_hba_replication.conf:/etc/postgresql/pg_hba.conf:ro
+    command: |
+      postgres
+      -c hba_file=/etc/postgresql/pg_hba.conf
+      -c wal_level=replica
+      -c archive_mode=off
+      -c max_wal_senders=3
+      -c max_replication_slots=3
+      -c max_connections=600
+      -c shared_buffers=1GB
+      -c effective_cache_size=2GB
+      -c wal_keep_size=1GB
+      -c hot_standby=on
+      -c hot_standby_feedback=on
+      -c log_destination=stderr
+      -c logging_collector=off
+      -c log_statement=all
+      -c listen_addresses='*'
+      -c authentication_timeout=600
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - collider_network
+
+  postgres_replica:
+    image: postgres:16-alpine
+    container_name: collider_postgres_replica
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      PGUSER: postgres
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_replica_data:/var/lib/postgresql/data
+    depends_on:
+      postgres_primary:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command: |
+      "if [ ! -f /var/lib/postgresql/data/PG_VERSION ]; then
+        echo 'Waiting for primary to be fully ready...'
+        sleep 5
+        until PGPASSWORD=postgres psql -h postgres_primary -U postgres -c 'SELECT 1' >/dev/null 2>&1; do
+          echo 'Primary not ready, waiting...'
+          sleep 2
+        done
+        echo 'Setting up replica from primary...'
+        PGPASSWORD=postgres pg_basebackup -h postgres_primary -U postgres -D /var/lib/postgresql/data -R -P -v
+        echo 'Replica setup complete.'
+        echo 'Adjusting replica configuration...'
+        echo '' >> /var/lib/postgresql/data/postgresql.auto.conf
+        echo '# Replica-specific settings' >> /var/lib/postgresql/data/postgresql.auto.conf
+        echo 'max_connections = 1200' >> /var/lib/postgresql/data/postgresql.auto.conf
+        echo 'shared_buffers = 2GB' >> /var/lib/postgresql/data/postgresql.auto.conf
+        echo 'effective_cache_size = 4GB' >> /var/lib/postgresql/data/postgresql.auto.conf
+        echo 'hot_standby = on' >> /var/lib/postgresql/data/postgresql.auto.conf
+        echo 'hot_standby_feedback = on' >> /var/lib/postgresql/data/postgresql.auto.conf
+        echo 'wal_receiver_status_interval = 10s' >> /var/lib/postgresql/data/postgresql.auto.conf
+        echo 'log_destination = stderr' >> /var/lib/postgresql/data/postgresql.auto.conf
+        echo 'logging_collector = off' >> /var/lib/postgresql/data/postgresql.auto.conf
+        echo 'max_wal_senders = 3' >> /var/lib/postgresql/data/postgresql.auto.conf
+        echo 'wal_keep_size = 1GB' >> /var/lib/postgresql/data/postgresql.auto.conf
+      fi
+      exec docker-entrypoint.sh postgres"
+    networks:
+      - collider_network
+
+  pgbouncer_primary:
+    image: edoburu/pgbouncer:latest
+    container_name: collider_pgbouncer_primary
+    environment:
+      DB_HOST: postgres_primary
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: postgres
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 10000
+      DEFAULT_POOL_SIZE: 25
+      MAX_DB_CONNECTIONS: 100  # Actual connections to PostgreSQL
+    ports:
+      - "6434:5432"
+    depends_on:
+      - postgres_primary
+    networks:
+      - collider_network
+
+  pgbouncer_replica:
+    image: edoburu/pgbouncer:latest
+    container_name: collider_pgbouncer_replica
+    environment:
+      DB_HOST: postgres_replica
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: postgres
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 20000
+      DEFAULT_POOL_SIZE: 50
+      MAX_DB_CONNECTIONS: 200  # Actual connections to PostgreSQL
+    ports:
+      - "6435:5432"
+    depends_on:
+      - postgres_replica
+    networks:
+      - collider_network
+
+  dragonfly:
+    image: docker.dragonflydb.io/dragonflydb/dragonfly
+    container_name: collider_dragonfly
+    ports:
+      - "6379:6379"
+    volumes:
+      - dragonfly_data:/data
+    networks:
+      - collider_network
+
+volumes:
+  postgres_primary_data:
+  postgres_replica_data:
+  dragonfly_data:
+
+networks:
+  collider_network:
+    driver: bridge

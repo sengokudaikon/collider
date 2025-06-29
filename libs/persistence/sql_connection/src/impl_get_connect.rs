@@ -2,6 +2,7 @@ use std::convert::Infallible;
 
 use database_traits::connection::{FromRequestParts, Parts};
 use deadpool_postgres::{Object, Pool};
+use tracing::{instrument, warn};
 
 use crate::static_vars::{get_read_sql_pool, get_sql_pool};
 
@@ -41,23 +42,77 @@ impl SqlConnect {
     }
 
     /// Get connection for write operations (always uses primary database)
+    #[instrument(skip(self), fields(pool_type = "primary"))]
     pub async fn get_client(
         &self,
     ) -> Result<Object, deadpool_postgres::PoolError> {
-        self.pool.get().await
+        let status = self.pool.status();
+        if status.available == 0 {
+            warn!(
+                "Primary pool exhausted! Available: {}, Size: {}, Max: {}",
+                status.available, status.size, status.max_size
+            );
+        }
+
+        match self.pool.get().await {
+            Ok(conn) => {
+                let new_status = self.pool.status();
+                if new_status.available < 10 {
+                    warn!(
+                        "Primary pool running low! Available: {}, Size: {}",
+                        new_status.available, new_status.size
+                    );
+                }
+                Ok(conn)
+            }
+            Err(e) => {
+                warn!("Failed to get primary connection: {}", e);
+                Err(e)
+            }
+        }
     }
 
     /// Get connection for read operations (uses read replica if available)
+    #[instrument(skip(self), fields(pool_type = if self.enable_read_write_split { "read_replica" } else { "primary" }))]
     pub async fn get_read_client(
         &self,
     ) -> Result<Object, deadpool_postgres::PoolError> {
         if let Some(read_pool) = &self.read_pool {
             if self.enable_read_write_split {
-                return read_pool.get().await;
+                let status = read_pool.status();
+                if status.available == 0 {
+                    warn!(
+                        "Read replica pool exhausted! Available: {}, Size: \
+                         {}, Max: {}",
+                        status.available, status.size, status.max_size
+                    );
+                }
+
+                match read_pool.get().await {
+                    Ok(conn) => {
+                        let new_status = read_pool.status();
+                        if new_status.available < 20 {
+                            warn!(
+                                "Read replica pool running low! Available: \
+                                 {}, Size: {}",
+                                new_status.available, new_status.size
+                            );
+                        }
+                        return Ok(conn);
+                    }
+                    Err(e) => {
+                        warn!(
+                            "Failed to get read replica connection: {}, \
+                             falling back to primary",
+                            e
+                        );
+                        // Fall through to use primary pool
+                    }
+                }
             }
         }
         // Fallback to primary pool if no read replica
-        self.pool.get().await
+        self.get_client().await
     }
 
     /// Get connection optimized for heavy analytics queries

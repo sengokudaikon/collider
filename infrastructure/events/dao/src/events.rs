@@ -9,7 +9,6 @@ use events_responses::EventResponse;
 use sql_connection::SqlConnect;
 use tracing::instrument;
 
-
 #[derive(Clone)]
 pub struct EventDao {
     db: SqlConnect,
@@ -20,7 +19,9 @@ impl EventDao {
 
     pub fn db(&self) -> &SqlConnect { &self.db }
 
-    fn map_row_to_response(&self, row: &tokio_postgres::Row) -> EventResponse {
+    fn map_row_to_response(
+        &self, row: &tokio_postgres::Row,
+    ) -> EventResponse {
         let metadata_json: Option<serde_json::Value> = row.get(4);
         let metadata =
             metadata_json.and_then(|json| serde_json::from_value(json).ok());
@@ -237,10 +238,9 @@ impl GenericDao for EventDao {
         let client = self.db.get_read_client().await?;
         let stmt = client
             .prepare(
-                "SELECT e.id, e.user_id, e.event_type_id, e.timestamp, e.metadata, et.name \
-                 FROM events e \
-                 JOIN event_types et ON e.event_type_id = et.id \
-                 WHERE e.id = $1",
+                "SELECT e.id, e.user_id, e.event_type_id, e.timestamp, \
+                 e.metadata, et.name FROM events e JOIN event_types et ON \
+                 e.event_type_id = et.id WHERE e.id = $1",
             )
             .await?;
         let rows = client.query(&stmt, &[&id]).await?;
@@ -257,15 +257,17 @@ impl GenericDao for EventDao {
         let client = self.db.get_read_client().await?;
         let stmt = client
             .prepare(
-                "SELECT e.id, e.user_id, e.event_type_id, e.timestamp, e.metadata, et.name \
-                 FROM events e \
-                 JOIN event_types et ON e.event_type_id = et.id \
-                 ORDER BY e.timestamp DESC",
+                "SELECT e.id, e.user_id, e.event_type_id, e.timestamp, \
+                 e.metadata, et.name FROM events e JOIN event_types et ON \
+                 e.event_type_id = et.id ORDER BY e.timestamp DESC",
             )
             .await?;
         let rows = client.query(&stmt, &[]).await?;
 
-        let events = rows.iter().map(|row| self.map_row_to_response(row)).collect();
+        let events = rows
+            .iter()
+            .map(|row| self.map_row_to_response(row))
+            .collect();
 
         Ok(events)
     }
@@ -281,8 +283,8 @@ impl GenericDao for EventDao {
         let stmt = client
             .prepare(
                 "WITH event_type_lookup AS (
-                     SELECT id as event_type_id, name as event_type_name FROM event_types WHERE name \
-                 = $2
+                     SELECT id as event_type_id, name as event_type_name \
+                 FROM event_types WHERE name = $2
                  ),
                  event_insert AS (
                      INSERT INTO events (user_id, event_type_id, timestamp, \
@@ -328,8 +330,8 @@ impl GenericDao for EventDao {
             Ok(event_response)
         }
         else {
-            Err(EventError::Database(
-                tokio_postgres::Error::__private_api_timeout(),
+            Err(EventError::InternalError(
+                "Failed to create event".to_string(),
             ))
         }
     }
@@ -385,10 +387,14 @@ impl GenericDao for EventDao {
                             });
                             // Need to get event type name for response
                             let event_type_name = client
-                                .query_one("SELECT name FROM event_types WHERE id = $1", &[&row.get::<_, i32>(2)])
+                                .query_one(
+                                    "SELECT name FROM event_types WHERE id \
+                                     = $1",
+                                    &[&row.get::<_, i32>(2)],
+                                )
                                 .await?
                                 .get(0);
-                            
+
                             let event_response = EventResponse {
                                 id: row.get(0),
                                 user_id: row.get(1),
@@ -400,17 +406,14 @@ impl GenericDao for EventDao {
                             Ok(event_response)
                         }
                         _ => {
-                            Err(EventError::Database(
-                                tokio_postgres::Error::__private_api_timeout(
-                                ),
+                            Err(EventError::InternalError(
+                                "Unexpected response structure".to_string(),
                             ))
                         }
                     }
                 }
                 else {
-                    Err(EventError::Database(
-                        tokio_postgres::Error::__private_api_timeout(),
-                    ))
+                    Err(EventError::NotFound { event_id: id })
                 }
             }
             (Some(event_type_id), None) => {
@@ -419,9 +422,11 @@ impl GenericDao for EventDao {
                         "WITH updated AS (
                              UPDATE events SET event_type_id = $2 
                              WHERE id = $1 
-                             RETURNING id, user_id, event_type_id, timestamp, metadata
+                             RETURNING id, user_id, event_type_id, \
+                         timestamp, metadata
                          )
-                         SELECT u.id, u.user_id, u.event_type_id, u.timestamp, u.metadata, et.name
+                         SELECT u.id, u.user_id, u.event_type_id, \
+                         u.timestamp, u.metadata, et.name
                          FROM updated u
                          JOIN event_types et ON u.event_type_id = et.id",
                     )
@@ -442,9 +447,11 @@ impl GenericDao for EventDao {
                         "WITH updated AS (
                              UPDATE events SET metadata = $2 
                              WHERE id = $1 
-                             RETURNING id, user_id, event_type_id, timestamp, metadata
+                             RETURNING id, user_id, event_type_id, \
+                         timestamp, metadata
                          )
-                         SELECT u.id, u.user_id, u.event_type_id, u.timestamp, u.metadata, et.name
+                         SELECT u.id, u.user_id, u.event_type_id, \
+                         u.timestamp, u.metadata, et.name
                          FROM updated u
                          JOIN event_types et ON u.event_type_id = et.id",
                     )
@@ -496,7 +503,6 @@ impl GenericDao for EventDao {
         }
     }
 
-
     async fn count(&self) -> Result<i64, Self::Error> {
         let client = self.db.get_read_client().await?;
         let stmt = client.prepare("SELECT COUNT(*) FROM events").await?;
@@ -518,9 +524,9 @@ impl EventDao {
 
         // Build query dynamically based on provided filters
         let mut query = String::from(
-            "SELECT e.id, e.user_id, e.event_type_id, e.timestamp, e.metadata, et.name \
-             FROM events e \
-             JOIN event_types et ON e.event_type_id = et.id",
+            "SELECT e.id, e.user_id, e.event_type_id, e.timestamp, \
+             e.metadata, et.name FROM events e JOIN event_types et ON \
+             e.event_type_id = et.id",
         );
         let mut where_clauses = Vec::new();
         let mut params: PgParamVec = Vec::new();
@@ -567,7 +573,10 @@ impl EventDao {
 
         let rows = client.query(&stmt, &param_refs).await?;
 
-        let events = rows.iter().map(|row| self.map_row_to_response(row)).collect();
+        let events = rows
+            .iter()
+            .map(|row| self.map_row_to_response(row))
+            .collect();
 
         Ok(events)
     }
@@ -593,7 +602,8 @@ impl EventDao {
         let (sql, params): (String, Vec<i64>) = match limit {
             Some(l) => {
                 (
-                    "SELECT e.id, e.user_id, e.event_type_id, e.timestamp, e.metadata, et.name 
+                    "SELECT e.id, e.user_id, e.event_type_id, e.timestamp, \
+                     e.metadata, et.name 
                  FROM events e 
                  JOIN event_types et ON e.event_type_id = et.id 
                  WHERE e.user_id = $1 
@@ -604,7 +614,8 @@ impl EventDao {
             }
             None => {
                 (
-                    "SELECT e.id, e.user_id, e.event_type_id, e.timestamp, e.metadata, et.name 
+                    "SELECT e.id, e.user_id, e.event_type_id, e.timestamp, \
+                     e.metadata, et.name 
                  FROM events e 
                  JOIN event_types et ON e.event_type_id = et.id 
                  WHERE e.user_id = $1 
@@ -622,7 +633,10 @@ impl EventDao {
             .collect();
 
         let rows = client.query(&stmt, &param_refs).await?;
-        let events = rows.iter().map(|row| self.map_row_to_response(row)).collect();
+        let events = rows
+            .iter()
+            .map(|row| self.map_row_to_response(row))
+            .collect();
 
         Ok(events)
     }

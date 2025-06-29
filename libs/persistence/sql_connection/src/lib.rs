@@ -8,5 +8,6 @@ mod impl_get_connect;
 mod static_vars;
 
 pub use static_vars::{
-    connect_postgres_db, connect_postgres_read_replica, get_sql_pool,
+    connect_postgres_db, connect_postgres_read_replica, get_read_sql_pool,
+    get_sql_pool,
 };

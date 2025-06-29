@@ -76,7 +76,7 @@ async fn export_users(
     let mut csv_content = String::from("id,name,email,created_at\n");
 
     for row in rows {
-        let id: uuid::Uuid = row.get(0);
+        let id: i64 = row.get(0);
         let name: String = row.get(1);
         let created_at: chrono::DateTime<chrono::Utc> = row.get(2);
         let email =

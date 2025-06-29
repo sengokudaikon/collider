@@ -93,8 +93,8 @@ impl EventTypeDao {
                 }
             })
             .ok_or_else(|| {
-                EventTypeError::Database(
-                    tokio_postgres::Error::__private_api_timeout(),
+                EventTypeError::InternalError(
+                    "No row returned from INSERT".to_string(),
                 )
             })?;
 

@@ -17,6 +17,7 @@ user-commands.workspace = true
 user-responses.workspace = true
 sql-connection.workspace = true
 redis-connection.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 
 # Logging

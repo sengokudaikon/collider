@@ -25,7 +25,8 @@ impl CreateEventHandler {
     pub async fn execute(
         &self, command: CreateEventCommand,
     ) -> Result<EventResponse, EventError> {
-        // DAO now returns EventResponse directly with event type name included
+        // DAO now returns EventResponse directly with event type name
+        // included
         self.event_dao.create(command).await
     }
 }

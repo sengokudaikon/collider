@@ -15,6 +15,8 @@ pub enum EventError {
     Redis(#[from] redis_connection::RedisError),
     #[error("Redis pool error: {0}")]
     Pool(#[from] redis_connection::PoolError),
+    #[error("Internal error: {0}")]
+    InternalError(String),
 }
 
 #[derive(Debug, Error)]
@@ -27,6 +29,8 @@ pub enum EventTypeError {
     NotFound,
     #[error("Event type with this name already exists")]
     AlreadyExists,
+    #[error("Internal error: {0}")]
+    InternalError(String),
 }
 
 impl From<EventError> for AppError {
@@ -62,6 +66,11 @@ impl From<EventError> for AppError {
                             "Database connection error: {conn_err}"
                         ))
                     }
+                    EventTypeError::InternalError(msg) => {
+                        AppError::internal_server_error(&format!(
+                            "Internal error: {msg}"
+                        ))
+                    }
                 }
             }
             EventError::Database(db_err) => {
@@ -82,6 +91,11 @@ impl From<EventError> for AppError {
             EventError::Pool(pool_err) => {
                 AppError::internal_server_error(&format!(
                     "Cache connection error: {pool_err}"
+                ))
+            }
+            EventError::InternalError(msg) => {
+                AppError::internal_server_error(&format!(
+                    "Internal error: {msg}"
                 ))
             }
         }
