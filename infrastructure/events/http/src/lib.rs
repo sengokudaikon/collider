@@ -139,7 +139,7 @@ pub async fn get_event(
 ) -> Result<Json<EventResponse>, AppError> {
     let query = GetEventQuery { event_id: id };
     let event = services.get_event.execute(query).await?;
-    Ok(Json(event.into()))
+    Ok(Json(event))
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
@@ -221,7 +221,7 @@ pub async fn list_events(
         offset: Some(offset),
     };
     let events = services.list_events.execute(query).await?;
-    Ok(Json(events.into_iter().map(Into::into).collect()))
+    Ok(Json(events))
 }
 
 #[utoipa::path(

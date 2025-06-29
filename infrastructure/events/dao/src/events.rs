@@ -5,8 +5,10 @@ use database_traits::dao::GenericDao;
 use events_commands::{CreateEventCommand, UpdateEventCommand};
 use events_errors::{EventError, EventTypeError};
 use events_models::Event;
+use events_responses::EventResponse;
 use sql_connection::SqlConnect;
 use tracing::instrument;
+
 
 #[derive(Clone)]
 pub struct EventDao {
@@ -17,6 +19,21 @@ impl EventDao {
     pub fn new(db: SqlConnect) -> Self { Self { db } }
 
     pub fn db(&self) -> &SqlConnect { &self.db }
+
+    fn map_row_to_response(&self, row: &tokio_postgres::Row) -> EventResponse {
+        let metadata_json: Option<serde_json::Value> = row.get(4);
+        let metadata =
+            metadata_json.and_then(|json| serde_json::from_value(json).ok());
+
+        EventResponse {
+            id: row.get(0),
+            user_id: row.get(1),
+            event_type_id: row.get(2),
+            event_type: row.get(5), // event type name from JOIN
+            timestamp: row.get(3),
+            metadata,
+        }
+    }
 
     #[instrument(skip(self))]
     pub async fn count_events(
@@ -211,7 +228,7 @@ impl GenericDao for EventDao {
     type Error = EventError;
     type ID = i64;
     type Model = Event;
-    type Response = Event;
+    type Response = EventResponse;
     type UpdateRequest = UpdateEventCommand;
 
     async fn find_by_id(
@@ -220,31 +237,35 @@ impl GenericDao for EventDao {
         let client = self.db.get_read_client().await?;
         let stmt = client
             .prepare(
-                "SELECT id, user_id, event_type_id, timestamp, metadata \
-                 FROM events WHERE id = $1",
+                "SELECT e.id, e.user_id, e.event_type_id, e.timestamp, e.metadata, et.name \
+                 FROM events e \
+                 JOIN event_types et ON e.event_type_id = et.id \
+                 WHERE e.id = $1",
             )
             .await?;
         let rows = client.query(&stmt, &[&id]).await?;
 
-        let event = rows
+        let event_response = rows
             .first()
-            .map(|row| self.map_row(row))
+            .map(|row| self.map_row_to_response(row))
             .ok_or(EventError::NotFound { event_id: id })?;
 
-        Ok(event)
+        Ok(event_response)
     }
 
     async fn all(&self) -> Result<Vec<Self::Response>, Self::Error> {
         let client = self.db.get_read_client().await?;
         let stmt = client
             .prepare(
-                "SELECT id, user_id, event_type_id, timestamp, metadata \
-                 FROM events ORDER BY timestamp DESC",
+                "SELECT e.id, e.user_id, e.event_type_id, e.timestamp, e.metadata, et.name \
+                 FROM events e \
+                 JOIN event_types et ON e.event_type_id = et.id \
+                 ORDER BY e.timestamp DESC",
             )
             .await?;
         let rows = client.query(&stmt, &[]).await?;
 
-        let events = rows.iter().map(|row| self.map_row(row)).collect();
+        let events = rows.iter().map(|row| self.map_row_to_response(row)).collect();
 
         Ok(events)
     }
@@ -256,11 +277,11 @@ impl GenericDao for EventDao {
         let timestamp = req.timestamp.unwrap_or_else(Utc::now);
 
         // Look up event type by name and create event in single query using
-        // CTE
+        // CTE - now includes event type name in result
         let stmt = client
             .prepare(
                 "WITH event_type_lookup AS (
-                     SELECT id as event_type_id FROM event_types WHERE name \
+                     SELECT id as event_type_id, name as event_type_name FROM event_types WHERE name \
                  = $2
                  ),
                  event_insert AS (
@@ -274,7 +295,8 @@ impl GenericDao for EventDao {
                  SELECT ei.id, ei.user_id, ei.event_type_id, ei.timestamp, \
                  ei.metadata,
                         CASE WHEN etl.event_type_id IS NULL THEN true ELSE \
-                 false END as type_not_found
+                 false END as type_not_found,
+                        COALESCE(etl.event_type_name, '') as event_type_name
                  FROM event_type_lookup etl
                  RIGHT JOIN event_insert ei ON true",
             )
@@ -293,16 +315,17 @@ impl GenericDao for EventDao {
                 return Err(EventError::EventType(EventTypeError::NotFound));
             }
 
-            let event = Event {
+            let event_response = EventResponse {
                 id: row.get(0),
                 user_id: row.get(1),
                 event_type_id: row.get(2),
+                event_type: row.get(6), // event_type_name from query
                 timestamp: row.get(3),
                 metadata: row
                     .get::<_, Option<serde_json::Value>>(4)
                     .and_then(|json| serde_json::from_value(json).ok()),
             };
-            Ok(event)
+            Ok(event_response)
         }
         else {
             Err(EventError::Database(
@@ -360,14 +383,21 @@ impl GenericDao for EventDao {
                             let metadata = metadata_json.and_then(|json| {
                                 serde_json::from_value(json).ok()
                             });
-                            let event = Event {
+                            // Need to get event type name for response
+                            let event_type_name = client
+                                .query_one("SELECT name FROM event_types WHERE id = $1", &[&row.get::<_, i32>(2)])
+                                .await?
+                                .get(0);
+                            
+                            let event_response = EventResponse {
                                 id: row.get(0),
                                 user_id: row.get(1),
                                 event_type_id: row.get(2),
+                                event_type: event_type_name,
                                 timestamp: row.get(3),
                                 metadata,
                             };
-                            Ok(event)
+                            Ok(event_response)
                         }
                         _ => {
                             Err(EventError::Database(
@@ -386,40 +416,48 @@ impl GenericDao for EventDao {
             (Some(event_type_id), None) => {
                 let stmt = client
                     .prepare(
-                        "UPDATE events SET event_type_id = $2 
-                         WHERE id = $1 
-                         RETURNING id, user_id, event_type_id, timestamp, \
-                         metadata",
+                        "WITH updated AS (
+                             UPDATE events SET event_type_id = $2 
+                             WHERE id = $1 
+                             RETURNING id, user_id, event_type_id, timestamp, metadata
+                         )
+                         SELECT u.id, u.user_id, u.event_type_id, u.timestamp, u.metadata, et.name
+                         FROM updated u
+                         JOIN event_types et ON u.event_type_id = et.id",
                     )
                     .await?;
 
                 let rows = client.query(&stmt, &[&id, event_type_id]).await?;
 
-                let event = rows
+                let event_response = rows
                     .first()
-                    .map(|row| self.map_row(row))
+                    .map(|row| self.map_row_to_response(row))
                     .ok_or(EventError::NotFound { event_id: id })?;
 
-                Ok(event)
+                Ok(event_response)
             }
             (None, Some(metadata)) => {
                 let stmt = client
                     .prepare(
-                        "UPDATE events SET metadata = $2 
-                         WHERE id = $1 
-                         RETURNING id, user_id, event_type_id, timestamp, \
-                         metadata",
+                        "WITH updated AS (
+                             UPDATE events SET metadata = $2 
+                             WHERE id = $1 
+                             RETURNING id, user_id, event_type_id, timestamp, metadata
+                         )
+                         SELECT u.id, u.user_id, u.event_type_id, u.timestamp, u.metadata, et.name
+                         FROM updated u
+                         JOIN event_types et ON u.event_type_id = et.id",
                     )
                     .await?;
 
                 let rows = client.query(&stmt, &[&id, metadata]).await?;
 
-                let event = rows
+                let event_response = rows
                     .first()
-                    .map(|row| self.map_row(row))
+                    .map(|row| self.map_row_to_response(row))
                     .ok_or(EventError::NotFound { event_id: id })?;
 
-                Ok(event)
+                Ok(event_response)
             }
             (None, None) => {
                 // No updates, just return the existing event
@@ -458,6 +496,7 @@ impl GenericDao for EventDao {
         }
     }
 
+
     async fn count(&self) -> Result<i64, Self::Error> {
         let client = self.db.get_read_client().await?;
         let stmt = client.prepare("SELECT COUNT(*) FROM events").await?;
@@ -474,13 +513,14 @@ impl EventDao {
     pub async fn find_with_filters(
         &self, user_id: Option<i64>, event_type_id: Option<i32>,
         limit: Option<u64>, offset: Option<u64>,
-    ) -> Result<Vec<Event>, EventError> {
+    ) -> Result<Vec<EventResponse>, EventError> {
         let client = self.db.get_read_client().await?;
 
         // Build query dynamically based on provided filters
         let mut query = String::from(
-            "SELECT id, user_id, event_type_id, timestamp, metadata FROM \
-             events",
+            "SELECT e.id, e.user_id, e.event_type_id, e.timestamp, e.metadata, et.name \
+             FROM events e \
+             JOIN event_types et ON e.event_type_id = et.id",
         );
         let mut where_clauses = Vec::new();
         let mut params: PgParamVec = Vec::new();
@@ -489,13 +529,13 @@ impl EventDao {
         // Add WHERE filters
         if let Some(uid) = user_id {
             param_count += 1;
-            where_clauses.push(format!("user_id = ${param_count}"));
+            where_clauses.push(format!("e.user_id = ${param_count}"));
             params.push(Box::new(uid));
         }
 
         if let Some(etid) = event_type_id {
             param_count += 1;
-            where_clauses.push(format!("event_type_id = ${param_count}"));
+            where_clauses.push(format!("e.event_type_id = ${param_count}"));
             params.push(Box::new(etid));
         }
 
@@ -505,7 +545,7 @@ impl EventDao {
         }
 
         // Add ORDER BY
-        query.push_str(" ORDER BY timestamp DESC");
+        query.push_str(" ORDER BY e.timestamp DESC");
 
         // Add LIMIT and OFFSET
         if let Some(l) = limit {
@@ -527,7 +567,7 @@ impl EventDao {
 
         let rows = client.query(&stmt, &param_refs).await?;
 
-        let events = rows.iter().map(|row| self.map_row(row)).collect();
+        let events = rows.iter().map(|row| self.map_row_to_response(row)).collect();
 
         Ok(events)
     }
@@ -547,24 +587,28 @@ impl EventDao {
     #[instrument(skip_all)]
     pub async fn find_by_user_id(
         &self, user_id: i64, limit: Option<u64>,
-    ) -> Result<Vec<Event>, EventError> {
+    ) -> Result<Vec<EventResponse>, EventError> {
         let client = self.db.get_read_client().await?;
 
         let (sql, params): (String, Vec<i64>) = match limit {
             Some(l) => {
                 (
-                    "SELECT id, user_id, event_type_id, timestamp, metadata 
-                 FROM events WHERE user_id = $1 
-                 ORDER BY timestamp DESC LIMIT $2"
+                    "SELECT e.id, e.user_id, e.event_type_id, e.timestamp, e.metadata, et.name 
+                 FROM events e 
+                 JOIN event_types et ON e.event_type_id = et.id 
+                 WHERE e.user_id = $1 
+                 ORDER BY e.timestamp DESC LIMIT $2"
                         .to_string(),
                     vec![l as i64],
                 )
             }
             None => {
                 (
-                    "SELECT id, user_id, event_type_id, timestamp, metadata 
-                 FROM events WHERE user_id = $1 
-                 ORDER BY timestamp DESC"
+                    "SELECT e.id, e.user_id, e.event_type_id, e.timestamp, e.metadata, et.name 
+                 FROM events e 
+                 JOIN event_types et ON e.event_type_id = et.id 
+                 WHERE e.user_id = $1 
+                 ORDER BY e.timestamp DESC"
                         .to_string(),
                     vec![],
                 )
@@ -578,7 +622,7 @@ impl EventDao {
             .collect();
 
         let rows = client.query(&stmt, &param_refs).await?;
-        let events = rows.iter().map(|row| self.map_row(row)).collect();
+        let events = rows.iter().map(|row| self.map_row_to_response(row)).collect();
 
         Ok(events)
     }

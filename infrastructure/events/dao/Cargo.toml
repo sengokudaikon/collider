@@ -12,6 +12,7 @@ chrono.workspace = true
 events-models.workspace = true
 events-commands.workspace = true
 events-errors.workspace = true
+events-responses.workspace = true
 database-traits.workspace = true
 sql-connection.workspace = true
 dao-utils.workspace = true

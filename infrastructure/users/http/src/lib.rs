@@ -216,5 +216,5 @@ pub async fn get_user_events(
 
     let events = services.get_user_events.execute(query).await?;
 
-    Ok(Json(events.into_iter().map(Into::into).collect()))
+    Ok(Json(events))
 }

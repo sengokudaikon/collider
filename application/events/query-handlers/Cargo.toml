@@ -9,6 +9,7 @@ events-queries.workspace = true
 events-errors.workspace = true
 events-dao.workspace = true
 events-cache-keys.workspace = true
+events-responses.workspace = true
 redis-connection.workspace = true
 sql-connection.workspace = true
 database-traits.workspace = true

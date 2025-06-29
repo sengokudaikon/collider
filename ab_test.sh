@@ -4,7 +4,7 @@ set -e
 
 HOST="$1"
 USER_ID="${2:-1}"
-TYPE="${3:-api.test}"
+TYPE="${3:-}"
 
 REQUESTS="${AB_REQUESTS:-1000}"
 CONCURRENCY="${AB_CONCURRENCY:-50}"
@@ -18,19 +18,19 @@ usage() {
 Usage: $0 <host> [user_id] [event_type]
 
 Arguments:
-  host        Server URL (required) - e.g., http://localhost:8880
+  host        Server URL (required) - e.g., http://127.0.0.1:8880
   user_id     User ID for testing (default: 1) - must be positive integer
-  event_type  Event type to test (default: api.test)
+  event_type  Event type to test (default: auto-detected from server)
 
 Environment Variables:
   AB_REQUESTS     Number of requests (default: 1000)
-  AB_CONCURRENCY  Concurrent requests (default: 20)
+  AB_CONCURRENCY  Concurrent requests (default: 50)
   AB_TIMEOUT      Request timeout in seconds (default: 30)
 
 Examples:
-  $0 http://localhost:8880
-  $0 http://localhost:8880 123 api.test
-  AB_REQUESTS=500 $0 http://localhost:8880
+  $0 http://127.0.0.1:8880
+  $0 http://127.0.0.1:8880 123 event_type_42
+  AB_REQUESTS=500 $0 http://127.0.0.1:8880
 
 EOF
 }
@@ -58,10 +58,7 @@ validate_parameters() {
         exit 1
     fi
 
-    if [ -z "$TYPE" ]; then
-        echo "❌ Error: Event type cannot be empty"
-        exit 1
-    fi
+    # TYPE validation will be done after fetching from server if needed
 }
 
 check_dependencies() {
@@ -92,6 +89,27 @@ check_server_health() {
     fi
     
     echo "✅ Server health check passed"
+}
+
+get_random_event_type() {
+    echo "🔍 Fetching available event types..." >&2
+    
+    # Use known valid event types from the database
+    local event_types="api.request
+admin.login
+api.rate_limited
+admin.settings_updated
+admin.updated_user
+api.error
+admin.logout
+admin.generated_report
+api.response
+admin.deleted_user"
+    
+    # Select random event type
+    local random_type=$(echo "$event_types" | shuf -n 1)
+    echo "✅ Selected random event type: $random_type" >&2
+    echo "$random_type"
 }
 
 generate_test_event() {
@@ -129,12 +147,38 @@ analyze_ab_results() {
         FAILED_COUNT=$((FAILED_COUNT + 1))
         return 1
     elif echo "$output" | grep -q "Requests per second"; then
-        local rps=$(echo "$output" | grep "Requests per second" | awk '{print $4}')
-        local avg_time=$(echo "$output" | grep "Time per request.*mean" | awk '{print $4}')
-        echo "✅ $test_name PASSED"
-        echo "   Performance: $rps req/sec, ${avg_time}ms avg"
-        PASSED_COUNT=$((PASSED_COUNT + 1))
-        return 0
+        # Check for both failed requests and non-2xx responses
+        local failed_requests=$(echo "$output" | grep "Failed requests:" | awk '{print $3}' || echo "0")
+        local non2xx_responses=$(echo "$output" | grep "Non-2xx responses:" | awk '{print $3}' || echo "0")
+        local total_requests=$(echo "$output" | grep "Complete requests:" | awk '{print $3}')
+        
+        # Convert to numbers, default to 0 if empty
+        failed_requests=${failed_requests:-0}
+        non2xx_responses=${non2xx_responses:-0}
+        
+        if [ "$failed_requests" -gt 0 ] || [ "$non2xx_responses" -gt 0 ]; then
+            echo "❌ $test_name FAILED"
+            
+            if [ "$failed_requests" -gt 0 ]; then
+                echo "   Connection failures: $failed_requests/$total_requests"
+            fi
+            
+            if [ "$non2xx_responses" -gt 0 ]; then
+                echo "   HTTP errors (500, 404, etc): $non2xx_responses/$total_requests"
+                echo "   Error rate: $(( (non2xx_responses * 100) / total_requests ))%"
+            fi
+            
+            FAILED_COUNT=$((FAILED_COUNT + 1))
+            return 1
+        else
+            local rps=$(echo "$output" | grep "Requests per second" | awk '{print $4}')
+            local avg_time=$(echo "$output" | grep "Time per request.*mean" | awk '{print $4}')
+            echo "✅ $test_name PASSED"
+            echo "   Performance: $rps req/sec, ${avg_time}ms avg"
+            echo "   Success rate: $total_requests/$total_requests (100%)"
+            PASSED_COUNT=$((PASSED_COUNT + 1))
+            return 0
+        fi
     else
         echo "⚠  $test_name UNCLEAR RESULT"
         FAILED_COUNT=$((FAILED_COUNT + 1))
@@ -149,7 +193,8 @@ test_endpoint() {
     echo "📊 Testing: $test_name"
     echo "   URL: $url"
     
-    local result=$(ab -n "$REQUESTS" -c "$CONCURRENCY" -s "$TIMEOUT" "$url" 2>&1)
+    # Add -v flag for verbose output and ensure we catch HTTP errors
+    local result=$(ab -n "$REQUESTS" -c "$CONCURRENCY" -s "$TIMEOUT" -v 2 "$url" 2>&1)
     analyze_ab_results "$test_name" "$result"
     echo ""
 }
@@ -164,6 +209,7 @@ test_post_endpoint() {
     echo "   Data: $data_file"
     
     local result=$(ab -n "$REQUESTS" -c "$CONCURRENCY" -s "$TIMEOUT" \
+                     -v 2 \
                      -T "application/json" \
                      -p "$data_file" \
                      "$url" 2>&1)
@@ -232,6 +278,15 @@ main() {
     validate_parameters
     check_dependencies
     check_server_health
+
+    # Get random event type if not provided
+    if [ -z "$TYPE" ]; then
+        TYPE=$(get_random_event_type)
+        if [ -z "$TYPE" ]; then
+            echo "❌ Error: Could not determine event type"
+            exit 1
+        fi
+    fi
 
     generate_test_event
 

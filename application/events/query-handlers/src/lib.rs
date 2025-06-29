@@ -10,8 +10,8 @@ use events_cache_keys::{
 };
 use events_dao::EventDao;
 use events_errors::EventError;
-use events_models::Event;
 use events_queries::{GetEventQuery, GetUserEventsQuery, ListEventsQuery};
+use events_responses::EventResponse;
 use redis_connection::{
     cache_provider::CacheProvider,
     core::{CacheTypeBind, Json},
@@ -34,7 +34,7 @@ impl GetEventQueryHandler {
     #[instrument(skip(self))]
     pub async fn execute(
         &self, query: GetEventQuery,
-    ) -> Result<Event, EventError> {
+    ) -> Result<EventResponse, EventError> {
         let backend = CacheProvider::get_backend();
 
         // Try to get from cache first
@@ -86,7 +86,7 @@ impl ListEventsQueryHandler {
     #[instrument(skip(self))]
     pub async fn execute(
         &self, query: ListEventsQuery,
-    ) -> Result<Vec<Event>, EventError> {
+    ) -> Result<Vec<EventResponse>, EventError> {
         // Create a hash of the query parameters for cache key
         let mut hasher = DefaultHasher::new();
         query.user_id.hash(&mut hasher);
@@ -151,7 +151,7 @@ impl GetUserEventsQueryHandler {
     #[instrument(skip(self))]
     pub async fn execute(
         &self, query: GetUserEventsQuery,
-    ) -> Result<Vec<Event>, EventError> {
+    ) -> Result<Vec<EventResponse>, EventError> {
         let backend = CacheProvider::get_backend();
 
         // Use different cache keys based on whether limit is specified

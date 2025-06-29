@@ -788,7 +788,7 @@ dependencies = [
 name = "events-cache-keys"
 version = "0.1.0"
 dependencies = [
- "events-models",
+ "events-responses",
  "redis-connection",
 ]
 
@@ -831,6 +831,7 @@ dependencies = [
  "events-commands",
  "events-errors",
  "events-models",
+ "events-responses",
  "serde_json",
  "sql-connection",
  "tokio-postgres",
@@ -900,6 +901,7 @@ dependencies = [
  "events-errors",
  "events-models",
  "events-queries",
+ "events-responses",
  "redis-connection",
  "sql-connection",
  "test-utils",

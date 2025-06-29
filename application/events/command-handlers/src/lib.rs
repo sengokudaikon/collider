@@ -12,14 +12,12 @@ use tracing::instrument;
 #[derive(Clone)]
 pub struct CreateEventHandler {
     event_dao: EventDao,
-    event_type_dao: EventTypeDao,
 }
 
 impl CreateEventHandler {
     pub fn new(db: SqlConnect) -> Self {
         Self {
-            event_dao: EventDao::new(db.clone()),
-            event_type_dao: EventTypeDao::new(db),
+            event_dao: EventDao::new(db),
         }
     }
 
@@ -27,22 +25,8 @@ impl CreateEventHandler {
     pub async fn execute(
         &self, command: CreateEventCommand,
     ) -> Result<EventResponse, EventError> {
-        let saved_event = self.event_dao.create(command).await?;
-        let event_type = self
-            .event_type_dao
-            .find_by_id(saved_event.event_type_id)
-            .await
-            .map(|et| et.name)
-            .unwrap_or_else(|_| String::new());
-
-        Ok(EventResponse {
-            id: saved_event.id,
-            user_id: saved_event.user_id,
-            event_type,
-            event_type_id: saved_event.event_type_id,
-            timestamp: saved_event.timestamp,
-            metadata: saved_event.metadata,
-        })
+        // DAO now returns EventResponse directly with event type name included
+        self.event_dao.create(command).await
     }
 }
 
