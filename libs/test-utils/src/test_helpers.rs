@@ -1,7 +1,6 @@
 use anyhow::Result;
 use serde_json::Value;
 use sql_connection::SqlConnect;
-use uuid::Uuid;
 
 use crate::TestPostgresContainer;
 
@@ -31,24 +30,24 @@ pub async fn create_unique_event_types(
 
 pub async fn create_test_user(
     container: &TestPostgresContainer,
-) -> Result<Uuid> {
+) -> Result<i64> {
     create_test_user_modern(container).await
 }
 
 pub async fn create_test_user_with_name(
     container: &TestPostgresContainer, name: &str,
-) -> Result<Uuid> {
+) -> Result<i64> {
     create_test_user_with_name_modern(container, name).await
 }
 
 pub async fn create_test_users(
     container: &TestPostgresContainer,
-) -> Result<(Uuid, Uuid)> {
+) -> Result<(i64, i64)> {
     create_test_users_modern(container).await
 }
 
 pub async fn create_test_event(
-    container: &TestPostgresContainer, user_id: Uuid, event_type_id: i32,
+    container: &TestPostgresContainer, user_id: i64, event_type_id: i32,
     metadata: Option<&str>,
 ) -> Result<i64> {
     create_test_event_modern(container, user_id, event_type_id, metadata)
@@ -130,36 +129,35 @@ pub async fn create_unique_event_types_modern(
 
 pub async fn create_test_user_modern(
     container: &TestPostgresContainer,
-) -> Result<Uuid> {
-    let user_id = Uuid::now_v7();
+) -> Result<i64> {
     let client = container.pool.get().await?;
-    client
-        .execute(
-            "INSERT INTO users (id, name, created_at) VALUES ($1, 'Test \
-             User', NOW())",
-            &[&user_id],
+    let row = client
+        .query_one(
+            "INSERT INTO users (name, created_at) VALUES ('Test User', NOW()) \
+             RETURNING id",
+            &[],
         )
         .await?;
-    Ok(user_id)
+    Ok(row.get(0))
 }
 
 pub async fn create_test_user_with_name_modern(
     container: &TestPostgresContainer, name: &str,
-) -> Result<Uuid> {
-    let user_id = Uuid::now_v7();
+) -> Result<i64> {
     let client = container.pool.get().await?;
-    client
-        .execute(
-            "INSERT INTO users (id, name, created_at) VALUES ($1, $2, NOW())",
-            &[&user_id, &name],
+    let row = client
+        .query_one(
+            "INSERT INTO users (name, created_at) VALUES ($1, NOW()) \
+             RETURNING id",
+            &[&name],
         )
         .await?;
-    Ok(user_id)
+    Ok(row.get(0))
 }
 
 pub async fn create_test_users_modern(
     container: &TestPostgresContainer,
-) -> Result<(Uuid, Uuid)> {
+) -> Result<(i64, i64)> {
     let user1_id =
         create_test_user_with_name_modern(container, "Alice").await?;
     let user2_id =
@@ -168,7 +166,7 @@ pub async fn create_test_users_modern(
 }
 
 pub async fn create_test_event_modern(
-    container: &TestPostgresContainer, user_id: Uuid, event_type_id: i32,
+    container: &TestPostgresContainer, user_id: i64, event_type_id: i32,
     metadata: Option<&str>,
 ) -> Result<i64> {
     let client = container.pool.get().await?;

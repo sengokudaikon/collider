@@ -126,6 +126,6 @@ mod tests {
         let result = create_handler.execute(command).await.unwrap();
 
         assert_eq!(result.name, "test_user");
-        assert!(!result.id.is_nil());
+        assert!(result.id > 0);
     }
 }

@@ -17,7 +17,6 @@ redis-connection.workspace = true
 
 axum = { workspace = true, features = ["macros"] }
 serde.workspace = true
-uuid.workspace = true
 tracing.workspace = true
 chrono.workspace = true
 utoipa.workspace = true

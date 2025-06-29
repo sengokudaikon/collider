@@ -1,11 +1,10 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
-use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct UpdateUserCommand {
     #[serde(skip)]
-    pub user_id: Uuid,
+    pub user_id: i64,
     pub name: Option<String>,
 }
 
@@ -16,5 +15,5 @@ pub struct CreateUserCommand {
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct DeleteUserCommand {
-    pub user_id: Uuid,
+    pub user_id: i64,
 }

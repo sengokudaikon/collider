@@ -139,7 +139,6 @@ mod tests {
     use database_traits::dao::GenericDao;
     use serde_json::json;
     use test_utils::{TestPostgresContainer, *};
-    use uuid::Uuid;
 
     use super::*;
 
@@ -216,7 +215,7 @@ mod tests {
 
         let _event_type_id =
             create_test_event_type(&container).await.unwrap();
-        let non_existent_user_id = Uuid::now_v7();
+        let non_existent_user_id = 999999;
 
         let command = CreateEventCommand {
             user_id: non_existent_user_id,

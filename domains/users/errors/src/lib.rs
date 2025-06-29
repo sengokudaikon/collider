@@ -2,12 +2,11 @@ use common_errors::AppError;
 use redis_connection::{PoolError, RedisError};
 use sql_connection::{PgError, PoolError as DbPoolError};
 use thiserror::Error;
-use uuid::Uuid;
 
 #[derive(Debug, Error)]
 pub enum UserError {
     #[error("User not found: {user_id}")]
-    NotFound { user_id: Uuid },
+    NotFound { user_id: i64 },
     #[error("User not found: {username}")]
     NameNotFound { username: String },
     #[error("Database error: {0}")]

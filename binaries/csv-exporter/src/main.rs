@@ -64,7 +64,8 @@ async fn export_users(
     let limit_clause =
         limit.map(|l| format!(" LIMIT {l}")).unwrap_or_default();
     let sql = format!(
-        "SELECT id, name, created_at FROM users ORDER BY created_at{limit_clause}"
+        "SELECT id, name, created_at FROM users ORDER BY \
+         created_at{limit_clause}"
     );
 
     let rows = client.query(&sql, &[]).await?;
@@ -103,9 +104,8 @@ async fn export_event_types(
     let client = pool.get().await?;
     let limit_clause =
         limit.map(|l| format!(" LIMIT {l}")).unwrap_or_default();
-    let sql = format!(
-        "SELECT id, name FROM event_types ORDER BY id{limit_clause}"
-    );
+    let sql =
+        format!("SELECT id, name FROM event_types ORDER BY id{limit_clause}");
 
     let rows = client.query(&sql, &[]).await?;
     let count = rows.len();

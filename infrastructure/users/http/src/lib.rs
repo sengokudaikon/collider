@@ -20,7 +20,6 @@ use user_query_handlers::{
 };
 use user_responses::UserResponse;
 use utoipa::{IntoParams, ToSchema};
-use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct UserServices {
@@ -77,7 +76,7 @@ pub async fn create_user(
     path = "/user/{id}",
     request_body = UpdateUserCommand,
     params(
-        ("id" = Uuid, Path, description = "User ID")
+        ("id" = i64, Path, description = "User ID")
     ),
     responses(
         (status = 200, description = "User updated successfully", body = UserResponse),
@@ -90,7 +89,7 @@ pub async fn create_user(
 )]
 #[instrument(skip_all)]
 pub async fn update_user(
-    State(services): State<UserServices>, Path(id): Path<Uuid>,
+    State(services): State<UserServices>, Path(id): Path<i64>,
     Json(mut command): Json<UpdateUserCommand>,
 ) -> Result<Json<UserResponse>, AppError> {
     command.user_id = id;
@@ -105,7 +104,7 @@ pub async fn update_user(
     delete,
     path = "/user/{id}",
     params(
-        ("id" = Uuid, Path, description = "User ID")
+        ("id" = i64, Path, description = "User ID")
     ),
     responses(
         (status = 204, description = "User deleted successfully"),
@@ -116,7 +115,7 @@ pub async fn update_user(
 )]
 #[instrument(skip_all)]
 pub async fn delete_user(
-    State(services): State<UserServices>, Path(id): Path<Uuid>,
+    State(services): State<UserServices>, Path(id): Path<i64>,
 ) -> Result<StatusCode, AppError> {
     let command = DeleteUserCommand { user_id: id };
     services.delete_user.execute(command).await?;
@@ -141,12 +140,12 @@ pub struct UserEventsQueryParams {
     get,
     path = "/user/{id}",
     params(
-        ("id" = Uuid, Path, description = "User ID"),
+        ("id" = i64, Path, description = "User ID"),
         UserQueryParams
     ),
     responses(
         (status = 200, description = "User found", body = UserResponse),
-        (status = 400, description = "Invalid UUID format", body = common_errors::ApiErrorResponse),
+        (status = 400, description = "Invalid ID format", body = common_errors::ApiErrorResponse),
         (status = 404, description = "User not found", body = common_errors::ApiErrorResponse),
         (status = 500, description = "Internal server error", body = common_errors::ApiErrorResponse)
     ),
@@ -154,7 +153,7 @@ pub struct UserEventsQueryParams {
 )]
 #[instrument(skip_all)]
 pub async fn get_user(
-    State(services): State<UserServices>, Path(id): Path<Uuid>,
+    State(services): State<UserServices>, Path(id): Path<i64>,
     Query(_params): Query<UserQueryParams>,
 ) -> Result<Json<UserResponse>, AppError> {
     let query = user_queries::GetUserQuery { user_id: id };
@@ -194,12 +193,12 @@ pub async fn list_users(
     get,
     path = "/user/{user_id}/events",
     params(
-        ("user_id" = String, Path, description = "User ID"),
+        ("user_id" = i64, Path, description = "User ID"),
         UserEventsQueryParams
     ),
     responses(
         (status = 200, description = "User events", body = Vec<EventResponse>),
-        (status = 400, description = "Invalid UUID format", body = common_errors::ApiErrorResponse),
+        (status = 400, description = "Invalid ID format", body = common_errors::ApiErrorResponse),
         (status = 404, description = "User not found", body = common_errors::ApiErrorResponse),
         (status = 500, description = "Internal server error", body = common_errors::ApiErrorResponse)
     ),
@@ -207,15 +206,11 @@ pub async fn list_users(
 )]
 #[instrument(skip_all)]
 pub async fn get_user_events(
-    State(services): State<UserServices>, Path(user_id): Path<String>,
+    State(services): State<UserServices>, Path(user_id): Path<i64>,
     Query(params): Query<UserEventsQueryParams>,
 ) -> Result<Json<Vec<EventResponse>>, AppError> {
-    let user_uuid = user_id.parse::<Uuid>().map_err(|_| {
-        AppError::bad_request("INVALID_UUID", "Invalid UUID format provided")
-    })?;
-
     let query = GetUserEventsQuery {
-        user_id: user_uuid,
+        user_id,
         limit: params.limit,
     };
 

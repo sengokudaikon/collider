@@ -13,7 +13,6 @@ sql-connection.workspace = true
 redis-connection.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-uuid.workspace = true
 
 # Modern test containers
 testcontainers-modules = { version = "0.12.1", features = ["postgres", "redis"] }

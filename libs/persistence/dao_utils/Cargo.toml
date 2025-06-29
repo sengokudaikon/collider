@@ -5,6 +5,5 @@ edition = "2024"
 
 [dependencies]
 tokio-postgres.workspace = true
-uuid.workspace = true
 thiserror.workspace = true
 deadpool-postgres.workspace = true

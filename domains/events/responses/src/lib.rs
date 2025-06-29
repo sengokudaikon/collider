@@ -1,7 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
-use uuid::Uuid;
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct BulkDeleteEventsResponse {
@@ -13,7 +12,7 @@ pub struct BulkDeleteEventsResponse {
 pub struct EventResponse {
     pub id: i64,
     #[serde(rename = "userId")]
-    pub user_id: Uuid,
+    pub user_id: i64,
     #[serde(rename = "eventType")]
     pub event_type: String,
     pub event_type_id: i32,

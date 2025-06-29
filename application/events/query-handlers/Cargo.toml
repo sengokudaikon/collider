@@ -13,7 +13,6 @@ redis-connection.workspace = true
 sql-connection.workspace = true
 database-traits.workspace = true
 tracing.workspace = true
-uuid.workspace = true
 [dev-dependencies]
 anyhow.workspace = true
 test-utils.workspace = true

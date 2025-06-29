@@ -63,7 +63,6 @@ mod tests {
     use redis_connection::cache_provider::CacheProvider;
     use test_utils::{TestRedisContainer, *};
     use user_queries::{GetUserByNameQuery, GetUserQuery, ListUsersQuery};
-    use uuid::Uuid;
 
     use super::*;
 
@@ -96,7 +95,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_user_not_found() {
         let (_container, handler) = setup_test_db().await.unwrap();
-        let non_existent_user_id = Uuid::now_v7();
+        let non_existent_user_id = 999999;
 
         let query = GetUserQuery {
             user_id: non_existent_user_id,
@@ -133,7 +132,7 @@ mod tests {
             setup_test_db_for_name_queries().await.unwrap();
 
         // Use a unique name to avoid cache conflicts
-        let unique_name = format!("Alice_{}", Uuid::now_v7());
+        let unique_name = format!("Alice_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis());
         let user_id = create_test_user_with_name(&container, &unique_name)
             .await
             .unwrap();

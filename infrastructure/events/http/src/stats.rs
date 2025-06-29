@@ -101,8 +101,7 @@ impl StatsService {
             .unwrap_or_else(|| "all".to_string());
         let from_str = from_rounded.to_rfc3339();
         let to_str = to_rounded.to_rfc3339();
-        let composite_key =
-            format!("{from_str}:{to_str}:{event_type_str}");
+        let composite_key = format!("{from_str}:{to_str}:{event_type_str}");
 
         let mut cache = cache_key.bind_with(backend.clone(), &composite_key);
 

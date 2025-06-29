@@ -576,7 +576,6 @@ dependencies = [
  "deadpool-postgres",
  "thiserror 2.0.12",
  "tokio-postgres",
- "uuid",
 ]
 
 [[package]]
@@ -628,7 +627,6 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "tokio-postgres",
- "uuid",
 ]
 
 [[package]]
@@ -792,7 +790,6 @@ version = "0.1.0"
 dependencies = [
  "events-models",
  "redis-connection",
- "uuid",
 ]
 
 [[package]]
@@ -811,7 +808,6 @@ dependencies = [
  "test-utils",
  "tokio",
  "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -822,7 +818,6 @@ dependencies = [
  "serde",
  "serde_json",
  "utoipa",
- "uuid",
 ]
 
 [[package]]
@@ -840,7 +835,6 @@ dependencies = [
  "sql-connection",
  "tokio-postgres",
  "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -873,7 +867,6 @@ dependencies = [
  "tokio",
  "tracing",
  "utoipa",
- "uuid",
 ]
 
 [[package]]
@@ -887,7 +880,6 @@ dependencies = [
  "tokio-postgres",
  "typed-builder",
  "utoipa",
- "uuid",
 ]
 
 [[package]]
@@ -895,7 +887,6 @@ name = "events-queries"
 version = "0.1.0"
 dependencies = [
  "serde",
- "uuid",
 ]
 
 [[package]]
@@ -914,7 +905,6 @@ dependencies = [
  "test-utils",
  "tokio",
  "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -925,7 +915,6 @@ dependencies = [
  "events-models",
  "serde",
  "utoipa",
- "uuid",
 ]
 
 [[package]]
@@ -2469,7 +2458,6 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-postgres",
- "uuid",
 ]
 
 [[package]]
@@ -2788,7 +2776,6 @@ dependencies = [
  "testcontainers-modules",
  "tokio",
  "tokio-postgres",
- "uuid",
 ]
 
 [[package]]
@@ -3232,7 +3219,6 @@ version = "0.1.0"
 dependencies = [
  "redis-connection",
  "user-models",
- "uuid",
 ]
 
 [[package]]
@@ -3258,7 +3244,6 @@ dependencies = [
  "chrono",
  "serde",
  "utoipa",
- "uuid",
 ]
 
 [[package]]
@@ -3278,7 +3263,6 @@ dependencies = [
  "user-commands",
  "user-errors",
  "user-models",
- "uuid",
 ]
 
 [[package]]
@@ -3289,7 +3273,6 @@ dependencies = [
  "redis-connection",
  "sql-connection",
  "thiserror 2.0.12",
- "uuid",
 ]
 
 [[package]]
@@ -3323,7 +3306,6 @@ dependencies = [
  "user-query-handlers",
  "user-responses",
  "utoipa",
- "uuid",
 ]
 
 [[package]]
@@ -3332,7 +3314,6 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "serde",
- "uuid",
 ]
 
 [[package]]
@@ -3340,7 +3321,6 @@ name = "user-queries"
 version = "0.1.0"
 dependencies = [
  "serde",
- "uuid",
 ]
 
 [[package]]
@@ -3363,7 +3343,6 @@ dependencies = [
  "user-models",
  "user-queries",
  "user-responses",
- "uuid",
 ]
 
 [[package]]
@@ -3374,7 +3353,6 @@ dependencies = [
  "serde",
  "user-models",
  "utoipa",
- "uuid",
 ]
 
 [[package]]

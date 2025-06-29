@@ -1,5 +1,4 @@
 use serde::Deserialize;
-use uuid::Uuid;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct ListUsersQuery {
@@ -8,7 +7,7 @@ pub struct ListUsersQuery {
 }
 #[derive(Debug, Deserialize)]
 pub struct GetUserQuery {
-    pub user_id: Uuid,
+    pub user_id: i64,
 }
 #[derive(Debug, Deserialize)]
 pub struct GetUserByNameQuery {

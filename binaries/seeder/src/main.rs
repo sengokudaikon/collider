@@ -13,7 +13,6 @@ use seeder::{
     create_pool, create_users, prepare_database, restore_database,
 };
 use tokio_postgres::types::ToSql;
-use uuid::Uuid;
 
 #[derive(Parser)]
 #[command(name = "seeder")]
@@ -319,37 +318,32 @@ fn print_summary_report(
     println!("CPU Cores Utilized: {}", num_cpus::get());
 }
 
-async fn insert_users(pool: &Pool, users: &[User]) -> Result<Vec<Uuid>> {
+async fn insert_users(pool: &Pool, users: &[User]) -> Result<Vec<i64>> {
     let client = pool.get().await?;
     let count = users.len();
 
-    let mut sql =
-        "INSERT INTO users (id, name, created_at) VALUES ".to_string();
+    let mut sql = "INSERT INTO users (name, created_at) VALUES ".to_string();
     let mut params: Vec<Box<dyn ToSql + Sync + Send>> =
-        Vec::with_capacity(count * 3);
+        Vec::with_capacity(count * 2);
     let mut param_idx = 1;
 
     for user in users {
-        sql.push_str(&format!(
-            "(${}, ${}, ${}),",
-            param_idx,
-            param_idx + 1,
-            param_idx + 2
-        ));
-        params.push(Box::new(user.id));
+        sql.push_str(&format!("(${}, ${}),", param_idx, param_idx + 1));
         params.push(Box::new(user.name.as_str()));
         params.push(Box::new(user.created_at));
-        param_idx += 3;
+        param_idx += 2;
     }
     sql.pop();
+    sql.push_str(" RETURNING id");
 
     let params_slice: Vec<&(dyn ToSql + Sync)> = params
         .iter()
         .map(|p| p.as_ref() as &(dyn ToSql + Sync))
         .collect();
-    client.execute(sql.as_str(), &params_slice).await?;
+    let rows = client.query(sql.as_str(), &params_slice).await?;
 
-    Ok(users.iter().map(|u| u.id).collect())
+    let user_ids: Vec<i64> = rows.iter().map(|row| row.get(0)).collect();
+    Ok(user_ids)
 }
 
 async fn insert_event_types(

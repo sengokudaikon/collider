@@ -10,7 +10,6 @@ use tracing::instrument;
 use user_commands::{CreateUserCommand, UpdateUserCommand};
 use user_errors::UserError;
 use user_models::User;
-use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct UserDao {
@@ -42,7 +41,7 @@ impl UserDao {
 impl GenericDao for UserDao {
     type CreateRequest = CreateUserCommand;
     type Error = UserError;
-    type ID = Uuid;
+    type ID = i64;
     type Model = User;
     type Response = User;
     type UpdateRequest = UpdateUserCommand;
@@ -79,18 +78,17 @@ impl GenericDao for UserDao {
         &self, req: Self::CreateRequest,
     ) -> Result<Self::Response, Self::Error> {
         let client = self.db.get_client().await?;
-        let user_id = Uuid::now_v7();
         let created_at = Utc::now();
 
         let stmt = client
             .prepare(
                 "WITH name_check AS (
-                     SELECT EXISTS(SELECT 1 FROM users WHERE name = $2) as \
+                     SELECT EXISTS(SELECT 1 FROM users WHERE name = $1) as \
                  name_exists
                  ),
                  inserted AS (
-                     INSERT INTO users (id, name, created_at) 
-                     SELECT $1, $2, $3
+                     INSERT INTO users (name, created_at) 
+                     SELECT $1, $2
                      WHERE NOT EXISTS(SELECT 1 FROM name_check WHERE \
                  name_exists = true)
                      RETURNING id, name, created_at
@@ -101,9 +99,7 @@ impl GenericDao for UserDao {
             )
             .await?;
 
-        let rows = client
-            .query(&stmt, &[&user_id, &req.name, &created_at])
-            .await?;
+        let rows = client.query(&stmt, &[&req.name, &created_at]).await?;
 
         if let Some(row) = rows.first() {
             let name_exists: bool = row.get(3);
@@ -282,7 +278,6 @@ mod tests {
     use database_traits::dao::GenericDao;
     use test_utils::*;
     use user_commands::{CreateUserCommand, UpdateUserCommand};
-    use uuid::Uuid;
 
     use crate::{UserDao, UserError};
 
@@ -314,7 +309,7 @@ mod tests {
         let created_user = dao.create(user_model).await.unwrap();
 
         assert_eq!(created_user.name, "test_user");
-        assert!(!created_user.id.is_nil());
+        assert!(created_user.id > 0);
     }
 
     #[tokio::test]
@@ -336,7 +331,7 @@ mod tests {
         let container = setup_test_db().await;
         let sql_connect = create_sql_connect(&container);
         let dao = UserDao::new(sql_connect);
-        let id = Uuid::now_v7();
+        let id = 999999;
         let result = dao.find_by_id(id).await;
         assert!(
             matches!(result, Err(UserError::NotFound { user_id }) if user_id == id)
@@ -416,7 +411,7 @@ mod tests {
         let container = setup_test_db().await;
         let sql_connect = create_sql_connect(&container);
         let dao = UserDao::new(sql_connect);
-        let id = Uuid::now_v7();
+        let id = 999999;
         let update_model = UpdateUserCommand {
             user_id: id,
             name: Some("updated_name".to_string()),

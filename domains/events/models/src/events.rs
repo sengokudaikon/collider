@@ -2,7 +2,6 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use typed_builder::TypedBuilder;
 use utoipa::ToSchema;
-use uuid::Uuid;
 
 use crate::Metadata;
 
@@ -19,7 +18,7 @@ use crate::Metadata;
 pub struct Event {
     #[builder(default)]
     pub id: i64,
-    pub user_id: Uuid,
+    pub user_id: i64,
     pub event_type_id: i32,
     #[builder(default)]
     pub timestamp: DateTime<Utc>,

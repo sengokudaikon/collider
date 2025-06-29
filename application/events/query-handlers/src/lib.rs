@@ -231,7 +231,6 @@ impl GetUserEventsQueryHandler {
 mod tests {
     use redis_connection::cache_provider::CacheProvider;
     use test_utils::{TestRedisContainer, *};
-    use uuid::Uuid;
 
     use super::*;
 
@@ -324,7 +323,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_user_events_non_existent_user() {
         let (_container, handler) = setup_test_db().await.unwrap();
-        let non_existent_user_id = Uuid::now_v7();
+        let non_existent_user_id = 999999;
 
         let query = GetUserEventsQuery {
             user_id: non_existent_user_id,

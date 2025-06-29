@@ -19,7 +19,6 @@ events-responses.workspace = true
 axum.workspace = true
 
 # Core dependencies
-uuid.workspace = true
 serde.workspace = true
 chrono.workspace = true
 tracing.workspace = true

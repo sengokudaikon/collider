@@ -6,4 +6,3 @@ edition = "2024"
 [dependencies]
 events-models.workspace = true
 redis-connection.workspace = true
-uuid.workspace = true

@@ -7,7 +7,6 @@ use events_errors::{EventError, EventTypeError};
 use events_models::Event;
 use sql_connection::SqlConnect;
 use tracing::instrument;
-use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct EventDao {
@@ -473,7 +472,7 @@ impl GenericDao for EventDao {
 impl EventDao {
     #[instrument(skip_all)]
     pub async fn find_with_filters(
-        &self, user_id: Option<Uuid>, event_type_id: Option<i32>,
+        &self, user_id: Option<i64>, event_type_id: Option<i32>,
         limit: Option<u64>, offset: Option<u64>,
     ) -> Result<Vec<Event>, EventError> {
         let client = self.db.get_read_client().await?;
@@ -547,7 +546,7 @@ impl EventDao {
 
     #[instrument(skip_all)]
     pub async fn find_by_user_id(
-        &self, user_id: Uuid, limit: Option<u64>,
+        &self, user_id: i64, limit: Option<u64>,
     ) -> Result<Vec<Event>, EventError> {
         let client = self.db.get_read_client().await?;
 
@@ -686,7 +685,7 @@ impl EventDao {
 
     #[instrument(skip_all)]
     pub async fn find_by_user_with_cursor(
-        &self, user_id: Uuid, cursor: Option<DateTime<Utc>>, limit: u64,
+        &self, user_id: i64, cursor: Option<DateTime<Utc>>, limit: u64,
     ) -> Result<(Vec<Event>, Option<DateTime<Utc>>), EventError> {
         let client = self.db.get_read_client().await?;
         let limit = limit.min(1000);

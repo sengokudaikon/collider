@@ -3,7 +3,7 @@ use utoipa::ToSchema;
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct UserResponse {
-    pub id: uuid::Uuid,
+    pub id: i64,
     pub name: String,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }

@@ -74,9 +74,7 @@ impl SqlMigrator {
                 .await?;
 
                 tx.commit().await?;
-                println!(
-                    "Migration {migration_name} completed successfully"
-                );
+                println!("Migration {migration_name} completed successfully");
             }
             else {
                 println!(

@@ -6,11 +6,10 @@ use phf_macros::phf_map;
 use rand::{Rng, SeedableRng, rngs::SmallRng, thread_rng};
 use serde_json::Value;
 use tokio_postgres::NoTls;
-use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub struct User {
-    pub id: Uuid,
+    pub id: i64,
     pub name: String,
     pub created_at: DateTime<Utc>,
 }
@@ -22,7 +21,7 @@ pub struct EventType {
 
 #[derive(Debug, Clone)]
 pub struct Event {
-    pub user_id: Uuid,
+    pub user_id: i64,
     pub event_type: String,
     pub timestamp: DateTime<Utc>,
     pub metadata: Value,
@@ -162,7 +161,7 @@ pub fn create_users(count: usize) -> Vec<User> {
     (0..count)
         .map(|i| {
             User {
-                id: Uuid::now_v7(),
+                id: 0, // Will be set after insert
                 name: format!("User{}", i + 1),
                 created_at,
             }

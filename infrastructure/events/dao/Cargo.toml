@@ -8,7 +8,6 @@ tokio-postgres.workspace = true
 tracing.workspace = true
 async-trait.workspace = true
 serde_json.workspace = true
-uuid.workspace = true
 chrono.workspace = true
 events-models.workspace = true
 events-commands.workspace = true

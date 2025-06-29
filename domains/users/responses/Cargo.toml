@@ -7,5 +7,4 @@ edition = "2024"
 serde.workspace = true
 user-models.workspace = true
 chrono.workspace = true
-uuid.workspace = true
 utoipa.workspace = true

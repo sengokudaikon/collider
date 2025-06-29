@@ -23,7 +23,6 @@ use serde::Deserialize;
 use sql_connection::SqlConnect;
 use tracing::instrument;
 use utoipa::{IntoParams, ToSchema};
-use uuid::Uuid;
 
 use crate::{
     background_jobs::BackgroundJobScheduler,
@@ -151,7 +150,7 @@ pub struct EventsListParams {
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct ListEventsParams {
-    pub user_id: Option<Uuid>,
+    pub user_id: Option<i64>,
     pub event_type_id: Option<i32>,
     pub limit: Option<u64>,
     pub offset: Option<u64>,
