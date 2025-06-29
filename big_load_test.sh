@@ -37,6 +37,8 @@ Arguments:
             - sustained: Constant load over time
             - ramp-up: Gradually increasing load
             - realistic: Simulates real user behavior
+            - ultrakill: Extreme rapid-fire bullethell requests
+            - bfg: Maximum server-killing load (use with caution!)
 
 Environment Variables:
   LT_REQUESTS      Base requests count (default: 1000)
@@ -69,7 +71,7 @@ validate_parameters() {
     fi
 
     case "$TEST_SCENARIO" in
-        mixed|burst|sustained|ramp-up|realistic)
+        mixed|burst|sustained|ramp-up|realistic|ultrakill|bfg)
             ;;
         *)
             echo "❌ Error: Invalid scenario: $TEST_SCENARIO"
@@ -133,7 +135,7 @@ export_live_data() {
     fi
     
     # Check if exported data already exists and is fresh
-    local data_age_minutes="${LT_DATA_FRESHNESS:-15}"  # Default: 15 minutes
+    local data_age_minutes="${LT_DATA_FRESHNESS:-30}"  # Default: 30 minutes
     local data_is_fresh=false
     
     if [ -f "$EXPORT_DIR/event_types.csv" ] && [ -f "$EXPORT_DIR/users.csv" ]; then
@@ -618,6 +620,180 @@ scenario_mixed() {
     scenario_realistic
 }
 
+scenario_ultrakill() {
+    echo "💀🔫 Running ULTRAKILL scenario..."
+    echo "  BULLETHELL MODE: Extreme rapid-fire request assault!"
+    echo "  ⚠️  WARNING: This will stress your server significantly!"
+    
+    # Parallel assault configuration
+    local assault_waves=20
+    local bullets_per_wave=10
+    local base_concurrency=200
+    
+    echo "  Launching $assault_waves waves of $bullets_per_wave parallel attacks each"
+    
+    for wave in $(seq 1 $assault_waves); do
+        echo "  🌊 WAVE $wave/$assault_waves - INCOMING!"
+        
+        # Launch multiple parallel "bullets" 
+        for bullet in $(seq 1 $bullets_per_wave); do
+            (
+                # Randomize attack parameters for chaos
+                local concurrency=$((base_concurrency + RANDOM % 300))  # 200-500 concurrent
+                local requests=$((500 + RANDOM % 1000))  # 500-1500 requests
+                local endpoint_choice=$((RANDOM % 4))
+                
+                case $endpoint_choice in
+                    0)
+                        # Rapid GET assault
+                        run_ab_test "ULTRAKILL-W${wave}B${bullet}-GET" \
+                            "$HOST/events?limit=1000" \
+                            "$requests" "$concurrency" "" &
+                        ;;
+                    1)
+                        # User endpoint barrage
+                        local user_id=$(get_random_user)
+                        run_ab_test "ULTRAKILL-W${wave}B${bullet}-USER" \
+                            "$HOST/user/$user_id/events?limit=500" \
+                            "$requests" "$concurrency" "" &
+                        ;;
+                    2)
+                        # Stats endpoint spam
+                        local event_type=$(get_random_event_type)
+                        run_ab_test "ULTRAKILL-W${wave}B${bullet}-STATS" \
+                            "$HOST/stats?type=$event_type" \
+                            "$requests" "$concurrency" "" &
+                        ;;
+                    3)
+                        # POST bullet spray
+                        local payload_file="$TEMP_DIR/ultrakill_${wave}_${bullet}.json"
+                        generate_event_payload "$(get_random_user)" \
+                                             "$(get_random_event_type)" \
+                                             "$payload_file"
+                        run_ab_test "ULTRAKILL-W${wave}B${bullet}-POST" \
+                            "$HOST/event" \
+                            "$((requests / 2))" "$((concurrency / 2))" \
+                            "-p $payload_file -T application/json" &
+                        ;;
+                esac
+            ) &
+            
+            # Minimal delay between bullets (50ms)
+            sleep 0.05
+        done
+        
+        # Wait for wave to complete before next one
+        wait
+        
+        # Minimal break between waves (100ms)
+        echo "    💥 Wave $wave complete! Next wave in 100ms..."
+        sleep 0.1
+    done
+    
+    echo "  ☠️  ULTRAKILL assault complete! Check server vitals!"
+}
+
+scenario_bfg() {
+    echo "🔥💣 Running BFG scenario..."
+    echo "  BIG F***ING GUN MODE: Maximum server annihilation!"
+    echo "  ⚠️  EXTREME WARNING: This WILL attempt to break your server!"
+    echo "  ⚠️  Only use this in test environments!"
+    
+    # Maximum assault parameters
+    local max_concurrency=1000
+    local max_requests=10000
+    local parallel_cannons=20  # Number of parallel BFG shots
+    local sustained_duration=120  # 2 minutes of hell
+    
+    echo "  🎯 Target acquired: $HOST"
+    echo "  🔋 Charging BFG capacitors..."
+    sleep 2
+    
+    echo "  💥 FIRING BFG! BRACE FOR IMPACT!"
+    
+    local start_time=$(date +%s)
+    local end_time=$((start_time + sustained_duration))
+    local shot_number=1
+    
+    while [ $(date +%s) -lt $end_time ]; do
+        echo "  🔥 BFG SHOT #$shot_number ($(( end_time - $(date +%s) ))s of destruction remaining)"
+        
+        # Launch parallel cannon blasts
+        for cannon in $(seq 1 $parallel_cannons); do
+            (
+                # Randomize destruction patterns
+                local attack_type=$((RANDOM % 5))
+                
+                case $attack_type in
+                    0)
+                        # Maximum GET devastation
+                        run_ab_test "BFG-S${shot_number}C${cannon}-OBLITERATE-GET" \
+                            "$HOST/events?limit=10000" \
+                            "$max_requests" "$max_concurrency" \
+                            "-k" &  # Keep-alive for sustained pressure
+                        ;;
+                    1)
+                        # User endpoint annihilation
+                        local user_id=$(get_random_user)
+                        run_ab_test "BFG-S${shot_number}C${cannon}-DESTROY-USER" \
+                            "$HOST/user/$user_id/events?limit=5000" \
+                            "$max_requests" "$max_concurrency" \
+                            "-k" &
+                        ;;
+                    2)
+                        # Stats endpoint decimation
+                        local event_type=$(get_random_event_type)
+                        run_ab_test "BFG-S${shot_number}C${cannon}-WRECK-STATS" \
+                            "$HOST/stats?type=$event_type&detailed=true" \
+                            "$max_requests" "$max_concurrency" \
+                            "-k" &
+                        ;;
+                    3)
+                        # POST payload bombardment
+                        local payload_file="$TEMP_DIR/bfg_${shot_number}_${cannon}.json"
+                        generate_event_payload "$(get_random_user)" \
+                                             "$(get_random_event_type)" \
+                                             "$payload_file"
+                        run_ab_test "BFG-S${shot_number}C${cannon}-BOMBARD-POST" \
+                            "$HOST/event" \
+                            "$((max_requests / 2))" "$((max_concurrency / 2))" \
+                            "-p $payload_file -T application/json -k" &
+                        ;;
+                    4)
+                        # Mixed endpoint chaos
+                        local endpoints=("/events" "/stats" "/" "/user/1/events")
+                        local endpoint=${endpoints[$RANDOM % ${#endpoints[@]}]}
+                        run_ab_test "BFG-S${shot_number}C${cannon}-CHAOS" \
+                            "$HOST$endpoint" \
+                            "$max_requests" "$max_concurrency" \
+                            "-k" &
+                        ;;
+                esac
+            ) &
+        done
+        
+        # Don't wait between shots - continuous assault
+        shot_number=$((shot_number + 1))
+        
+        # Check if we should wait (every 5 shots)
+        if [ $((shot_number % 5)) -eq 0 ]; then
+            echo "    ⏳ Letting parallel attacks complete before next barrage..."
+            wait
+        fi
+    done
+    
+    # Final cleanup wait
+    echo "  ⏳ Waiting for final destruction to complete..."
+    wait
+    
+    echo "  ☠️💀☠️ BFG assault complete!"
+    echo "  📊 Damage assessment:"
+    echo "     - Total shots fired: $shot_number"
+    echo "     - Estimated requests: $((shot_number * parallel_cannons * max_requests / 2))"
+    echo "     - Duration: $sustained_duration seconds"
+    echo "  🏥 Recommend checking server health immediately!"
+}
+
 generate_report() {
     echo ""
     echo "📊 Generating performance report..."
@@ -728,6 +904,12 @@ main() {
             ;;
         mixed)
             scenario_mixed
+            ;;
+        ultrakill)
+            scenario_ultrakill
+            ;;
+        bfg)
+            scenario_bfg
             ;;
     esac
     

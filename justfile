@@ -7,14 +7,19 @@ default:
     @just --list
 
 # ==== Development ====
-
+go:
+    bash ./scripts/start-replica.sh
+    sleep 5
+    just dev-setup
+    sleep 5
+    just dev-static
 # Start development environment with auto-restart
 dev:
     RUST_LOG=debug cargo watch -x "run --bin collider"
 
 # Start development environment without auto-restart  
 dev-static:
-    cd server && RUST_LOG=debug LOG_TO_FILE=true cargo run --bin collider
+    cd server && RUST_LOG=warn cargo run --bin collider
 
 prod:
     RUST_LOG=info target/release/collider
@@ -77,6 +82,9 @@ seed:
     DATABASE_URL="postgres://postgres:postgres@localhost:5434/postgres" \
     cargo run --bin seeder
 
+export:
+    DATABASE_URL="postgres://postgres:postgres@localhost:5434/postgres" \
+    cargo run --bin csv-exporter all
 # ==== Environment Management ====
 
 # Start test environment
@@ -111,8 +119,8 @@ dev-setup:
     @echo "Setting up development environment..."
     @if [ ! -f .env ]; then cp .env.example .env && echo "📄 Created .env from template"; fi
     @echo "⏳ Waiting for services to be ready..."
-    @sleep 5
     just migrate
+    sleep 1
     just seed
     @echo "✅ Development environment ready!"
 

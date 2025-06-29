@@ -86,14 +86,13 @@ async fn main() -> anyhow::Result<()> {
         uri: std::env::var("DATABASE_URL").unwrap_or_else(|_| {
             "postgresql://postgres:postgres@localhost/postgres".to_string()
         }),
-        max_conn: Some(100), /* Reduced to leverage PgBouncer's connection
-                              * pooling */
-        min_conn: Some(10),
+        max_conn: Some(400), // Increased for burst capacity
+        min_conn: Some(300), /* Pre-warm most connections to avoid
+                              * on-demand creation */
         logger: false,
         read_replica_uri: replica_url.clone(),
-        read_max_conn: Some(200), /* Reduced to leverage PgBouncer's
-                                   * connection pooling */
-        read_min_conn: Some(50),
+        read_max_conn: Some(600), // Increased for read-heavy workloads
+        read_min_conn: Some(400), // Pre-warm most connections
         enable_read_write_split: replica_url.is_some(),
     };
 
