@@ -12,12 +12,10 @@ use redis_connection::{
 };
 use serde::Serialize;
 use sql_connection::{
-    SqlConnect,
-    config::{PostgresDbConfig, ReadReplicaConfig},
-    connect_postgres_db, connect_postgres_read_replica,
+    SqlConnect, config::PostgresDbConfig, connect_postgres_db,
 };
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
-use tracing::{info, warn};
+use tracing::info;
 use tracing_subscriber::{
     fmt, layer::SubscriberExt, util::SubscriberInitExt,
 };
@@ -81,35 +79,17 @@ async fn main() -> anyhow::Result<()> {
     }
 
     info!("Initializing connection pools...");
-    let replica_url = std::env::var("DATABASE_READ_REPLICA_URL").ok();
     let db_config = PostgresDbConfig {
         uri: std::env::var("DATABASE_URL").unwrap_or_else(|_| {
             "postgresql://postgres:postgres@localhost/postgres".to_string()
         }),
-        max_conn: Some(400), // Increased for burst capacity
-        min_conn: Some(300), /* Pre-warm most connections to avoid
-                              * on-demand creation */
+        max_conn: Some(1000),
+        min_conn: Some(100),
         logger: false,
-        read_replica_uri: replica_url.clone(),
-        read_max_conn: Some(600), // Increased for read-heavy workloads
-        read_min_conn: Some(400), // Pre-warm most connections
-        enable_read_write_split: replica_url.is_some(),
     };
 
     // Initialize primary database connection
     connect_postgres_db(&db_config).await?;
-    info!("PostgreSQL primary connection pool initialized");
-
-    // Initialize read replica if configured
-    if db_config.enable_read_write_split() {
-        if let Err(e) = connect_postgres_read_replica(&db_config).await {
-            warn!(
-                "Failed to initialize read replica: {}. Continuing with \
-                 primary only.",
-                e
-            );
-        }
-    }
 
     let redis_config = RedisDbConfig {
         host: std::env::var("REDIS_HOST")
@@ -242,7 +222,6 @@ struct ApiDoc;
 async fn health_check() -> impl IntoResponse {
     let db = SqlConnect::from_global();
 
-    // Test actual connectivity instead of relying on deadpool status
     match db.get_client().await {
         Ok(_) => {
             let health_info = "OK - Database connection pool operational \
@@ -282,15 +261,13 @@ struct PoolInfo {
 )]
 async fn pool_status() -> impl IntoResponse {
     let db = SqlConnect::from_global();
-    let (primary_available, primary_size, read_replica_stats) =
-        db.get_pool_status();
+    let (primary_available, primary_size, _) = db.get_pool_status();
 
-    // Get max sizes from pool objects
     let primary_pool = sql_connection::get_sql_pool();
     let primary_status = primary_pool.status();
     let primary_max = primary_status.max_size;
 
-    let mut status = PoolStatus {
+    let status = PoolStatus {
         primary: PoolInfo {
             available: primary_available,
             size: primary_size,
@@ -302,22 +279,6 @@ async fn pool_status() -> impl IntoResponse {
         },
         read_replica: None,
     };
-
-    if let Some((read_available, read_size)) = read_replica_stats {
-        if let Some(read_pool) = sql_connection::get_read_sql_pool() {
-            let read_status = read_pool.status();
-            let read_max = read_status.max_size;
-            status.read_replica = Some(PoolInfo {
-                available: read_available,
-                size: read_size,
-                max_size: read_max,
-                utilization_percent: ((read_size as f64
-                    - read_available as f64)
-                    / read_max as f64)
-                    * 100.0,
-            });
-        }
-    }
 
     Json(status)
 }

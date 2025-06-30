@@ -51,11 +51,7 @@ async fn main() -> Result<()> {
         max_conn: Some(10),
         min_conn: Some(2),
         logger: false,
-        // Migrator doesn't need read replica
-        read_replica_uri: None,
-        read_max_conn: None,
-        read_min_conn: None,
-        enable_read_write_split: false,
+        // Read replica fields removed for BRRRRR mode
     };
 
     connect_postgres_db(&config).await?;

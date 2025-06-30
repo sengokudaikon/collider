@@ -1,4 +1,4 @@
-pub use config::{DbConnectConfig, DbOptionsConfig, PostgresDbConfig};
+pub use config::{DbConnectConfig, DbOptionsConfig, PostgresDbConfig}; /* ReadReplicaConfig removed for BRRRRR mode */
 pub use database_traits;
 pub use deadpool_postgres::PoolError;
 pub use impl_get_connect::SqlConnect;
@@ -7,7 +7,4 @@ pub mod config;
 mod impl_get_connect;
 mod static_vars;
 
-pub use static_vars::{
-    connect_postgres_db, connect_postgres_read_replica, get_read_sql_pool,
-    get_sql_pool,
-};
+pub use static_vars::{connect_postgres_db, get_sql_pool};

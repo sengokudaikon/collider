@@ -4,7 +4,7 @@ use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod};
 use tokio_postgres::NoTls;
 use tracing::{debug, info, instrument};
 
-use crate::config::{DbConnectConfig, DbOptionsConfig, ReadReplicaConfig};
+use crate::config::{DbConnectConfig, DbOptionsConfig};
 
 static SQL_DATABASE_POOL: OnceLock<Pool> = OnceLock::new();
 
@@ -96,71 +96,8 @@ where
     Ok(())
 }
 
-static READ_DATABASE_POOL: OnceLock<Pool> = OnceLock::new();
-
-#[instrument(skip_all, name = "connect-pgsql-read-replica")]
-pub async fn connect_postgres_read_replica<C>(
-    config: &C,
-) -> Result<(), anyhow::Error>
-where
-    C: DbConnectConfig + DbOptionsConfig,
-    C: ReadReplicaConfig,
-{
-    if let Some(read_uri) = config.read_replica_uri() {
-        info!(
-            postgres.read_replica.url = read_uri,
-            postgres.read_replica.max_conn = ?config.read_max_conn(),
-            postgres.read_replica.min_conn = ?config.read_min_conn(),
-            "Setting up read replica connection pool"
-        );
-
-        let pg_config = read_uri.parse::<tokio_postgres::Config>()?;
-
-        let mgr_config = ManagerConfig {
-            recycling_method: RecyclingMethod::Fast,
-        };
-        let mgr = Manager::from_config(pg_config, NoTls, mgr_config);
-
-        let mut pool_builder = Pool::builder(mgr);
-
-        // Configure runtime and timeouts for better burst performance
-        pool_builder = pool_builder
-            .runtime(deadpool_postgres::Runtime::Tokio1) // Required for timeout support
-            .wait_timeout(Some(Duration::from_millis(2000))) // Wait max 2s for connection
-            .create_timeout(Some(Duration::from_millis(5000))) // Create connection within 5s
-            .recycle_timeout(Some(Duration::from_millis(100))); // Fast recycling
-
-        // Optimize read replica pool for higher concurrency
-        if let Some(max_conn) = config.read_max_conn() {
-            pool_builder = pool_builder.max_size(max_conn as usize);
-        }
-        else {
-            // Default to higher connection count for read replicas
-            pool_builder = pool_builder.max_size(800);
-        }
-
-        let pool = pool_builder.build()?;
-
-        if READ_DATABASE_POOL.set(pool.clone()).is_err() {
-            panic!("Read replica database pool already established")
-        }
-
-        info!("Read replica connection pool initialized successfully");
-
-        // Pre-warm the read replica pool
-        let prewarm_count = config.read_min_conn().unwrap_or(10);
-        info!(
-            "Pre-warming read replica pool with {} connections",
-            prewarm_count
-        );
-        prewarm_pool(&pool, prewarm_count).await;
-    }
-    Ok(())
-}
-
-pub fn get_read_sql_pool() -> Option<&'static Pool> {
-    READ_DATABASE_POOL.get()
-}
+// Read replica functionality removed for BRRRRR mode - all connections
+// consolidated to primary pool
 pub fn get_sql_pool() -> &'static Pool {
     SQL_DATABASE_POOL
         .get()

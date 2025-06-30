@@ -8,7 +8,7 @@ default:
 
 # ==== Development ====
 go:
-    bash ./scripts/start-replica.sh
+    just dev-reset
     sleep 5
     just dev-setup
     sleep 5
@@ -19,10 +19,10 @@ dev:
 
 # Start development environment without auto-restart  
 dev-static:
-    cd server && RUST_LOG=warn cargo run --bin collider
+    cd server && RUST_LOG=debug cargo run --bin collider
 
-prod:
-    RUST_LOG=info target/release/collider
+prod: build
+    RUST_LOG=warn target/release/collider
 # Watch and rebuild on changes
 watch:
     cargo watch -x run
@@ -105,7 +105,7 @@ dev-down:
     docker-compose down
 
 dev-reset:
-    docker compose down --remove-orphans --volumes --rmi all && docker compose up -d --build
+    docker compose down --remove-orphans --volumes && docker compose up -d --build
 # Start production environment
 prod-up:
     docker-compose -f docker-compose.production.yml up -d

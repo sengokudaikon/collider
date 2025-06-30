@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Monitor database connection pool status
+# Monitor database connection pool status (BRRRRR mode - single consolidated pool)
 # Usage: ./monitor_pool.sh [host] [interval]
 
 HOST="${1:-http://localhost:8880}"
@@ -13,8 +13,8 @@ echo "Press Ctrl+C to stop"
 echo ""
 
 # Headers
-printf "%-20s | %-10s | %-10s | %-10s | %-10s | %-10s | %-10s | %-10s\n" \
-    "Timestamp" "Pri Avail" "Pri Size" "Pri Max" "Pri Use%" "Rep Avail" "Rep Size" "Rep Use%"
+printf "%-20s | %-10s | %-10s | %-10s | %-10s | %-20s\n" \
+    "Timestamp" "Available" "Size" "Max" "Use%" "Status"
 echo "--------------------------------------------------------------------------------"
 
 while true; do
@@ -22,47 +22,38 @@ while true; do
     RESPONSE=$(curl -s "$HOST/pool_status")
     
     if [ $? -eq 0 ] && [ -n "$RESPONSE" ]; then
-        # Parse JSON response
-        PRI_AVAIL=$(echo "$RESPONSE" | jq -r '.primary.available')
-        PRI_SIZE=$(echo "$RESPONSE" | jq -r '.primary.size')
-        PRI_MAX=$(echo "$RESPONSE" | jq -r '.primary.max_size')
-        PRI_UTIL=$(echo "$RESPONSE" | jq -r '.primary.utilization_percent' | cut -d'.' -f1)
-        
-        # Check for read replica
-        HAS_REPLICA=$(echo "$RESPONSE" | jq -r '.read_replica != null')
-        if [ "$HAS_REPLICA" = "true" ]; then
-            REP_AVAIL=$(echo "$RESPONSE" | jq -r '.read_replica.available')
-            REP_SIZE=$(echo "$RESPONSE" | jq -r '.read_replica.size')
-            REP_UTIL=$(echo "$RESPONSE" | jq -r '.read_replica.utilization_percent' | cut -d'.' -f1)
-        else
-            REP_AVAIL="-"
-            REP_SIZE="-"
-            REP_UTIL="-"
-        fi
+        # Parse JSON response - BRRRRR mode only has primary pool
+        AVAIL=$(echo "$RESPONSE" | jq -r '.primary.available')
+        SIZE=$(echo "$RESPONSE" | jq -r '.primary.size')
+        MAX=$(echo "$RESPONSE" | jq -r '.primary.max_size')
+        UTIL=$(echo "$RESPONSE" | jq -r '.primary.utilization_percent' | cut -d'.' -f1)
         
         # Color coding for utilization
-        if [ "$PRI_UTIL" -gt 90 ]; then
-            PRI_COLOR="\033[0;31m"  # Red
-        elif [ "$PRI_UTIL" -gt 70 ]; then
-            PRI_COLOR="\033[0;33m"  # Yellow
+        if [ "$UTIL" -gt 90 ]; then
+            COLOR="\033[0;31m"  # Red
+            STATUS="CRITICAL"
+        elif [ "$UTIL" -gt 70 ]; then
+            COLOR="\033[0;33m"  # Yellow
+            STATUS="WARNING"
         else
-            PRI_COLOR="\033[0;32m"  # Green
+            COLOR="\033[0;32m"  # Green
+            STATUS="HEALTHY"
         fi
         
         # Print status
-        printf "%-20s | ${PRI_COLOR}%-10s | %-10s | %-10s | %9s%%\033[0m | %-10s | %-10s | %9s%%\n" \
+        printf "%-20s | ${COLOR}%-10s | %-10s | %-10s | %9s%%\033[0m | %-20s\n" \
             "$(date '+%Y-%m-%d %H:%M:%S')" \
-            "$PRI_AVAIL" "$PRI_SIZE" "$PRI_MAX" "$PRI_UTIL" \
-            "$REP_AVAIL" "$REP_SIZE" "$REP_UTIL"
+            "$AVAIL" "$SIZE" "$MAX" "$UTIL" \
+            "$STATUS"
         
         # Alert on critical conditions
-        if [ "$PRI_AVAIL" -eq 0 ] && [ "$PRI_SIZE" -gt 0 ]; then
-            echo "⚠️  CRITICAL: Primary pool exhausted!"
-        elif [ "$PRI_SIZE" -eq 0 ]; then
-            echo "💤 Primary pool idle (no connections created yet)"
+        if [ "$AVAIL" -eq 0 ] && [ "$SIZE" -gt 0 ]; then
+            echo "🚨 CRITICAL: Connection pool exhausted! (BRRRRR mode: $MAX max connections)"
+        elif [ "$SIZE" -eq 0 ]; then
+            echo "💤 Pool idle (no connections created yet)"
         fi
-        if [ "$PRI_UTIL" -gt 95 ]; then
-            echo "⚠️  WARNING: Primary pool utilization above 95%"
+        if [ "$UTIL" -gt 95 ]; then
+            echo "⚠️  WARNING: Pool utilization above 95% - consider increasing max_conn"
         fi
     else
         echo "❌ Failed to get pool status from $HOST"
